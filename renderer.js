@@ -4,63 +4,68 @@
 
 document.addEventListener("DOMContentLoaded", function () {
   // --- Element References ---
-  var sidePanel = document.getElementById("side-panel");
-  var resizeHandle = document.getElementById("resize-handle");
-  var btnToggle = document.getElementById("btn-toggle-panel");
-  var btnExpand = document.getElementById("btn-expand-panel");
-  var ticketIdInput = document.getElementById("ticket-id");
-  var noteContent = document.getElementById("note-content");
-  var autosaveStatus = document.getElementById("autosave-status");
-  var btnSave = document.getElementById("btn-save");
-  var btnClear = document.getElementById("btn-clear");
-  var btnCopy = document.getElementById("btn-copy");
-  var btnOpenFolder = document.getElementById("btn-open-folder");
-  var ticketSelect = document.getElementById("ticket-select");
-  var btnLoadHistory = document.getElementById("btn-load-history");
-  var historyList = document.getElementById("history-list");
-  var btnGrabTicket = document.getElementById("btn-grab-ticket");
-  var btnDeleteTicket = document.getElementById("btn-delete-ticket");
+  const sidePanel = document.getElementById("side-panel");
+  const resizeHandle = document.getElementById("resize-handle");
+  const btnToggle = document.getElementById("btn-toggle-panel");
+  const btnExpand = document.getElementById("btn-expand-panel");
+  const ticketIdInput = document.getElementById("ticket-id");
+  const noteContent = document.getElementById("note-content");
+  const autosaveStatus = document.getElementById("autosave-status");
+  const btnSave = document.getElementById("btn-save");
+  const btnClear = document.getElementById("btn-clear");
+  const btnCopy = document.getElementById("btn-copy");
+  const btnOpenFolder = document.getElementById("btn-open-folder");
+  const ticketSelect = document.getElementById("ticket-select");
+  const btnLoadHistory = document.getElementById("btn-load-history");
+  const historyList = document.getElementById("history-list");
+  const btnGrabTicket = document.getElementById("btn-grab-ticket");
+  const btnDeleteTicket = document.getElementById("btn-delete-ticket");
 
   // --- Settings Elements ---
-  var settingsOverlay = document.getElementById("settings-overlay");
-  var btnCloseSettings = document.getElementById("btn-close-settings");
-  var settingNotePanel = document.getElementById("setting-note-panel");
-  var settingRetentionDays = document.getElementById("setting-retention-days");
-  var settingSortField = document.getElementById("setting-sort-field");
-  var settingSortDirection = document.getElementById("setting-sort-direction");
-  var settingSignature = document.getElementById("setting-signature");
-  var btnInsertSignature = document.getElementById("btn-insert-signature");
+  const settingsOverlay = document.getElementById("settings-overlay");
+  const btnCloseSettings = document.getElementById("btn-close-settings");
+  const settingNotePanel = document.getElementById("setting-note-panel");
+  const settingRetentionDays = document.getElementById("setting-retention-days");
+  const settingSortField = document.getElementById("setting-sort-field");
+  const settingSortDirection = document.getElementById("setting-sort-direction");
+  const settingSignature = document.getElementById("setting-signature");
+  const btnInsertSignature = document.getElementById("btn-insert-signature");
 
   // --- Tab Management Elements ---
-  var tabList = document.getElementById("tab-list");
-  var webviewContainer = document.getElementById("webview-container");
-  var btnNewTab = document.getElementById("btn-new-tab");
+  const tabList = document.getElementById("tab-list");
+  const webviewContainer = document.getElementById("webview-container");
+  const btnNewTab = document.getElementById("btn-new-tab");
 
   // --- Confirm Dialog Elements (declared early — referenced by Escape handler) ---
-  var confirmOverlay = document.getElementById("confirm-overlay");
-  var confirmMessage = document.getElementById("confirm-message");
-  var confirmYes = document.getElementById("confirm-yes");
-  var confirmNo = document.getElementById("confirm-no");
-  var confirmResolve = null;
+  const confirmOverlay = document.getElementById("confirm-overlay");
+  const confirmMessage = document.getElementById("confirm-message");
+  const confirmYes = document.getElementById("confirm-yes");
+  const confirmNo = document.getElementById("confirm-no");
+  let confirmResolve = null;
 
   // ==================== Constants ====================
-  var SIG_SAVE_DEBOUNCE = 800; // ms — signature editor save delay
-  var MENU_EDGE_PADDING = 4; // px — context menu window-edge padding
-  var PREVIEW_MAX_LENGTH = 100; // chars — history preview truncation
-  var TAB_HISTORY_MAX = 50; // max entries in tab history stack
-  var MAX_GRAB_ELEMENTS = 5000; // max DOM elements scanned during ticket grab
+  const SIG_SAVE_DEBOUNCE = 800; // ms — signature editor save delay
+  const MENU_EDGE_PADDING = 4; // px — context menu window-edge padding
+  const PREVIEW_MAX_LENGTH = 100; // chars — history preview truncation
+  const TAB_HISTORY_MAX = 50; // max entries in tab history stack
+  const MAX_GRAB_ELEMENTS = 5000; // max DOM elements scanned during ticket grab
+  const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2 MB — max pasted/dropped image size
 
   // ==================== Settings ====================
-  var appSettings = {
+  // Mirror of DEFAULT_SETTINGS in utils.js — update both if adding a new key.
+  let appSettings = {
     notePanelEnabled: true,
     backupRetentionDays: 7,
     signatureHtml: "",
     ticketSortField: "lastUpdated",
     ticketSortDirection: "desc",
+    panelCollapsed: false,
   };
 
   function applySettings(settings) {
     appSettings = settings;
+    // Sync the local collapsed state from persisted settings
+    panelCollapsed = settings.panelCollapsed || false;
 
     // --- Note Panel ---
     settingNotePanel.checked = settings.notePanelEnabled;
@@ -136,7 +141,7 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   settingRetentionDays.addEventListener("change", function () {
-    var val = parseInt(settingRetentionDays.value, 10);
+    let val = parseInt(settingRetentionDays.value, 10);
     // Clamp to valid range
     if (isNaN(val) || val < 0) val = 0;
     if (val > 365) val = 365;
@@ -161,14 +166,14 @@ document.addEventListener("DOMContentLoaded", function () {
   document
     .getElementById("signature-toolbar")
     .addEventListener("click", function (e) {
-      var btn = e.target.closest("[data-sig-command]");
+      const btn = e.target.closest("[data-sig-command]");
       if (!btn) return;
       settingSignature.focus();
       document.execCommand(btn.dataset.sigCommand, false, null);
     });
 
   // --- Signature editor: debounced save on input ---
-  var sigSaveTimer = null;
+  let sigSaveTimer = null;
   settingSignature.addEventListener("input", function () {
     clearTimeout(sigSaveTimer);
     sigSaveTimer = setTimeout(function () {
@@ -179,7 +184,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // --- Insert Signature button on the note toolbar ---
   btnInsertSignature.addEventListener("click", function () {
-    var sigHtml = appSettings.signatureHtml;
+    const sigHtml = appSettings.signatureHtml;
     if (!sigHtml) {
       autosaveStatus.textContent =
         "No signature configured - set one in Edit > Settings";
@@ -189,14 +194,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Build the signature block with a leading line break for spacing,
     // but no trailing line break so the cursor lands right at the end.
-    var block = "<br>" + sigHtml;
+    const block = "<br>" + sigHtml;
 
     // Append to the end of the editor
     noteContent.focus();
 
     // Move cursor to the very end
-    var sel = window.getSelection();
-    var range = document.createRange();
+    const sel = window.getSelection();
+    const range = document.createRange();
     range.selectNodeContents(noteContent);
     range.collapse(false);
     sel.removeAllRanges();
@@ -209,7 +214,7 @@ document.addEventListener("DOMContentLoaded", function () {
     autosaveStatus.className = "saved";
   });
 
-  // Listen for menu bar “Edit > Settings”
+  // Listen for menu bar "Edit > Settings"
   window.backupAPI.onOpenSettings(function () {
     openSettings();
   });
@@ -230,18 +235,17 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
   // ==================== Tab Management ======================================
-  var DEFAULT_URL = "https://na.myconnectwise.net/";
-  var tabs = []; // Array of { id, webview, tabEl, titleSpan, title }
-  var activeTabId = null;
-  var tabIdCounter = 0;
-  var tabHistory = []; // Stack of previously active tab IDs (most recent last, capped at TAB_HISTORY_MAX)
+  const DEFAULT_URL = "https://na.myconnectwise.net/";
+  const tabs = []; // Array of { id, webview, tabEl, titleSpan, title }
+  let activeTabId = null;
+  let tabIdCounter = 0;
+  let tabHistory = []; // Stack of previously active tab IDs (most recent last, capped at TAB_HISTORY_MAX)
 
   // --- Title cleanup: strip common prefixes ---
   function cleanTitle(raw) {
     if (!raw) return "Untitled";
-    var cleaned = raw;
     // Strip leading "Manage: " or "Manage:" (case-insensitive)
-    cleaned = cleaned.replace(/^Manage:\s*/i, "");
+    const cleaned = raw.replace(/^Manage:\s*/i, "");
     return cleaned || "Untitled";
   }
 
@@ -250,25 +254,25 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function getActiveWebview() {
-    var tab = tabs.find(function (t) {
+    const tab = tabs.find(function (t) {
       return t.id === activeTabId;
     });
     return tab ? tab.webview : null;
   }
 
   // --- Persist open tabs (debounced) ---
-  var saveTabsTimer = null;
+  let saveTabsTimer = null;
   function saveTabSession() {
     clearTimeout(saveTabsTimer);
     saveTabsTimer = setTimeout(function () {
-      var urls = [];
-      for (var i = 0; i < tabs.length; i++) {
+      const urls = [];
+      for (let i = 0; i < tabs.length; i++) {
         try {
-          var url = tabs[i].webview.getURL();
+          const url = tabs[i].webview.getURL();
           if (url && url !== "" && url !== "about:blank") {
             urls.push(url);
           }
-        } catch (e) {
+        } catch {
           // webview may not be ready yet
         }
       }
@@ -278,13 +282,12 @@ document.addEventListener("DOMContentLoaded", function () {
     }, 1000);
   }
 
-  function createTab(url, opts) {
-    opts = opts || {};
-    var id = generateTabId();
-    var activate = opts.activate !== false; // default: activate
+  function createTab(url, opts = {}) {
+    const id = generateTabId();
+    const activate = opts.activate !== false; // default: activate
 
     // Create webview element
-    var webview = document.createElement("webview");
+    const webview = document.createElement("webview");
     webview.setAttribute("src", url || DEFAULT_URL);
     webview.setAttribute("allowpopups", "");
     webview.style.width = "100%";
@@ -292,15 +295,15 @@ document.addEventListener("DOMContentLoaded", function () {
     webviewContainer.appendChild(webview);
 
     // Create tab button
-    var tabEl = document.createElement("div");
+    const tabEl = document.createElement("div");
     tabEl.className = "tab-item";
     tabEl.dataset.tabId = id;
 
-    var titleSpan = document.createElement("span");
+    const titleSpan = document.createElement("span");
     titleSpan.className = "tab-title";
     titleSpan.textContent = "Loading...";
 
-    var closeBtn = document.createElement("button");
+    const closeBtn = document.createElement("button");
     closeBtn.className = "tab-close";
     closeBtn.innerHTML = "&times;";
     closeBtn.title = "Close tab";
@@ -309,7 +312,7 @@ document.addEventListener("DOMContentLoaded", function () {
     tabEl.appendChild(closeBtn);
     tabList.appendChild(tabEl);
 
-    var tabData = {
+    const tabData = {
       id: id,
       webview: webview,
       tabEl: tabEl,
@@ -367,13 +370,13 @@ document.addEventListener("DOMContentLoaded", function () {
       e.dataTransfer.dropEffect = "move";
 
       // Determine if cursor is on left or right half of the tab
-      var rect = tabEl.getBoundingClientRect();
-      var midpoint = rect.left + rect.width / 2;
-      var onLeft = e.clientX < midpoint;
+      const rect = tabEl.getBoundingClientRect();
+      const midpoint = rect.left + rect.width / 2;
+      const onLeft = e.clientX < midpoint;
 
       // Only update classes if the indicator position actually changed
-      var hasLeft = tabEl.classList.contains("tab-drag-over-left");
-      var hasRight = tabEl.classList.contains("tab-drag-over-right");
+      const hasLeft = tabEl.classList.contains("tab-drag-over-left");
+      const hasRight = tabEl.classList.contains("tab-drag-over-right");
       if (onLeft && !hasLeft) {
         clearTabDragIndicators();
         tabEl.classList.add("tab-drag-over-left");
@@ -391,9 +394,9 @@ document.addEventListener("DOMContentLoaded", function () {
       e.preventDefault();
       if (!draggedTabId || draggedTabId === id) return;
 
-      var rect = tabEl.getBoundingClientRect();
-      var midpoint = rect.left + rect.width / 2;
-      var insertAfter = e.clientX >= midpoint;
+      const rect = tabEl.getBoundingClientRect();
+      const midpoint = rect.left + rect.width / 2;
+      const insertAfter = e.clientX >= midpoint;
 
       moveTab(draggedTabId, id, insertAfter);
       clearTabDragIndicators();
@@ -403,13 +406,13 @@ document.addEventListener("DOMContentLoaded", function () {
     // --- Helper to set title on the tab ---
     function updateTabTitle() {
       try {
-        var raw = webview.getTitle();
+        const raw = webview.getTitle();
         if (raw && raw !== "") {
-          var display = cleanTitle(raw);
+          const display = cleanTitle(raw);
           tabData.title = display;
           titleSpan.textContent = display;
         }
-      } catch (err) {
+      } catch {
         // webview may have been removed
       }
     }
@@ -422,7 +425,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     webview.addEventListener("page-title-updated", function (e) {
       if (e.title && e.title !== "") {
-        var display = cleanTitle(e.title);
+        const display = cleanTitle(e.title);
         tabData.title = display;
         titleSpan.textContent = display;
       }
@@ -488,7 +491,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function closeTab(id) {
-    var idx = tabs.findIndex(function (t) {
+    const idx = tabs.findIndex(function (t) {
       return t.id === id;
     });
     if (idx === -1) return;
@@ -499,14 +502,14 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    var tab = tabs[idx];
+    const tab = tabs[idx];
 
     // If closing the active tab, activate the most recent tab from history
     if (activeTabId === id) {
-      var nextId = null;
+      let nextId = null;
       // Pop from history until we find a tab that still exists and isn't the one being closed
       while (tabHistory.length > 0) {
-        var candidate = tabHistory.pop();
+        const candidate = tabHistory.pop();
         if (
           candidate !== id &&
           tabs.some(function (t) {
@@ -519,7 +522,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
       // Fallback to adjacent tab if no valid history
       if (!nextId) {
-        var newIdx = idx > 0 ? idx - 1 : idx + 1;
+        const newIdx = idx > 0 ? idx - 1 : idx + 1;
         nextId = tabs[newIdx].id;
       }
       activateTab(nextId);
@@ -540,10 +543,10 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // ==================== Tab Drag & Drop ======================================
-  var draggedTabId = null;
+  let draggedTabId = null;
 
   function clearTabDragIndicators() {
-    for (var i = 0; i < tabs.length; i++) {
+    for (let i = 0; i < tabs.length; i++) {
       tabs[i].tabEl.classList.remove(
         "tab-drag-over-left",
         "tab-drag-over-right",
@@ -554,19 +557,19 @@ document.addEventListener("DOMContentLoaded", function () {
   function moveTab(fromId, toId, insertAfter) {
     if (fromId === toId) return;
 
-    var fromIdx = tabs.findIndex(function (t) {
+    const fromIdx = tabs.findIndex(function (t) {
       return t.id === fromId;
     });
-    var toIdx = tabs.findIndex(function (t) {
+    const toIdx = tabs.findIndex(function (t) {
       return t.id === toId;
     });
     if (fromIdx === -1 || toIdx === -1) return;
 
     // Remove from current position in array
-    var movedTab = tabs.splice(fromIdx, 1)[0];
+    const movedTab = tabs.splice(fromIdx, 1)[0];
 
     // Recalculate target index after removal
-    var newIdx = tabs.findIndex(function (t) {
+    let newIdx = tabs.findIndex(function (t) {
       return t.id === toId;
     });
     if (insertAfter) {
@@ -575,7 +578,7 @@ document.addEventListener("DOMContentLoaded", function () {
     tabs.splice(newIdx, 0, movedTab);
 
     // Reorder DOM elements to match the tabs array
-    for (var i = 0; i < tabs.length; i++) {
+    for (let i = 0; i < tabs.length; i++) {
       tabList.appendChild(tabs[i].tabEl);
     }
 
@@ -583,17 +586,17 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // ==================== Tab Context Menu ====================
-  var tabContextMenu = document.getElementById("tab-context-menu");
-  var contextMenuTabId = null; // which tab was right-clicked
+  const tabContextMenu = document.getElementById("tab-context-menu");
+  let contextMenuTabId = null; // which tab was right-clicked
 
   function getTabUrl(tabId) {
-    var tab = tabs.find(function (t) {
+    const tab = tabs.find(function (t) {
       return t.id === tabId;
     });
     if (!tab) return null;
     try {
       return tab.webview.getURL();
-    } catch (e) {
+    } catch {
       return null;
     }
   }
@@ -608,7 +611,7 @@ document.addEventListener("DOMContentLoaded", function () {
     tabContextMenu.classList.add("visible");
 
     // Ensure the menu doesn't overflow the window
-    var rect = tabContextMenu.getBoundingClientRect();
+    const rect = tabContextMenu.getBoundingClientRect();
     if (rect.right > window.innerWidth) {
       tabContextMenu.style.left =
         window.innerWidth - rect.width - MENU_EDGE_PADDING + "px";
@@ -646,34 +649,36 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Handle context menu actions
   tabContextMenu.addEventListener("click", function (e) {
-    var item = e.target.closest(".context-menu-item");
+    const item = e.target.closest(".context-menu-item");
     if (!item || !contextMenuTabId) return;
 
-    var action = item.dataset.action;
-    var targetTabId = contextMenuTabId;
+    const action = item.dataset.action;
+    const targetTabId = contextMenuTabId;
     hideTabContextMenu();
 
     switch (action) {
-      case "open-browser":
-        var url = getTabUrl(targetTabId);
+      case "open-browser": {
+        const url = getTabUrl(targetTabId);
         if (url) {
           window.backupAPI.openInBrowser(url);
         }
         break;
+      }
 
-      case "duplicate":
-        var dupUrl = getTabUrl(targetTabId);
+      case "duplicate": {
+        const dupUrl = getTabUrl(targetTabId);
         if (dupUrl) {
           createTab(dupUrl, { activate: true });
         }
         break;
+      }
 
       case "close":
         closeTab(targetTabId);
         break;
 
-      case "close-others":
-        var otherIds = tabs
+      case "close-others": {
+        const otherIds = tabs
           .filter(function (t) {
             return t.id !== targetTabId;
           })
@@ -682,25 +687,27 @@ document.addEventListener("DOMContentLoaded", function () {
           });
         // Close in reverse order so index shifting doesn't skip tabs,
         // and the kept tab never becomes the "last tab" mid-loop.
-        for (var i = otherIds.length - 1; i >= 0; i--) {
+        for (let i = otherIds.length - 1; i >= 0; i--) {
           closeTab(otherIds[i]);
         }
         break;
+      }
 
-      case "close-right":
-        var targetIdx = tabs.findIndex(function (t) {
+      case "close-right": {
+        const targetIdx = tabs.findIndex(function (t) {
           return t.id === targetTabId;
         });
         if (targetIdx !== -1) {
-          var rightIds = tabs.slice(targetIdx + 1).map(function (t) {
+          const rightIds = tabs.slice(targetIdx + 1).map(function (t) {
             return t.id;
           });
           // Close in reverse order so index shifting doesn't skip tabs
-          for (var j = rightIds.length - 1; j >= 0; j--) {
+          for (let j = rightIds.length - 1; j >= 0; j--) {
             closeTab(rightIds[j]);
           }
         }
         break;
+      }
     }
   });
 
@@ -710,39 +717,39 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   // ==================== Webview Context Menu (right-click in webviews) ========
-  var linkContextMenu = document.getElementById("link-context-menu");
-  var contextMenuLinkUrl = null;
-  var contextMenuSelectionText = null;
+  const linkContextMenu = document.getElementById("link-context-menu");
+  let contextMenuLinkUrl = null;
+  let contextMenuSelectionText = null;
 
   function showWebviewContextMenu(x, y, linkURL, selectionText) {
     contextMenuLinkUrl = linkURL || null;
     contextMenuSelectionText = selectionText || null;
 
     // Show/hide menu items based on what was right-clicked
-    var linkItems = linkContextMenu.querySelectorAll("[data-action^='link-']");
-    var selItems = linkContextMenu.querySelectorAll("[data-action^='sel-']");
-    var separators = linkContextMenu.querySelectorAll(
+    const linkItems = linkContextMenu.querySelectorAll("[data-action^='link-']");
+    const selItems = linkContextMenu.querySelectorAll("[data-action^='sel-']");
+    const separators = linkContextMenu.querySelectorAll(
       ".context-menu-separator",
     );
 
-    for (var li = 0; li < linkItems.length; li++) {
+    for (let li = 0; li < linkItems.length; li++) {
       linkItems[li].style.display = linkURL ? "" : "none";
     }
-    for (var si = 0; si < selItems.length; si++) {
+    for (let si = 0; si < selItems.length; si++) {
       selItems[si].style.display = selectionText ? "" : "none";
     }
     // Show separator only if both link and selection items are present
-    for (var sp = 0; sp < separators.length; sp++) {
+    for (let sp = 0; sp < separators.length; sp++) {
       separators[sp].style.display = linkURL && selectionText ? "" : "none";
     }
 
     // The x/y from the main process are relative to the webview's content
     // area. We need to offset by the webview's position in the renderer.
-    var webview = getActiveWebview();
-    var offsetX = 0;
-    var offsetY = 0;
+    const webview = getActiveWebview();
+    let offsetX = 0;
+    let offsetY = 0;
     if (webview) {
-      var wvRect = webview.getBoundingClientRect();
+      const wvRect = webview.getBoundingClientRect();
       offsetX = wvRect.left;
       offsetY = wvRect.top;
     }
@@ -752,7 +759,7 @@ document.addEventListener("DOMContentLoaded", function () {
     linkContextMenu.classList.add("visible");
 
     // Ensure the menu doesn't overflow the window
-    var rect = linkContextMenu.getBoundingClientRect();
+    const rect = linkContextMenu.getBoundingClientRect();
     if (rect.right > window.innerWidth) {
       linkContextMenu.style.left =
         window.innerWidth - rect.width - MENU_EDGE_PADDING + "px";
@@ -783,10 +790,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Handle webview context menu actions
   linkContextMenu.addEventListener("click", function (e) {
-    var item = e.target.closest(".context-menu-item");
+    const item = e.target.closest(".context-menu-item");
     if (!item) return;
 
-    var action = item.dataset.action;
+    const action = item.dataset.action;
 
     switch (action) {
       case "link-new-tab":
@@ -834,14 +841,14 @@ document.addEventListener("DOMContentLoaded", function () {
       "[Tab] Webview close request for webContentsId:",
       webContentsId,
     );
-    for (var i = 0; i < tabs.length; i++) {
+    for (let i = 0; i < tabs.length; i++) {
       try {
         if (tabs[i].webview.getWebContentsId() === webContentsId) {
           console.log("[Tab] Closing tab:", tabs[i].id);
           closeTab(tabs[i].id);
           return;
         }
-      } catch (e) {
+      } catch {
         /* webview may not be ready */
       }
     }
@@ -850,9 +857,9 @@ document.addEventListener("DOMContentLoaded", function () {
   // --- Restore tabs from previous session, or create a default tab ---
   async function initTabs() {
     try {
-      var savedUrls = await window.backupAPI.loadTabs();
+      const savedUrls = await window.backupAPI.loadTabs();
       if (savedUrls && savedUrls.length > 0) {
-        for (var i = 0; i < savedUrls.length; i++) {
+        for (let i = 0; i < savedUrls.length; i++) {
           // First tab is active, rest are background
           createTab(savedUrls[i], { activate: i === 0 });
         }
@@ -883,7 +890,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function isEditorEmpty() {
-    var text = noteContent.innerText.trim();
+    const text = noteContent.innerText.trim();
     return text.length === 0 && !noteContent.querySelector("img");
   }
 
@@ -896,11 +903,11 @@ document.addEventListener("DOMContentLoaded", function () {
   document
     .getElementById("editor-toolbar")
     .addEventListener("click", function (e) {
-      var btn = e.target.closest(".toolbar-btn");
+      const btn = e.target.closest(".toolbar-btn");
       if (!btn) return;
 
-      var command = btn.dataset.command;
-      var value = btn.dataset.value || null;
+      const command = btn.dataset.command;
+      const value = btn.dataset.value || null;
 
       noteContent.focus();
       document.execCommand(command, false, value);
@@ -911,7 +918,7 @@ document.addEventListener("DOMContentLoaded", function () {
     document
       .querySelectorAll(".toolbar-btn[data-command]")
       .forEach(function (btn) {
-        var command = btn.dataset.command;
+        const command = btn.dataset.command;
         if (
           [
             "bold",
@@ -936,12 +943,12 @@ document.addEventListener("DOMContentLoaded", function () {
   // ==================== Image Paste Handler ====================
 
   noteContent.addEventListener("paste", function (e) {
-    var items = (e.clipboardData || {}).items;
+    const items = (e.clipboardData || {}).items;
     if (!items) return;
 
     // Collect all image items first, then process them all
-    var imageItems = [];
-    for (var i = 0; i < items.length; i++) {
+    const imageItems = [];
+    for (let i = 0; i < items.length; i++) {
       if (items[i].type.indexOf("image/") === 0) {
         imageItems.push(items[i]);
       }
@@ -951,16 +958,21 @@ document.addEventListener("DOMContentLoaded", function () {
       e.preventDefault();
 
       imageItems.forEach(function (imageItem) {
-        var blob = imageItem.getAsFile();
-        var reader = new FileReader();
+        const blob = imageItem.getAsFile();
+        if (blob.size > MAX_IMAGE_SIZE) {
+          autosaveStatus.textContent = `Image too large (${(blob.size / 1024 / 1024).toFixed(1)} MB — max 2 MB)`;
+          autosaveStatus.className = "";
+          return;
+        }
+        const reader = new FileReader();
         reader.onload = function (event) {
-          var img = document.createElement("img");
+          const img = document.createElement("img");
           img.src = event.target.result;
           img.style.maxWidth = "100%";
 
-          var selection = window.getSelection();
+          const selection = window.getSelection();
           if (selection.rangeCount > 0) {
-            var range = selection.getRangeAt(0);
+            const range = selection.getRangeAt(0);
             range.deleteContents();
             range.insertNode(img);
             range.setStartAfter(img);
@@ -984,12 +996,12 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   noteContent.addEventListener("drop", function (e) {
-    var files = e.dataTransfer.files;
+    const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
 
     // Collect all image files, then process them all
-    var imageFiles = [];
-    for (var i = 0; i < files.length; i++) {
+    const imageFiles = [];
+    for (let i = 0; i < files.length; i++) {
       if (files[i].type.indexOf("image/") === 0) {
         imageFiles.push(files[i]);
       }
@@ -999,9 +1011,14 @@ document.addEventListener("DOMContentLoaded", function () {
       e.preventDefault();
 
       imageFiles.forEach(function (file) {
-        var reader = new FileReader();
+        if (file.size > MAX_IMAGE_SIZE) {
+          autosaveStatus.textContent = `Image too large (${(file.size / 1024 / 1024).toFixed(1)} MB — max 2 MB)`;
+          autosaveStatus.className = "";
+          return;
+        }
+        const reader = new FileReader();
         reader.onload = function (event) {
-          var img = document.createElement("img");
+          const img = document.createElement("img");
           img.src = event.target.result;
           img.style.maxWidth = "100%";
           noteContent.appendChild(img);
@@ -1013,7 +1030,7 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   // ==================== Panel Toggle ====================
-  var panelCollapsed = false;
+  let panelCollapsed = false;
 
   function togglePanel() {
     // Don't allow toggling if the panel is disabled in settings
@@ -1029,13 +1046,17 @@ document.addEventListener("DOMContentLoaded", function () {
       resizeHandle.style.display = "";
       btnExpand.classList.remove("visible");
     }
+
+    // Persist collapsed state
+    appSettings.panelCollapsed = panelCollapsed;
+    window.backupAPI.saveSettings(appSettings);
   }
 
   btnToggle.addEventListener("click", togglePanel);
   btnExpand.addEventListener("click", togglePanel);
 
   // ==================== Panel Resize ====================
-  var isResizing = false;
+  let isResizing = false;
 
   resizeHandle.addEventListener("mousedown", function (e) {
     isResizing = true;
@@ -1048,10 +1069,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
   document.addEventListener("mousemove", function (e) {
     if (!isResizing) return;
-    var containerRect = document
+    const containerRect = document
       .getElementById("app-container")
       .getBoundingClientRect();
-    var newWidth = containerRect.right - e.clientX;
+    const newWidth = containerRect.right - e.clientX;
     if (newWidth >= 280 && newWidth <= 700) {
       sidePanel.style.width = newWidth + "px";
     }
@@ -1071,90 +1092,87 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Shared ticket-grab script injected into webviews.
   // The backgroundAutoGrab() and manual grab button both use this.
-  var TICKET_GRAB_SCRIPT =
-    "(function() {" +
-    "  var selectors = [" +
-    '    ".cw-header-ticket-number",' +
-    '    ".ticket-number",' +
-    '    "[class*=ticketNumber]",' +
-    '    "[class*=ticket-number]",' +
-    '    "[class*=TicketNumber]",' +
-    '    "[data-testid*=ticket]",' +
-    '    ".sr-number",' +
-    '    "[class*=srNumber]",' +
-    '    "[class*=recordId]",' +
-    '    "[class*=record-id]",' +
-    '    ".cw-breadcrumb",' +
-    '    ".breadcrumb",' +
-    '    ".tab-label.active",' +
-    '    ".cw-tab.active",' +
-    '    "[class*=activeTab]",' +
-    '    ".selected-tab",' +
-    '    ".panel-title",' +
-    '    ".card-header",' +
-    '    "h1", "h2", "h3"' +
-    "  ];" +
-    "  for (var i = 0; i < selectors.length; i++) {" +
-    "    var els = document.querySelectorAll(selectors[i]);" +
-    "    for (var j = 0; j < els.length; j++) {" +
-    '      var text = els[j].innerText || els[j].textContent || "";' +
-    "      var match = text.match(/#\\s*([0-9]{4,})/);" +
-    "      if (match) return { ticket: match[1], source: selectors[i], text: text.substring(0, 100) };" +
-    "    }" +
-    "  }" +
-    '  var body = document.body.innerText || "";' +
-    "  var patterns = [" +
-    "    /(?:Service\\s*Ticket|Ticket|SR)\\s*#\\s*([0-9]{4,})/i," +
-    "    /#([0-9]{5,})/" +
-    "  ];" +
-    "  for (var p = 0; p < patterns.length; p++) {" +
-    "    var m = body.match(patterns[p]);" +
-    '    if (m) return { ticket: m[1], source: "body-scan", text: "" };' +
-    "  }" +
-    '  var inputs = document.querySelectorAll("input, [contenteditable], span, div");' +
-    "  for (var k = 0; k < inputs.length; k++) {" +
-    "    var el = inputs[k];" +
-    '    var val = el.value || el.innerText || el.textContent || "";' +
-    '    var label = (el.getAttribute("aria-label") || el.getAttribute("title") || el.getAttribute("placeholder") || "").toLowerCase();' +
-    "    if (label.match(/ticket|sr\\s*#|record\\s*id|ticket\\s*number/)) {" +
-    "      var numMatch = val.match(/([0-9]{4,})/);" +
-    '      if (numMatch) return { ticket: numMatch[1], source: "input-label:" + label, text: val.substring(0, 100) };' +
-    "    }" +
-    "  }" +
-    '  var allEls = document.querySelectorAll("*");' +
-    "  var maxScan = Math.min(allEls.length, " +
-    MAX_GRAB_ELEMENTS +
-    ");" +
-    "  for (var a = 0; a < maxScan; a++) {" +
-    '    var cls = allEls[a].className || "";' +
-    '    if (typeof cls === "string" && cls.match(/tab.*active|active.*tab|selected/i)) {' +
-    '      var tabText = allEls[a].innerText || "";' +
-    "      var tabMatch = tabText.match(/#\\s*([0-9]{4,})/);" +
-    '      if (tabMatch) return { ticket: tabMatch[1], source: "active-tab-class", text: tabText.substring(0, 100) };' +
-    "    }" +
-    "  }" +
-    "  return {" +
-    "    ticket: null," +
-    '    source: "not-found",' +
-    "    debug: {" +
-    "      title: document.title," +
-    "      url: window.location.href," +
-    '      h1: (document.querySelector("h1") || {}).innerText || "",' +
-    '      h2: (document.querySelector("h2") || {}).innerText || "",' +
-    "      bodySnippet: body.substring(0, 500)" +
-    "    }" +
-    "  };" +
-    "})()";
+  const TICKET_GRAB_SCRIPT = `(function() {
+  var selectors = [
+    ".cw-header-ticket-number",
+    ".ticket-number",
+    "[class*=ticketNumber]",
+    "[class*=ticket-number]",
+    "[class*=TicketNumber]",
+    "[data-testid*=ticket]",
+    ".sr-number",
+    "[class*=srNumber]",
+    "[class*=recordId]",
+    "[class*=record-id]",
+    ".cw-breadcrumb",
+    ".breadcrumb",
+    ".tab-label.active",
+    ".cw-tab.active",
+    "[class*=activeTab]",
+    ".selected-tab",
+    ".panel-title",
+    ".card-header",
+    "h1", "h2", "h3"
+  ];
+  for (var i = 0; i < selectors.length; i++) {
+    var els = document.querySelectorAll(selectors[i]);
+    for (var j = 0; j < els.length; j++) {
+      var text = els[j].innerText || els[j].textContent || "";
+      var match = text.match(/#\\s*([0-9]{4,})/);
+      if (match) return { ticket: match[1], source: selectors[i], text: text.substring(0, 100) };
+    }
+  }
+  var body = document.body.innerText || "";
+  var patterns = [
+    /(?:Service\\s*Ticket|Ticket|SR)\\s*#\\s*([0-9]{4,})/i,
+    /#([0-9]{5,})/
+  ];
+  for (var p = 0; p < patterns.length; p++) {
+    var m = body.match(patterns[p]);
+    if (m) return { ticket: m[1], source: "body-scan", text: "" };
+  }
+  var inputs = document.querySelectorAll("input, [contenteditable], span, div");
+  for (var k = 0; k < inputs.length; k++) {
+    var el = inputs[k];
+    var val = el.value || el.innerText || el.textContent || "";
+    var label = (el.getAttribute("aria-label") || el.getAttribute("title") || el.getAttribute("placeholder") || "").toLowerCase();
+    if (label.match(/ticket|sr\\s*#|record\\s*id|ticket\\s*number/)) {
+      var numMatch = val.match(/([0-9]{4,})/);
+      if (numMatch) return { ticket: numMatch[1], source: "input-label:" + label, text: val.substring(0, 100) };
+    }
+  }
+  var allEls = document.querySelectorAll("*");
+  var maxScan = Math.min(allEls.length, ${MAX_GRAB_ELEMENTS});
+  for (var a = 0; a < maxScan; a++) {
+    var cls = allEls[a].className || "";
+    if (typeof cls === "string" && cls.match(/tab.*active|active.*tab|selected/i)) {
+      var tabText = allEls[a].innerText || "";
+      var tabMatch = tabText.match(/#\\s*([0-9]{4,})/);
+      if (tabMatch) return { ticket: tabMatch[1], source: "active-tab-class", text: tabText.substring(0, 100) };
+    }
+  }
+  return {
+    ticket: null,
+    source: "not-found",
+    debug: {
+      title: document.title,
+      url: window.location.href,
+      h1: (document.querySelector("h1") || {}).innerText || "",
+      h2: (document.querySelector("h2") || {}).innerText || "",
+      bodySnippet: body.substring(0, 500)
+    }
+  };
+})()`;
 
   // ==================== Auto-Grab on First Typing ====================
   // Triggered by the first input event when ticket ID is empty.
   // Runs in the background via .then()/.catch() and NEVER calls
   // noteContent.focus() — so the editor is never interrupted.
   // Reset on tab switch (in activateTab) and on Clear.
-  var hasAttemptedAutoGrab = false;
+  let hasAttemptedAutoGrab = false;
 
   function backgroundAutoGrab() {
-    var webview = getActiveWebview();
+    const webview = getActiveWebview();
     if (!webview) return;
 
     webview
@@ -1175,13 +1193,13 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // ==================== Autosave (Debounced) ====================
-  var autosaveTimer = null;
-  var AUTOSAVE_DELAY = 1500;
-  var lastSavedTicketId = null;
+  let autosaveTimer = null;
+  const AUTOSAVE_DELAY = 1500;
+  let lastSavedTicketId = null;
 
   async function performAutosave() {
-    var ticketId = ticketIdInput.value.trim() || "general";
-    var content = getEditorContent();
+    const ticketId = ticketIdInput.value.trim() || "general";
+    const content = getEditorContent();
 
     if (isEditorEmpty() && !ticketIdInput.value.trim()) {
       autosaveStatus.textContent = "Nothing to save";
@@ -1194,7 +1212,7 @@ document.addEventListener("DOMContentLoaded", function () {
         await window.backupAPI.deleteAutosave(lastSavedTicketId);
       }
 
-      var result = await window.backupAPI.saveNote({
+      const result = await window.backupAPI.saveNote({
         ticketId: ticketId,
         noteContent: content,
         isManual: false,
@@ -1230,14 +1248,14 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   btnGrabTicket.addEventListener("click", async function () {
-    var webview = getActiveWebview();
+    const webview = getActiveWebview();
     if (!webview) {
       autosaveStatus.textContent = "No active tab";
       return;
     }
 
     try {
-      var result = await webview.executeJavaScript(TICKET_GRAB_SCRIPT);
+      const result = await webview.executeJavaScript(TICKET_GRAB_SCRIPT);
 
       if (result && result.ticket) {
         ticketIdInput.value = result.ticket;
@@ -1266,8 +1284,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ==================== Manual Save ====================
   btnSave.addEventListener("click", async function () {
-    var ticketId = ticketIdInput.value.trim() || "general";
-    var content = getEditorContent();
+    const ticketId = ticketIdInput.value.trim() || "general";
+    const content = getEditorContent();
 
     if (isEditorEmpty()) {
       autosaveStatus.textContent = "Nothing to save!";
@@ -1276,7 +1294,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     try {
-      var result = await window.backupAPI.saveNote({
+      const result = await window.backupAPI.saveNote({
         ticketId: ticketId,
         noteContent: content,
         isManual: true,
@@ -1305,7 +1323,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Any mousedown on the side panel should reclaim focus from the webview
   // so that inputs and the contenteditable editor respond immediately.
   sidePanel.addEventListener("mousedown", function () {
-    var webview = getActiveWebview();
+    const webview = getActiveWebview();
     if (webview) webview.blur();
     window.focus();
   });
@@ -1341,7 +1359,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // ==================== Clear ====================
   btnClear.addEventListener("click", async function () {
     if (!isEditorEmpty()) {
-      var confirmed = await showConfirm(
+      const confirmed = await showConfirm(
         "Clear the current note? (Autosaved data is still on disk)",
       );
       if (!confirmed) return;
@@ -1362,12 +1380,12 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    var htmlContent = getEditorContent();
-    var plainText = getEditorPlainText();
+    const htmlContent = getEditorContent();
+    const plainText = getEditorPlainText();
 
-    var htmlBlob = new Blob([htmlContent], { type: "text/html" });
-    var textBlob = new Blob([plainText], { type: "text/plain" });
-    var clipItem = new ClipboardItem({
+    const htmlBlob = new Blob([htmlContent], { type: "text/html" });
+    const textBlob = new Blob([plainText], { type: "text/plain" });
+    const clipItem = new ClipboardItem({
       "text/html": htmlBlob,
       "text/plain": textBlob,
     });
@@ -1399,7 +1417,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ==================== History ====================
   // --- Debounced refreshTicketList for navigation events ---
-  var refreshTicketListTimer = null;
+  let refreshTicketListTimer = null;
   function debouncedRefreshTicketList() {
     clearTimeout(refreshTicketListTimer);
     refreshTicketListTimer = setTimeout(refreshTicketList, 500);
@@ -1407,23 +1425,23 @@ document.addEventListener("DOMContentLoaded", function () {
 
   async function refreshTicketList() {
     try {
-      var tickets = await window.backupAPI.getAllTickets();
+      const tickets = await window.backupAPI.getAllTickets();
 
       // Sort tickets based on current settings
-      var sortField = appSettings.ticketSortField || "lastUpdated";
-      var sortDir = appSettings.ticketSortDirection || "desc";
+      const sortField = appSettings.ticketSortField || "lastUpdated";
+      const sortDir = appSettings.ticketSortDirection || "desc";
 
       tickets.sort(function (a, b) {
-        var result = 0;
+        let result = 0;
         if (sortField === "lastUpdated") {
-          var timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-          var timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+          const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+          const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
           result = timeA - timeB;
         } else {
           // ticketNumber — extract leading digits for numeric comparison,
           // fall back to locale string compare for non-numeric IDs
-          var numA = parseInt(a.ticketId, 10);
-          var numB = parseInt(b.ticketId, 10);
+          const numA = parseInt(a.ticketId, 10);
+          const numB = parseInt(b.ticketId, 10);
           if (!isNaN(numA) && !isNaN(numB)) {
             result = numA - numB;
           } else {
@@ -1433,15 +1451,15 @@ document.addEventListener("DOMContentLoaded", function () {
         return sortDir === "desc" ? -result : result;
       });
 
-      var previousValue = ticketSelect.value;
+      const previousValue = ticketSelect.value;
       ticketSelect.innerHTML =
         '<option value="">-- Select a ticket --</option>';
       tickets.forEach(function (t) {
-        var opt = document.createElement("option");
+        const opt = document.createElement("option");
         opt.value = t.ticketId;
-        var dateLabel = "";
+        let dateLabel = "";
         if (t.updatedAt) {
-          var d = new Date(t.updatedAt);
+          const d = new Date(t.updatedAt);
           dateLabel =
             " (" + d.toLocaleDateString() + " " + d.toLocaleTimeString() + ")";
         }
@@ -1463,7 +1481,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!ticketId) return;
 
     try {
-      var items = await window.backupAPI.getHistory(ticketId);
+      const items = await window.backupAPI.getHistory(ticketId);
       if (items.length === 0) {
         historyList.innerHTML =
           '<div style="font-size:11px; color:var(--text-muted); padding:8px;">No snapshots yet. Use "Save Snapshot" to create one.</div>';
@@ -1471,22 +1489,22 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       items.forEach(function (item) {
-        var div = document.createElement("div");
+        const div = document.createElement("div");
         div.className = "history-item";
 
-        var tempDiv = document.createElement("div");
+        const tempDiv = document.createElement("div");
         tempDiv.innerHTML = item.content;
-        var preview = tempDiv.innerText.substring(0, PREVIEW_MAX_LENGTH);
+        const preview = tempDiv.innerText.substring(0, PREVIEW_MAX_LENGTH);
 
-        var displayName = item.filename
+        const displayName = item.filename
           .replace(".html", "")
           .replace(".txt", "");
 
-        var timeDiv = document.createElement("div");
+        const timeDiv = document.createElement("div");
         timeDiv.className = "history-time";
         timeDiv.textContent = displayName;
 
-        var previewDiv = document.createElement("div");
+        const previewDiv = document.createElement("div");
         previewDiv.className = "history-preview";
         previewDiv.textContent = preview || "(empty)";
 
@@ -1518,14 +1536,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ==================== Delete Saved Ticket ====================
   btnDeleteTicket.addEventListener("click", async function () {
-    var selectedTicket = ticketSelect.value;
+    const selectedTicket = ticketSelect.value;
     if (!selectedTicket) {
       autosaveStatus.textContent = "Select a ticket to delete first";
       autosaveStatus.className = "";
       return;
     }
 
-    var confirmed = await showConfirm(
+    const confirmed = await showConfirm(
       'Delete ALL saved data for ticket "' +
         selectedTicket +
         '"? This will remove the autosave entry and all snapshot history. This cannot be undone.',
@@ -1547,15 +1565,15 @@ document.addEventListener("DOMContentLoaded", function () {
   // ==================== Load Autosaved Data on Start ====================
   async function loadAutosaved() {
     try {
-      var data = await window.backupAPI.loadAutosave();
-      var keys = Object.keys(data);
+      const data = await window.backupAPI.loadAutosave();
+      const keys = Object.keys(data);
       if (keys.length > 0) {
-        var latestKey = keys[0];
-        var latestTimeMs = data[keys[0]].updatedAt
+        let latestKey = keys[0];
+        let latestTimeMs = data[keys[0]].updatedAt
           ? new Date(data[keys[0]].updatedAt).getTime()
           : 0;
         keys.forEach(function (k) {
-          var timeMs = data[k].updatedAt
+          const timeMs = data[k].updatedAt
             ? new Date(data[k].updatedAt).getTime()
             : 0;
           if (timeMs > latestTimeMs) {
@@ -1615,22 +1633,22 @@ document.addEventListener("DOMContentLoaded", function () {
     // Ctrl+Tab - Next tab
     if (e.ctrlKey && !e.shiftKey && e.key === "Tab") {
       e.preventDefault();
-      var idx = tabs.findIndex(function (t) {
+      const idx = tabs.findIndex(function (t) {
         return t.id === activeTabId;
       });
       if (idx !== -1 && tabs.length > 1) {
-        var nextIdx = (idx + 1) % tabs.length;
+        const nextIdx = (idx + 1) % tabs.length;
         activateTab(tabs[nextIdx].id);
       }
     }
     // Ctrl+Shift+Tab - Previous tab
     if (e.ctrlKey && e.shiftKey && e.key === "Tab") {
       e.preventDefault();
-      var idx2 = tabs.findIndex(function (t) {
+      const idx = tabs.findIndex(function (t) {
         return t.id === activeTabId;
       });
-      if (idx2 !== -1 && tabs.length > 1) {
-        var prevIdx = (idx2 - 1 + tabs.length) % tabs.length;
+      if (idx !== -1 && tabs.length > 1) {
+        const prevIdx = (idx - 1 + tabs.length) % tabs.length;
         activateTab(tabs[prevIdx].id);
       }
     }
@@ -1638,14 +1656,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ==================== Save tabs before window closes ====================
   window.addEventListener("beforeunload", function () {
-    var urls = [];
-    for (var i = 0; i < tabs.length; i++) {
+    const urls = [];
+    for (let i = 0; i < tabs.length; i++) {
       try {
-        var url = tabs[i].webview.getURL();
+        const url = tabs[i].webview.getURL();
         if (url && url !== "" && url !== "about:blank") {
           urls.push(url);
         }
-      } catch (e) {
+      } catch {
         /* ignore */
       }
     }
