@@ -11,26 +11,25 @@ let BACKUP_DIR;
 let AUTOSAVE_FILE;
 let TABS_FILE;
 let SETTINGS_FILE;
+let EDITOR_STATE_FILE;
 
-// Known SSO / auth provider hostnames — popups from these are allowed as real
-// windows so login flows that rely on window.opener / postMessage work correctly.
-const AUTH_HOSTNAME_PATTERNS = [
+// Microsoft SSO hostnames — these popups communicate login state back to the
+// ConnectWise page via window.opener / postMessage and must open as real windows.
+const MICROSOFT_SSO_PATTERNS = [
   /^login\.microsoftonline\.com$/i,
   /^login\.microsoft\.com$/i,
   /^login\.live\.com$/i,
-  /^accounts\.google\.com$/i,
-  /\.okta\.com$/i,
-  /\.oktapreview\.com$/i,
-  /\.onelogin\.com$/i,
-  /\.pingone\.com$/i,
-  /\.pingidentity\.com$/i,
-  /\.connectwiseidentity\.com$/i,
-  /\.auth0\.com$/i,
 ];
 
-// ConnectWise's own domain — window.open("new-window") requests here are also
-// allowed through (e.g. inline PDF viewers, print dialogs).
+// CW's SSO flow often starts on the CW domain (e.g. an auth redirect endpoint)
+// before handing off to Microsoft. Popups to these path segments on the CW
+// domain are allowed as real windows so the redirect chain isn't broken.
+// Everything else on the CW domain (PDFs, reports, etc.) goes to a tab.
+// The pattern requires a path-segment boundary after the keyword so that
+// e.g. /ConnectWise.aspx does not accidentally match /connect.
 const CW_HOSTNAME_PATTERN = /\.myconnectwise\.net$/i;
+const CW_AUTH_PATH_PATTERN =
+  /\/(?:auth|login|sso|oauth|saml|openid|signin)(?:[/?#]|$)/i;
 
 // ===================== Settings Persistence =====================
 
@@ -293,23 +292,23 @@ function createWindow() {
 
   // Intercept new-window requests from webview guest pages and redirect to tabs
   mainWindow.webContents.on("did-attach-webview", (event, webviewContents) => {
-    webviewContents.setWindowOpenHandler(({ url, disposition }) => {
-      // Allow auth/SSO popups to open as real windows so login flows work.
-      // ConnectWise SSO uses popups that communicate back via window.opener,
-      // which requires a real browser window (not a tab redirect).
-      //
-      // Security: only known auth provider hostnames are allowed. Additionally,
-      // window.open() calls with disposition "new-window" are only passed through
-      // for the ConnectWise domain itself (not arbitrary third-party content).
+    webviewContents.setWindowOpenHandler(({ url }) => {
+      // Microsoft SSO popups and CW auth-path popups open as real windows so the
+      // window.opener / postMessage login handshake works. Everything else goes
+      // to a new tab. The console log below shows the exact URL and disposition
+      // for each popup — useful if the SSO flow breaks and you need to widen the
+      // auth-path pattern.
       try {
         const parsed = new URL(url);
         const host = parsed.hostname.toLowerCase();
+        console.log("[Popup] window.open() from webview:", url);
 
-        const isKnownAuth = AUTH_HOSTNAME_PATTERNS.some((re) => re.test(host));
-        const isCwNewWindow =
-          CW_HOSTNAME_PATTERN.test(host) && disposition === "new-window";
+        const isMicrosoftSSO = MICROSOFT_SSO_PATTERNS.some((re) => re.test(host));
+        const isCwAuthPopup =
+          CW_HOSTNAME_PATTERN.test(host) &&
+          CW_AUTH_PATH_PATTERN.test(parsed.pathname);
 
-        if (isKnownAuth || isCwNewWindow) {
+        if (isMicrosoftSSO || isCwAuthPopup) {
           console.log("[Popup] Allowing auth/popup window:", url);
           const parent =
             mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
@@ -563,6 +562,26 @@ function registerIpcHandlers() {
     }
   });
 
+  // Save editor state (blank/not-blank) synchronously on beforeunload
+  electron.ipcMain.on("save-editor-state-sync", (event, state) => {
+    try {
+      fs.mkdirSync(BACKUP_DIR, { recursive: true });
+      fs.writeFileSync(EDITOR_STATE_FILE, JSON.stringify(state), "utf-8");
+    } catch (e) {
+      console.error("[EditorState] Error saving editor state (sync):", e);
+    }
+  });
+
+  // Load editor state on startup
+  electron.ipcMain.handle("load-editor-state", async () => {
+    try {
+      const raw = await fsp.readFile(EDITOR_STATE_FILE, "utf-8");
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  });
+
   // Open a URL in the user's default browser
   electron.ipcMain.handle("open-in-browser", async (event, url) => {
     if (url && typeof url === "string") {
@@ -634,6 +653,7 @@ electron.app.whenReady().then(() => {
   AUTOSAVE_FILE = path.join(BACKUP_DIR, "autosave.json");
   TABS_FILE = path.join(BACKUP_DIR, "open-tabs.json");
   SETTINGS_FILE = path.join(BACKUP_DIR, "settings.json");
+  EDITOR_STATE_FILE = path.join(BACKUP_DIR, "editor-state.json");
 
   // Set a realistic user agent for ConnectWise requests only
   // (scoped to myconnectwise.net to avoid affecting other services)

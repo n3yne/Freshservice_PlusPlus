@@ -1360,11 +1360,17 @@ document.addEventListener("DOMContentLoaded", function () {
   btnClear.addEventListener("click", async function () {
     if (!isEditorEmpty()) {
       const confirmed = await showConfirm(
-        "Clear the current note? (Autosaved data is still on disk)",
+        "Clear the current note? The draft will be removed — saved snapshots are not affected.",
       );
       if (!confirmed) return;
     }
     clearTimeout(autosaveTimer);
+
+    // Remove the autosave entry so the editor starts blank on next launch
+    if (lastSavedTicketId) {
+      window.backupAPI.deleteAutosave(lastSavedTicketId);
+    }
+
     setEditorContent("");
     ticketIdInput.value = "";
     hasAttemptedAutoGrab = false;
@@ -1565,6 +1571,12 @@ document.addEventListener("DOMContentLoaded", function () {
   // ==================== Load Autosaved Data on Start ====================
   async function loadAutosaved() {
     try {
+      // If the editor was blank when the app last closed, don't restore anything.
+      const editorState = await window.backupAPI.loadEditorState();
+      if (editorState && editorState.blankAtClose) {
+        return;
+      }
+
       const data = await window.backupAPI.loadAutosave();
       const keys = Object.keys(data);
       if (keys.length > 0) {
@@ -1672,5 +1684,11 @@ document.addEventListener("DOMContentLoaded", function () {
       // queued synchronously before the renderer process is destroyed.
       window.backupAPI.saveTabsSync(urls);
     }
+
+    // Persist whether the editor was blank at close so we can skip draft
+    // restoration on the next launch if the user had cleared the editor.
+    const blankAtClose =
+      isEditorEmpty() && !ticketIdInput.value.trim();
+    window.backupAPI.saveEditorStateSync({ blankAtClose });
   });
 });

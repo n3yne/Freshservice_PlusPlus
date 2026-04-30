@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld("backupAPI", {
   saveTabs: (tabUrls) => ipcRenderer.invoke("save-tabs", tabUrls),
   saveTabsSync: (tabUrls) => ipcRenderer.send("save-tabs-sync", tabUrls),
   loadTabs: () => ipcRenderer.invoke("load-tabs"),
+  saveEditorStateSync: (state) => ipcRenderer.send("save-editor-state-sync", state),
+  loadEditorState: () => ipcRenderer.invoke("load-editor-state"),
   onOpenInNewTab: (callback) =>
     onIpc("open-in-new-tab", (event, url) => callback(url)),
   onWebviewClose: (callback) =>
