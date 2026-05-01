@@ -447,10 +447,28 @@ document.addEventListener("DOMContentLoaded", function () {
       saveTabSession();
     });
 
-    // --- Handle webview requesting to close itself (e.g. ConnectWise "Save and Close" button) ---
+    // --- Handle webview requesting to close itself (e.g. ConnectWise "Save and Return") ---
     webview.addEventListener("close", function () {
       console.log("[Tab] Webview requested close for tab:", id);
       closeTab(id);
+      // Click the refresh button on the tab we returned to, identified by the
+      // refresh icon SVG path (d attribute starting with "M43.4 24.4").
+      const returnedWebview = getActiveWebview();
+      if (returnedWebview) {
+        returnedWebview
+          .executeJavaScript(
+            `(function() {
+              const paths = document.querySelectorAll('.mm_button svg path');
+              for (const p of paths) {
+                if ((p.getAttribute('d') || '').startsWith('M43.4 24.4')) {
+                  const btn = p.closest('.mm_button');
+                  if (btn) { btn.click(); break; }
+                }
+              }
+            })();`,
+          )
+          .catch(function () {});
+      }
     });
 
     // Activate the tab
