@@ -335,24 +335,100 @@ function createWindow() {
       return { action: "deny" };
     });
 
-    // Right-click context menu inside webviews (links, text selection, etc.)
+    // Native OS right-click context menu inside webviews
     webviewContents.on("context-menu", (event, params) => {
       if (!mainWindow || mainWindow.isDestroyed()) return;
 
-      // Build context data for the renderer
-      const contextData = {
-        x: params.x,
-        y: params.y,
-        linkURL: params.linkURL || "",
-        selectionText: params.selectionText || "",
-        mediaType: params.mediaType || "",
-        srcURL: params.srcURL || "",
-      };
+      const menuItems = [];
 
-      // Only send if there's something actionable to show
-      if (contextData.linkURL || contextData.selectionText) {
-        mainWindow.webContents.send("webview-context-menu", contextData);
+      // Spellcheck suggestions
+      if (params.misspelledWord && params.dictionarySuggestions.length > 0) {
+        for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
+          menuItems.push({
+            label: suggestion,
+            click: () => webviewContents.replaceMisspelling(suggestion),
+          });
+        }
+        menuItems.push({ type: "separator" });
       }
+      if (params.misspelledWord) {
+        menuItems.push({
+          label: `Add "${params.misspelledWord}" to Dictionary`,
+          click: () =>
+            webviewContents.session.addWordToSpellCheckerDictionary(
+              params.misspelledWord,
+            ),
+        });
+        menuItems.push({ type: "separator" });
+      }
+
+      // Editing actions for input/textarea fields
+      if (params.isEditable) {
+        menuItems.push({ label: "Cut", click: () => webviewContents.cut() });
+        menuItems.push({ label: "Copy", click: () => webviewContents.copy() });
+        menuItems.push({
+          label: "Paste",
+          click: () => webviewContents.paste(),
+        });
+        menuItems.push({ type: "separator" });
+        menuItems.push({
+          label: "Select All",
+          click: () => webviewContents.selectAll(),
+        });
+      } else if (params.selectionText) {
+        menuItems.push({
+          label: "Copy",
+          click: () => webviewContents.copy(),
+        });
+      }
+
+      // Link actions
+      if (params.linkURL) {
+        if (menuItems.length > 0) menuItems.push({ type: "separator" });
+        menuItems.push({
+          label: "Open Link in New Tab",
+          click: () =>
+            mainWindow.webContents.send("open-in-new-tab", params.linkURL),
+        });
+        menuItems.push({
+          label: "Open Link in Default Browser",
+          click: () => {
+            try {
+              const parsed = new URL(params.linkURL);
+              if (
+                parsed.protocol === "http:" ||
+                parsed.protocol === "https:"
+              ) {
+                electron.shell.openExternal(params.linkURL);
+              }
+            } catch {
+              // Ignore invalid URLs
+            }
+          },
+        });
+        menuItems.push({
+          label: "Copy Link Address",
+          click: () => electron.clipboard.writeText(params.linkURL),
+        });
+      }
+
+      // Image actions
+      if (params.mediaType === "image" && params.srcURL) {
+        if (menuItems.length > 0) menuItems.push({ type: "separator" });
+        menuItems.push({
+          label: "Open Image in New Tab",
+          click: () =>
+            mainWindow.webContents.send("open-in-new-tab", params.srcURL),
+        });
+        menuItems.push({
+          label: "Copy Image Address",
+          click: () => electron.clipboard.writeText(params.srcURL),
+        });
+      }
+
+      if (menuItems.length === 0) return;
+
+      electron.Menu.buildFromTemplate(menuItems).popup({ window: mainWindow });
     });
 
     // Handle guest page beforeunload dialogs (e.g. unsaved form changes)

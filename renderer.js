@@ -647,19 +647,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // --- Single document click handler for dismissing all context menus ---
   document.addEventListener("click", function (e) {
-    // Only dismiss if the click was outside the menu
     if (!e.target.closest("#tab-context-menu")) {
       hideTabContextMenu();
-    }
-    if (!e.target.closest("#link-context-menu")) {
-      hideLinkContextMenu();
     }
   });
 
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
       hideTabContextMenu();
-      hideLinkContextMenu();
       closeSettings();
       if (confirmOverlay.classList.contains("visible")) closeConfirm(false);
     }
@@ -734,117 +729,6 @@ document.addEventListener("DOMContentLoaded", function () {
     createTab(DEFAULT_URL, { activate: true });
   });
 
-  // ==================== Webview Context Menu (right-click in webviews) ========
-  const linkContextMenu = document.getElementById("link-context-menu");
-  let contextMenuLinkUrl = null;
-  let contextMenuSelectionText = null;
-
-  function showWebviewContextMenu(x, y, linkURL, selectionText) {
-    contextMenuLinkUrl = linkURL || null;
-    contextMenuSelectionText = selectionText || null;
-
-    // Show/hide menu items based on what was right-clicked
-    const linkItems = linkContextMenu.querySelectorAll("[data-action^='link-']");
-    const selItems = linkContextMenu.querySelectorAll("[data-action^='sel-']");
-    const separators = linkContextMenu.querySelectorAll(
-      ".context-menu-separator",
-    );
-
-    for (let li = 0; li < linkItems.length; li++) {
-      linkItems[li].style.display = linkURL ? "" : "none";
-    }
-    for (let si = 0; si < selItems.length; si++) {
-      selItems[si].style.display = selectionText ? "" : "none";
-    }
-    // Show separator only if both link and selection items are present
-    for (let sp = 0; sp < separators.length; sp++) {
-      separators[sp].style.display = linkURL && selectionText ? "" : "none";
-    }
-
-    // The x/y from the main process are relative to the webview's content
-    // area. We need to offset by the webview's position in the renderer.
-    const webview = getActiveWebview();
-    let offsetX = 0;
-    let offsetY = 0;
-    if (webview) {
-      const wvRect = webview.getBoundingClientRect();
-      offsetX = wvRect.left;
-      offsetY = wvRect.top;
-    }
-
-    linkContextMenu.style.left = x + offsetX + "px";
-    linkContextMenu.style.top = y + offsetY + "px";
-    linkContextMenu.classList.add("visible");
-
-    // Ensure the menu doesn't overflow the window
-    const rect = linkContextMenu.getBoundingClientRect();
-    if (rect.right > window.innerWidth) {
-      linkContextMenu.style.left =
-        window.innerWidth - rect.width - MENU_EDGE_PADDING + "px";
-    }
-    if (rect.bottom > window.innerHeight) {
-      linkContextMenu.style.top =
-        window.innerHeight - rect.height - MENU_EDGE_PADDING + "px";
-    }
-  }
-
-  function hideLinkContextMenu() {
-    linkContextMenu.classList.remove("visible");
-    contextMenuLinkUrl = null;
-    contextMenuSelectionText = null;
-  }
-
-  // Listen for right-click events from webviews via the main process
-  window.backupAPI.onWebviewContextMenu(function (params) {
-    // Hide the tab context menu if it's open
-    hideTabContextMenu();
-    showWebviewContextMenu(
-      params.x,
-      params.y,
-      params.linkURL,
-      params.selectionText,
-    );
-  });
-
-  // Handle webview context menu actions
-  linkContextMenu.addEventListener("click", function (e) {
-    const item = e.target.closest(".context-menu-item");
-    if (!item) return;
-
-    const action = item.dataset.action;
-
-    switch (action) {
-      case "link-new-tab":
-        if (contextMenuLinkUrl)
-          createTab(contextMenuLinkUrl, { activate: true });
-        break;
-
-      case "link-browser":
-        if (contextMenuLinkUrl)
-          window.backupAPI.openInBrowser(contextMenuLinkUrl);
-        break;
-
-      case "link-copy":
-        if (contextMenuLinkUrl) {
-          navigator.clipboard.writeText(contextMenuLinkUrl).catch(function () {
-            // Silently ignore clipboard errors
-          });
-        }
-        break;
-
-      case "sel-copy":
-        if (contextMenuSelectionText) {
-          navigator.clipboard
-            .writeText(contextMenuSelectionText)
-            .catch(function () {
-              // Silently ignore clipboard errors
-            });
-        }
-        break;
-    }
-
-    hideLinkContextMenu();
-  });
 
   // --- Listen for new-tab requests from the main process ---
   window.backupAPI.onOpenInNewTab(function (url) {
