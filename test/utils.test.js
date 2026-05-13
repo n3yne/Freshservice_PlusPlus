@@ -164,6 +164,7 @@ describe("DEFAULT_SETTINGS", () => {
       "panelCollapsed",
       "defaultUrl",
       "theme",
+      "noteTemplates",
     ];
     for (const key of keys) {
       expect(DEFAULT_SETTINGS).toHaveProperty(key);
@@ -210,5 +211,66 @@ describe("DEFAULT_SETTINGS", () => {
     expect(DEFAULT_SETTINGS.notePanelEnabled).toBe(true);
     expect(DEFAULT_SETTINGS.backupRetentionDays).toBe(7);
     expect(DEFAULT_SETTINGS.panelCollapsed).toBe(false);
+  });
+
+  // noteTemplates
+  test("accepts empty noteTemplates array", () => {
+    expect(validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: [] })).toBe(true);
+  });
+
+  test("accepts valid noteTemplates", () => {
+    expect(
+      validateSettings({
+        ...DEFAULT_SETTINGS,
+        noteTemplates: [{ name: "Greeting", content: "Hello, thank you for contacting us." }],
+      })
+    ).toBe(true);
+  });
+
+  test("rejects noteTemplates that is not an array", () => {
+    expect(validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: null })).toBe(false);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: {} })).toBe(false);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: "tmpl" })).toBe(false);
+  });
+
+  test("rejects noteTemplates with more than 50 entries", () => {
+    const big = Array.from({ length: 51 }, (_, i) => ({ name: `T${i}`, content: "" }));
+    expect(validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: big })).toBe(false);
+  });
+
+  test("rejects noteTemplates entries with empty or missing name", () => {
+    expect(
+      validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: [{ name: "", content: "x" }] })
+    ).toBe(false);
+    expect(
+      validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: [{ content: "x" }] })
+    ).toBe(false);
+  });
+
+  test("rejects noteTemplates entries with name over 100 chars", () => {
+    expect(
+      validateSettings({
+        ...DEFAULT_SETTINGS,
+        noteTemplates: [{ name: "x".repeat(101), content: "" }],
+      })
+    ).toBe(false);
+  });
+
+  test("rejects noteTemplates entries with content over 10 000 chars", () => {
+    expect(
+      validateSettings({
+        ...DEFAULT_SETTINGS,
+        noteTemplates: [{ name: "T", content: "x".repeat(10001) }],
+      })
+    ).toBe(false);
+  });
+
+  test("accepts noteTemplates entries with content at exactly 10 000 chars", () => {
+    expect(
+      validateSettings({
+        ...DEFAULT_SETTINGS,
+        noteTemplates: [{ name: "T", content: "x".repeat(10000) }],
+      })
+    ).toBe(true);
   });
 });

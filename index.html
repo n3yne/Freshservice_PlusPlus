@@ -144,6 +144,15 @@
               >
                 Sig
               </button>
+              <span class="toolbar-sep"></span>
+              <button
+                type="button"
+                class="toolbar-btn toolbar-btn-tmpl"
+                id="btn-insert-template"
+                title="Insert a note template"
+              >
+                Tmpl &#9662;
+              </button>
             </div>
             <!-- Rich Text Editor -->
             <div
@@ -185,6 +194,19 @@
 
           <!-- Divider -->
           <hr class="divider" />
+
+          <!-- Note Search -->
+          <div id="note-search">
+            <input
+              type="text"
+              id="note-search-input"
+              class="note-search-input"
+              placeholder="Search notes…"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <div id="note-search-results" class="note-search-results"></div>
+          </div>
 
           <!-- History / Restore Section -->
           <div id="history-section">
@@ -337,6 +359,37 @@
             </p>
           </div>
 
+          <!-- Templates Section -->
+          <div class="settings-section">
+            <h3 class="settings-section-title">Note Templates</h3>
+            <p class="settings-description settings-description-field settings-description-field-spaced">
+              Predefined text snippets to insert into notes via the
+              <strong>Tmpl</strong> toolbar button.
+            </p>
+            <div id="template-list" class="template-list"></div>
+            <button type="button" id="btn-add-template" class="btn btn-small template-add-btn">+ Add Template</button>
+            <div id="template-add-form" class="template-form">
+              <input
+                type="text"
+                id="template-name-input"
+                class="settings-text-input"
+                placeholder="Template name…"
+                maxlength="100"
+              />
+              <textarea
+                id="template-content-input"
+                class="template-content-textarea"
+                placeholder="Template content…"
+                maxlength="10000"
+                rows="4"
+              ></textarea>
+              <div class="template-form-buttons">
+                <button type="button" id="btn-save-template" class="btn btn-primary btn-small">Save</button>
+                <button type="button" id="btn-cancel-template" class="btn btn-secondary btn-small">Cancel</button>
+              </div>
+            </div>
+          </div>
+
           <!-- Signature Section -->
           <div class="settings-section">
             <h3 class="settings-section-title">Signature</h3>
@@ -404,6 +457,8 @@
       <div class="context-menu-item" data-action="duplicate">
         📑 Duplicate Tab
       </div>
+      <div class="context-menu-item" data-action="pin">📌 Pin Tab</div>
+      <div class="context-menu-item" data-action="unpin">📌 Unpin Tab</div>
       <div class="context-menu-separator"></div>
       <div class="context-menu-item" data-action="close">✕ Close Tab</div>
       <div class="context-menu-item" data-action="close-others">
@@ -422,6 +477,9 @@
     >
       ▶<br />N<br />O<br />T<br />E<br />S
     </button>
+
+    <!-- Template Dropdown -->
+    <div id="template-dropdown" class="context-menu"></div>
 
     <script src="renderer.js"></script>
   </body>

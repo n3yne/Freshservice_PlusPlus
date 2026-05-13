@@ -31,6 +31,21 @@ document.addEventListener("DOMContentLoaded", function () {
   const settingSignature = document.getElementById("setting-signature");
   const btnInsertSignature = document.getElementById("btn-insert-signature");
 
+  // --- Template Elements ---
+  const btnInsertTemplate = document.getElementById("btn-insert-template");
+  const templateDropdown = document.getElementById("template-dropdown");
+  const templateList = document.getElementById("template-list");
+  const btnAddTemplate = document.getElementById("btn-add-template");
+  const templateAddForm = document.getElementById("template-add-form");
+  const templateNameInput = document.getElementById("template-name-input");
+  const templateContentInput = document.getElementById("template-content-input");
+  const btnSaveTemplate = document.getElementById("btn-save-template");
+  const btnCancelTemplate = document.getElementById("btn-cancel-template");
+
+  // --- Note Search Elements ---
+  const noteSearchInput = document.getElementById("note-search-input");
+  const noteSearchResults = document.getElementById("note-search-results");
+
   // --- Tab Management Elements ---
   const tabList = document.getElementById("tab-list");
   const webviewContainer = document.getElementById("webview-container");
@@ -76,6 +91,7 @@ document.addEventListener("DOMContentLoaded", function () {
     panelCollapsed: false,
     defaultUrl: "https://na.myconnectwise.net/",
     theme: "dark",
+    noteTemplates: [],
   };
 
   function applySettings(settings) {
@@ -113,6 +129,10 @@ document.addEventListener("DOMContentLoaded", function () {
     // --- Sig toolbar button visibility ---
     btnInsertSignature.style.display = settings.signatureHtml ? "" : "none";
 
+    // --- Templates ---
+    btnInsertTemplate.style.display = (settings.noteTemplates && settings.noteTemplates.length > 0) ? "inline-block" : "none";
+    renderTemplateList();
+
     if (settings.notePanelEnabled) {
       // Restore the panel visibility
       sidePanel.style.display = "";
@@ -147,6 +167,7 @@ document.addEventListener("DOMContentLoaded", function () {
     settingSortDirection.value = appSettings.ticketSortDirection || "desc";
     settingSignature.innerHTML = appSettings.signatureHtml || "";
     settingDefaultUrl.value = appSettings.defaultUrl || "https://na.myconnectwise.net/";
+    renderTemplateList();
     settingsOverlay.classList.add("visible");
   }
 
@@ -266,6 +287,238 @@ document.addEventListener("DOMContentLoaded", function () {
     autosaveStatus.className = "saved";
   });
 
+  // ==================== Note Templates ====================
+
+  let editingTemplateIndex = null;
+
+  function renderTemplateList() {
+    if (!templateList) return;
+    templateList.innerHTML = "";
+    const templates = (appSettings.noteTemplates || []);
+    if (templates.length === 0) {
+      templateList.innerHTML = '<p style="font-size:11px;color:var(--text-muted);padding:4px 0;">No templates yet.</p>';
+      return;
+    }
+    templates.forEach(function (tmpl, idx) {
+      const item = document.createElement("div");
+      item.className = "template-list-item";
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "template-item-name";
+      nameSpan.textContent = tmpl.name;
+      nameSpan.title = tmpl.content;
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "btn btn-small";
+      editBtn.textContent = "Edit";
+      editBtn.addEventListener("click", function () {
+        editingTemplateIndex = idx;
+        templateNameInput.value = tmpl.name;
+        templateContentInput.value = tmpl.content;
+        templateAddForm.classList.add("visible");
+        btnAddTemplate.style.display = "none";
+        templateNameInput.focus();
+      });
+
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "btn btn-small btn-delete";
+      delBtn.textContent = "✕";
+      delBtn.title = "Delete template";
+      delBtn.addEventListener("click", function () {
+        appSettings.noteTemplates.splice(idx, 1);
+        window.backupAPI.saveSettings(appSettings);
+        renderTemplateList();
+        btnInsertTemplate.style.display = appSettings.noteTemplates.length > 0 ? "inline-block" : "none";
+      });
+
+      const btnGroup = document.createElement("div");
+      btnGroup.className = "template-item-buttons";
+      btnGroup.appendChild(editBtn);
+      btnGroup.appendChild(delBtn);
+
+      item.appendChild(nameSpan);
+      item.appendChild(btnGroup);
+      templateList.appendChild(item);
+    });
+  }
+
+  btnAddTemplate.addEventListener("click", function () {
+    editingTemplateIndex = null;
+    templateNameInput.value = "";
+    templateContentInput.value = "";
+    templateAddForm.classList.add("visible");
+    btnAddTemplate.style.display = "none";
+    templateNameInput.focus();
+  });
+
+  btnCancelTemplate.addEventListener("click", function () {
+    templateAddForm.classList.remove("visible");
+    btnAddTemplate.style.display = "";
+    editingTemplateIndex = null;
+  });
+
+  btnSaveTemplate.addEventListener("click", function () {
+    const name = templateNameInput.value.trim();
+    const content = templateContentInput.value;
+    if (!name) {
+      templateNameInput.focus();
+      return;
+    }
+    if (!appSettings.noteTemplates) appSettings.noteTemplates = [];
+
+    if (editingTemplateIndex !== null) {
+      appSettings.noteTemplates[editingTemplateIndex] = { name, content };
+    } else {
+      appSettings.noteTemplates.push({ name, content });
+    }
+
+    window.backupAPI.saveSettings(appSettings);
+    templateAddForm.classList.remove("visible");
+    btnAddTemplate.style.display = "";
+    editingTemplateIndex = null;
+    renderTemplateList();
+    btnInsertTemplate.style.display = appSettings.noteTemplates.length > 0 ? "inline-block" : "none";
+  });
+
+  function insertTemplate(content) {
+    noteContent.focus();
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) {
+      const range = document.createRange();
+      range.selectNodeContents(noteContent);
+      range.collapse(false);
+      if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+    }
+    const html = content
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+    document.execCommand("insertHTML", false, html);
+  }
+
+  btnInsertTemplate.addEventListener("click", function (e) {
+    e.stopPropagation();
+    if (templateDropdown.classList.contains("visible")) {
+      templateDropdown.classList.remove("visible");
+      return;
+    }
+
+    // Build dropdown items
+    templateDropdown.innerHTML = "";
+    const templates = appSettings.noteTemplates || [];
+    if (templates.length === 0) {
+      templateDropdown.classList.remove("visible");
+      return;
+    }
+    templates.forEach(function (tmpl) {
+      const item = document.createElement("div");
+      item.className = "context-menu-item";
+      item.textContent = tmpl.name;
+      item.addEventListener("click", function () {
+        insertTemplate(tmpl.content);
+        templateDropdown.classList.remove("visible");
+      });
+      templateDropdown.appendChild(item);
+    });
+
+    // Position below the button
+    const rect = btnInsertTemplate.getBoundingClientRect();
+    templateDropdown.style.left = rect.left + "px";
+    templateDropdown.style.top = (rect.bottom + 2) + "px";
+    templateDropdown.classList.add("visible");
+
+    // Adjust if overflowing the window
+    const menuRect = templateDropdown.getBoundingClientRect();
+    if (menuRect.right > window.innerWidth) {
+      templateDropdown.style.left = (window.innerWidth - menuRect.width - MENU_EDGE_PADDING) + "px";
+    }
+    if (menuRect.bottom > window.innerHeight) {
+      templateDropdown.style.top = (rect.top - menuRect.height - 2) + "px";
+    }
+  });
+
+  // ==================== Note Search ====================
+
+  let noteSearchTimer = null;
+  const NOTE_SEARCH_DELAY = 300;
+
+  noteSearchInput.addEventListener("input", function () {
+    clearTimeout(noteSearchTimer);
+    const query = noteSearchInput.value.trim();
+    if (!query) {
+      noteSearchResults.innerHTML = "";
+      noteSearchResults.style.display = "none";
+      return;
+    }
+    noteSearchTimer = setTimeout(function () {
+      runNoteSearch(query);
+    }, NOTE_SEARCH_DELAY);
+  });
+
+  async function runNoteSearch(query) {
+    try {
+      const results = await window.backupAPI.searchNotes(query);
+      noteSearchResults.innerHTML = "";
+
+      if (results.length === 0) {
+        const msg = document.createElement("div");
+        msg.className = "search-no-results";
+        msg.textContent = "No matching notes found";
+        noteSearchResults.appendChild(msg);
+        noteSearchResults.style.display = "block";
+        return;
+      }
+
+      results.forEach(function (r) {
+        const item = document.createElement("div");
+        item.className = "search-result-item";
+
+        const ticketEl = document.createElement("div");
+        ticketEl.className = "search-result-ticket";
+        ticketEl.textContent = r.ticketId;
+
+        const previewEl = document.createElement("div");
+        previewEl.className = "search-result-preview";
+        previewEl.textContent = r.preview;
+
+        item.appendChild(ticketEl);
+        item.appendChild(previewEl);
+
+        item.addEventListener("click", function () {
+          loadAutosaveForTicket(r.ticketId);
+          noteSearchInput.value = "";
+          noteSearchResults.innerHTML = "";
+          noteSearchResults.style.display = "none";
+        });
+
+        noteSearchResults.appendChild(item);
+      });
+
+      noteSearchResults.style.display = "block";
+    } catch (err) {
+      console.error("[Search] Error:", err);
+    }
+  }
+
+  async function loadAutosaveForTicket(ticketId) {
+    try {
+      const data = await window.backupAPI.loadAutosave();
+      if (data[ticketId]) {
+        setEditorContent(data[ticketId].content || "");
+        ticketIdInput.value = ticketId === "general" ? "" : ticketId;
+        lastSavedTicketId = ticketId;
+        autosaveStatus.textContent = "Loaded from search";
+        autosaveStatus.className = "saved";
+        ticketSelect.value = ticketId;
+      }
+    } catch (err) {
+      console.error("[Search] Error loading ticket:", err);
+    }
+  }
+
   // Listen for menu bar "Edit > Settings"
   window.backupAPI.onOpenSettings(function () {
     openSettings();
@@ -322,19 +575,19 @@ document.addEventListener("DOMContentLoaded", function () {
   function saveTabSession() {
     clearTimeout(saveTabsTimer);
     saveTabsTimer = setTimeout(function () {
-      const urls = [];
+      const tabData = [];
       for (let i = 0; i < tabs.length; i++) {
         try {
           const url = tabs[i].webview.getURL();
           if (url && url !== "" && url !== "about:blank") {
-            urls.push(url);
+            tabData.push({ url, pinned: tabs[i].pinned || false });
           }
         } catch {
           // webview may not be ready yet
         }
       }
-      if (urls.length > 0) {
-        window.backupAPI.saveTabs(urls);
+      if (tabData.length > 0) {
+        window.backupAPI.saveTabs(tabData);
       }
     }, 1000);
   }
@@ -342,6 +595,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function createTab(url, opts = {}) {
     const id = generateTabId();
     const activate = opts.activate !== false; // default: activate
+    const startPinned = opts.pinned || false;
 
     // Create webview element
     const webview = document.createElement("webview");
@@ -375,8 +629,15 @@ document.addEventListener("DOMContentLoaded", function () {
       tabEl: tabEl,
       titleSpan: titleSpan,
       title: "Loading...",
+      pinned: false,
     };
     tabs.push(tabData);
+
+    if (startPinned) {
+      tabData.pinned = true;
+      tabEl.classList.add("tab-pinned");
+      closeBtn.style.display = "none";
+    }
 
     // --- Tab click to activate (use click instead of mousedown to avoid
     //     activating during drag initiation) ---
@@ -614,6 +875,9 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     if (idx === -1) return;
 
+    // Don't close pinned tabs
+    if (tabs[idx].pinned) return;
+
     // Don't close the last tab - navigate it home instead
     if (tabs.length === 1) {
       tabs[0].webview.setAttribute("src", appSettings.defaultUrl);
@@ -703,6 +967,39 @@ document.addEventListener("DOMContentLoaded", function () {
     saveTabSession();
   }
 
+  // ==================== Tab Pin / Unpin ====================
+
+  function pinTab(id) {
+    const tab = tabs.find(function (t) { return t.id === id; });
+    if (!tab || tab.pinned) return;
+    tab.pinned = true;
+    tab.tabEl.classList.add("tab-pinned");
+    const closeBtn = tab.tabEl.querySelector(".tab-close");
+    if (closeBtn) closeBtn.style.display = "none";
+
+    // Move to the end of the pinned group (front of tab bar)
+    const idx = tabs.indexOf(tab);
+    if (idx > 0) {
+      tabs.splice(idx, 1);
+      let insertIdx = 0;
+      while (insertIdx < tabs.length && tabs[insertIdx].pinned) insertIdx++;
+      tabs.splice(insertIdx, 0, tab);
+      for (let i = 0; i < tabs.length; i++) tabList.appendChild(tabs[i].tabEl);
+    }
+
+    saveTabSession();
+  }
+
+  function unpinTab(id) {
+    const tab = tabs.find(function (t) { return t.id === id; });
+    if (!tab || !tab.pinned) return;
+    tab.pinned = false;
+    tab.tabEl.classList.remove("tab-pinned");
+    const closeBtn = tab.tabEl.querySelector(".tab-close");
+    if (closeBtn) closeBtn.style.display = "";
+    saveTabSession();
+  }
+
   // ==================== Tab Context Menu ====================
   const tabContextMenu = document.getElementById("tab-context-menu");
   let contextMenuTabId = null; // which tab was right-clicked
@@ -722,6 +1019,14 @@ document.addEventListener("DOMContentLoaded", function () {
   function showTabContextMenu(e, tabId) {
     e.preventDefault();
     contextMenuTabId = tabId;
+
+    // Show "Pin Tab" or "Unpin Tab" depending on current state
+    const ctxTab = tabs.find(function (t) { return t.id === tabId; });
+    const isTabPinned = ctxTab && ctxTab.pinned;
+    const pinItem = tabContextMenu.querySelector('[data-action="pin"]');
+    const unpinItem = tabContextMenu.querySelector('[data-action="unpin"]');
+    if (pinItem) pinItem.style.display = isTabPinned ? "none" : "";
+    if (unpinItem) unpinItem.style.display = isTabPinned ? "" : "none";
 
     // Position the menu at the cursor
     tabContextMenu.style.left = e.clientX + "px";
@@ -749,6 +1054,9 @@ document.addEventListener("DOMContentLoaded", function () {
   document.addEventListener("click", function (e) {
     if (!e.target.closest("#tab-context-menu")) {
       hideTabContextMenu();
+    }
+    if (!e.target.closest("#template-dropdown") && !e.target.closest("#btn-insert-template")) {
+      templateDropdown.classList.remove("visible");
     }
   });
 
@@ -786,6 +1094,14 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         break;
       }
+
+      case "pin":
+        pinTab(targetTabId);
+        break;
+
+      case "unpin":
+        unpinTab(targetTabId);
+        break;
 
       case "close":
         closeTab(targetTabId);
@@ -860,17 +1176,16 @@ document.addEventListener("DOMContentLoaded", function () {
   // --- Restore tabs from previous session, or create a default tab ---
   async function initTabs() {
     try {
-      const savedUrls = await window.backupAPI.loadTabs();
-      if (savedUrls && savedUrls.length > 0) {
-        for (let i = 0; i < savedUrls.length; i++) {
-          // First tab is active, rest are background
-          createTab(savedUrls[i], { activate: i === 0 });
+      const savedData = await window.backupAPI.loadTabs();
+      if (savedData && savedData.length > 0) {
+        for (let i = 0; i < savedData.length; i++) {
+          // Support both old string[] format and new {url, pinned}[] format
+          const item = savedData[i];
+          const url = typeof item === "string" ? item : (item.url || appSettings.defaultUrl);
+          const pinned = typeof item === "object" && !!item.pinned;
+          createTab(url, { activate: i === 0, pinned });
         }
-        console.log(
-          "[Tab] Restored " +
-            savedUrls.length +
-            " tab(s) from previous session",
-        );
+        console.log("[Tab] Restored " + savedData.length + " tab(s) from previous session");
         return;
       }
     } catch (err) {
@@ -1759,21 +2074,21 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ==================== Save tabs before window closes ====================
   window.addEventListener("beforeunload", function () {
-    const urls = [];
+    const tabData = [];
     for (let i = 0; i < tabs.length; i++) {
       try {
         const url = tabs[i].webview.getURL();
         if (url && url !== "" && url !== "about:blank") {
-          urls.push(url);
+          tabData.push({ url, pinned: tabs[i].pinned || false });
         }
       } catch {
         /* ignore */
       }
     }
-    if (urls.length > 0) {
+    if (tabData.length > 0) {
       // Use fire-and-forget send (not async invoke) so the message is
       // queued synchronously before the renderer process is destroyed.
-      window.backupAPI.saveTabsSync(urls);
+      window.backupAPI.saveTabsSync(tabData);
     }
 
     // Persist whether the editor was blank at close so we can skip draft

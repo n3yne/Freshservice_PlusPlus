@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS = {
   panelCollapsed: false,
   defaultUrl: "https://na.myconnectwise.net/",
   theme: "dark",
+  noteTemplates: [],
 };
 
 function sanitizeTicketId(raw) {
@@ -38,6 +39,13 @@ function validateSettings(s) {
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   } catch { return false; }
   if (!["dark", "light"].includes(s.theme)) return false;
+  if (!Array.isArray(s.noteTemplates)) return false;
+  if (s.noteTemplates.length > 50) return false;
+  for (const tmpl of s.noteTemplates) {
+    if (typeof tmpl !== "object" || tmpl === null || Array.isArray(tmpl)) return false;
+    if (typeof tmpl.name !== "string" || tmpl.name.length === 0 || tmpl.name.length > 100) return false;
+    if (typeof tmpl.content !== "string" || tmpl.content.length > 10000) return false;
+  }
   return true;
 }
 

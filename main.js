@@ -739,6 +739,108 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
+  // Search through saved note content (autosave drafts + snapshot files)
+  electron.ipcMain.handle("search-notes", async (event, query) => {
+    if (!query || typeof query !== "string") return [];
+    const q = query.toLowerCase().trim();
+    if (!q) return [];
+
+    function stripHtml(html) {
+      return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    }
+
+    function contentPreview(text, q) {
+      const lowerText = text.toLowerCase();
+      const idx = lowerText.indexOf(q);
+      if (idx === -1) return null;
+      const start = Math.max(0, idx - 25);
+      const end = Math.min(text.length, idx + q.length + 50);
+      return (start > 0 ? "…" : "") + text.substring(start, end) + (end < text.length ? "…" : "");
+    }
+
+    const results = [];
+    const seen = new Set();
+
+    // 1. Search autosave.json (current drafts)
+    try {
+      const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
+      const data = JSON.parse(raw);
+      for (const [ticketId, info] of Object.entries(data)) {
+        const safeId = sanitizeTicketId(ticketId);
+        if (seen.has(safeId)) continue;
+        const text = stripHtml(info.content || "");
+        const lowerTicket = safeId.toLowerCase();
+        let preview = null;
+        if (lowerTicket.includes(q)) {
+          preview = text.substring(0, 80) + (text.length > 80 ? "…" : "");
+        } else {
+          preview = contentPreview(text, q);
+        }
+        if (preview !== null) {
+          results.push({ ticketId: safeId, preview, updatedAt: info.updatedAt });
+          seen.add(safeId);
+        }
+      }
+    } catch { /* no autosave file */ }
+
+    // 2. Search snapshot .html/.txt files in ticket history directories
+    try {
+      const dirs = (await fsp.readdir(BACKUP_DIR, { withFileTypes: true }))
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name);
+
+      for (const dir of dirs) {
+        const safeId = sanitizeTicketId(dir);
+        if (seen.has(safeId)) continue;
+
+        const ticketDir = path.join(BACKUP_DIR, dir);
+        const idMatches = safeId.toLowerCase().includes(q);
+        let matchPreview = null;
+        let matchTime = null;
+
+        try {
+          const files = (await fsp.readdir(ticketDir))
+            .filter((f) => f.endsWith(".html") || f.endsWith(".txt"))
+            .sort()
+            .reverse(); // most recent first
+
+          for (const file of files) {
+            try {
+              const content = await fsp.readFile(path.join(ticketDir, file), "utf-8");
+              const text = stripHtml(content);
+              const st = await fsp.stat(path.join(ticketDir, file));
+              const fileTime = new Date(st.mtimeMs).toISOString();
+
+              // Use most-recent snapshot as the preview source for ID matches
+              if (idMatches && matchPreview === null) {
+                matchPreview = text.substring(0, 80) + (text.length > 80 ? "…" : "");
+                matchTime = fileTime;
+              }
+
+              // Check for content match (takes priority over ID-only match)
+              const cp = contentPreview(text, q);
+              if (cp !== null) {
+                matchPreview = cp;
+                matchTime = fileTime;
+                break;
+              }
+            } catch { /* skip unreadable file */ }
+          }
+        } catch { /* directory unreadable */ }
+
+        // If ID matched but no snapshots existed, still return it with empty preview
+        if (matchPreview === null && idMatches) matchPreview = "";
+
+        if (matchPreview !== null) {
+          results.push({ ticketId: safeId, preview: matchPreview, updatedAt: matchTime });
+          seen.add(safeId);
+        }
+      }
+    } catch { /* BACKUP_DIR may not exist */ }
+
+    return results;
+  });
+
   // Load saved tab URLs from disk
   electron.ipcMain.handle("load-tabs", async () => {
     try {

@@ -1094,6 +1094,164 @@ body {
   font-style: italic;
 }
 
+/* Tmpl toolbar button — hidden until at least one template is defined */
+.toolbar-btn-tmpl {
+  color: var(--primary);
+  font-weight: 600;
+  display: none;
+}
+
+/* ===== Tab Pinning ===== */
+.tab-item.tab-pinned {
+  border-bottom: 2px solid var(--saving-color);
+}
+
+.tab-item.tab-pinned .tab-title::before {
+  content: "📌 ";
+  font-size: 9px;
+}
+
+/* ===== Note Search ===== */
+#note-search {
+  flex-shrink: 0;
+}
+
+.note-search-input {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.note-search-input:focus {
+  border-color: var(--primary);
+}
+
+.note-search-results {
+  display: none;
+  max-height: 160px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--input-bg);
+  margin-top: 3px;
+}
+
+.search-result-item {
+  padding: 6px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-item:hover {
+  background: var(--surface-hover);
+}
+
+.search-result-ticket {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.search-result-preview {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-no-results {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ===== Note Templates (settings) ===== */
+.template-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.template-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  gap: 8px;
+}
+
+.template-item-name {
+  font-size: 12px;
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.template-item-buttons {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.template-add-btn {
+  margin-top: 8px;
+}
+
+.template-form {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.template-form.visible {
+  display: flex;
+}
+
+.template-content-textarea {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  resize: vertical;
+  min-height: 70px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.template-content-textarea:focus {
+  border-color: var(--primary);
+}
+
+.template-form-buttons {
+  display: flex;
+  gap: 6px;
+}
+
 /* ===== Confirm Dialog (in-page replacement for native confirm()) ===== */
 .confirm-overlay {
   position: fixed;
