@@ -616,6 +616,12 @@ body {
   border-color: var(--warning);
 }
 
+#cw-sync-buttons {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 #action-buttons {
   display: flex;
   gap: 8px;

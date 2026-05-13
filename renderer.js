@@ -14,6 +14,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnSave = document.getElementById("btn-save");
   const btnClear = document.getElementById("btn-clear");
   const btnCopy = document.getElementById("btn-copy");
+  const btnPullFromCw = document.getElementById("btn-pull-from-cw");
+  const btnPushToCw = document.getElementById("btn-push-to-cw");
   const btnOpenFolder = document.getElementById("btn-open-folder");
   const ticketSelect = document.getElementById("ticket-select");
   const btnLoadHistory = document.getElementById("btn-load-history");
@@ -285,6 +287,153 @@ document.addEventListener("DOMContentLoaded", function () {
 
     autosaveStatus.textContent = "Signature inserted";
     autosaveStatus.className = "saved";
+  });
+
+  // ==================== CW Notes Sync ====================
+  //
+  // Reads from / writes to whichever CW notes field is currently on screen.
+  // Supported field types:
+  //   - Draft.js contenteditable (.public-DraftEditor-content) — time-entry notes
+  //   - GWT textarea (.cw_PsaResizableTextArea)                — stopwatch notes
+  //
+  // Pull: CW field → panel (asks for confirmation if panel already has content)
+  // Push: panel → CW field (plain text; uses execCommand for Draft.js so that
+  //        React's event handlers recognise the change)
+
+  const CW_NOTES_READ_SCRIPT = `(function() {
+    // Draft.js editor (time-entry notes)
+    var draftEl = document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
+    if (draftEl) {
+      var text = draftEl.innerText.replace(/\\n$/, '');
+      return { type: 'draft', text: text };
+    }
+    // GWT textarea (stopwatch notes)
+    var ta = document.querySelector('textarea.cw_PsaResizableTextArea');
+    if (ta) {
+      return { type: 'textarea', text: ta.value };
+    }
+    return null;
+  })()`;
+
+  btnPullFromCw.addEventListener("click", async function () {
+    const webview = getActiveWebview();
+    if (!webview) {
+      autosaveStatus.textContent = "No active tab";
+      autosaveStatus.className = "";
+      return;
+    }
+
+    let result;
+    try {
+      result = await webview.executeJavaScript(CW_NOTES_READ_SCRIPT);
+    } catch (err) {
+      autosaveStatus.textContent = "Error reading CW notes field";
+      autosaveStatus.className = "";
+      console.error("[CW Sync] Pull error:", err);
+      return;
+    }
+
+    if (!result) {
+      autosaveStatus.textContent = "No CW notes field found on this page";
+      autosaveStatus.className = "";
+      return;
+    }
+
+    if (result.text.trim() === "") {
+      autosaveStatus.textContent = "CW notes field is empty";
+      autosaveStatus.className = "";
+      return;
+    }
+
+    if (!isEditorEmpty()) {
+      const confirmed = await showConfirm(
+        "Replace the current panel notes with content pulled from CW?"
+      );
+      if (!confirmed) return;
+    }
+
+    // Convert plain text to safe HTML for the contenteditable panel
+    const html = result.text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+    setEditorContent(html);
+
+    autosaveStatus.textContent =
+      "Pulled from CW (" + (result.type === "draft" ? "time entry" : "stopwatch") + ")";
+    autosaveStatus.className = "saved";
+
+    // Queue an autosave so the pulled content is persisted
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+  });
+
+  btnPushToCw.addEventListener("click", async function () {
+    const webview = getActiveWebview();
+    if (!webview) {
+      autosaveStatus.textContent = "No active tab";
+      autosaveStatus.className = "";
+      return;
+    }
+
+    if (isEditorEmpty()) {
+      autosaveStatus.textContent = "Nothing to push";
+      autosaveStatus.className = "";
+      return;
+    }
+
+    // Strip HTML formatting — CW notes fields accept plain text only
+    const plainText = getEditorPlainText();
+
+    // Build push script with the text safely JSON-encoded to avoid injection
+    const pushScript = `(function() {
+      var text = ${JSON.stringify(plainText)};
+
+      // Draft.js editor (time-entry notes)
+      // execCommand fires the synthetic beforeinput event that Draft.js intercepts,
+      // so React state stays consistent — direct innerHTML assignment would not.
+      var draftEl = document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
+      if (draftEl) {
+        draftEl.focus();
+        document.execCommand('selectAll', false, null);
+        document.execCommand('insertText', false, text);
+        return { type: 'draft' };
+      }
+
+      // GWT textarea (stopwatch notes)
+      // Use the native value setter so any framework listeners on the prototype
+      // fire correctly, then dispatch input/change events.
+      var ta = document.querySelector('textarea.cw_PsaResizableTextArea');
+      if (ta) {
+        ta.focus();
+        var setter = Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype, 'value'
+        ).set;
+        setter.call(ta, text);
+        ta.dispatchEvent(new Event('input',  { bubbles: true }));
+        ta.dispatchEvent(new Event('change', { bubbles: true }));
+        return { type: 'textarea' };
+      }
+
+      return null;
+    })()`;
+
+    try {
+      const result = await webview.executeJavaScript(pushScript);
+      if (!result) {
+        autosaveStatus.textContent = "No CW notes field found on this page";
+        autosaveStatus.className = "";
+        return;
+      }
+      autosaveStatus.textContent =
+        "Pushed to CW (" + (result.type === "draft" ? "time entry" : "stopwatch") + ")";
+      autosaveStatus.className = "saved";
+    } catch (err) {
+      autosaveStatus.textContent = "Error pushing to CW notes field";
+      autosaveStatus.className = "";
+      console.error("[CW Sync] Push error:", err);
+    }
   });
 
   // ==================== Note Templates ====================
