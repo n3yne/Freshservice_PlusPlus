@@ -561,7 +561,28 @@ function registerIpcHandlers() {
         const safeDir = sanitizeTicketId(dir);
         if (!seen.has(safeDir)) {
           seen.add(safeDir);
-          entries.push({ ticketId: safeDir, source: "history" });
+          // Find the mtime of the most recently modified file in this folder
+          // so history-only tickets can show a date in the UI.
+          let updatedAt = null;
+          try {
+            const files = await fsp.readdir(path.join(BACKUP_DIR, dir));
+            let latestMs = 0;
+            for (const f of files) {
+              if (!f.endsWith(".html") && !f.endsWith(".txt")) continue;
+              try {
+                const st = await fsp.stat(path.join(BACKUP_DIR, dir, f));
+                if (st.mtimeMs > latestMs) {
+                  latestMs = st.mtimeMs;
+                  updatedAt = new Date(st.mtimeMs).toISOString();
+                }
+              } catch {
+                // Skip unreadable files
+              }
+            }
+          } catch {
+            // Folder unreadable — leave updatedAt as null
+          }
+          entries.push({ ticketId: safeDir, updatedAt, source: "history" });
         }
       }
     } catch {
