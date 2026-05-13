@@ -13,8 +13,18 @@
       <div id="webview-area">
         <!-- Tab Bar -->
         <div id="tab-bar">
+          <button type="button" id="btn-back" class="nav-btn" title="Go back (Alt+Left)" disabled>&#8249;</button>
+          <button type="button" id="btn-forward" class="nav-btn" title="Go forward (Alt+Right)" disabled>&#8250;</button>
           <div id="tab-list"></div>
           <button id="btn-new-tab" title="New tab">+</button>
+        </div>
+        <!-- Find Bar (shown on Ctrl+F) -->
+        <div id="find-bar">
+          <input type="text" id="find-input" placeholder="Find in page…" autocomplete="off" spellcheck="false" />
+          <span id="find-match-count" class="find-match-count"></span>
+          <button type="button" id="find-prev" class="find-btn" title="Previous match (Shift+Enter)">▲</button>
+          <button type="button" id="find-next" class="find-btn" title="Next match (Enter)">▼</button>
+          <button type="button" id="find-close" class="find-btn" title="Close (Esc)">✕</button>
         </div>
         <!-- Webview Container (webviews are added/removed dynamically) -->
         <div id="webview-container"></div>
@@ -230,6 +240,16 @@
             <h3 class="settings-section-title">Features</h3>
 
             <label class="settings-toggle">
+              <input type="checkbox" id="setting-theme" />
+              <span class="settings-toggle-slider"></span>
+              <span class="settings-toggle-label">Light Mode</span>
+            </label>
+            <p class="settings-description">
+              Switch between the default dark color scheme and a light color
+              scheme.
+            </p>
+
+            <label class="settings-toggle settings-toggle-spaced">
               <input type="checkbox" id="setting-note-panel" />
               <span class="settings-toggle-slider"></span>
               <span class="settings-toggle-label">Note Backup Side Panel</span>
@@ -237,6 +257,26 @@
             <p class="settings-description">
               Show the note drafting and backup panel on the right side of the
               window.
+            </p>
+          </div>
+
+          <!-- Navigation Section -->
+          <div class="settings-section">
+            <h3 class="settings-section-title">Navigation</h3>
+            <div class="settings-field settings-field-column">
+              <label class="settings-field-label" for="setting-default-url">Home URL</label>
+              <input
+                type="url"
+                id="setting-default-url"
+                class="settings-text-input"
+                placeholder="https://na.myconnectwise.net/"
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </div>
+            <p class="settings-description settings-description-field">
+              The page loaded when opening a new tab or when the app starts for
+              the first time.
             </p>
           </div>
 

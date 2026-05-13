@@ -10,6 +10,11 @@
 
 :root {
   --panel-width: 380px;
+  --body-bg: #0a0a1a;
+  --tab-bar-bg: #0d0d1a;
+  --surface-hover: #121230;
+  --saving-color: #f39c12;
+  --primary-rgb: 77, 168, 218;
   --header-bg: #1a1a2e;
   --panel-bg: #16213e;
   --panel-content-bg: #1a1a2e;
@@ -33,7 +38,7 @@ body {
   height: 100%;
   overflow: hidden;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  background: #0a0a1a;
+  background: var(--body-bg);
   color: var(--text);
 }
 
@@ -57,7 +62,7 @@ body {
 #tab-bar {
   display: flex;
   align-items: center;
-  background: #0d0d1a;
+  background: var(--tab-bar-bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   height: 36px;
@@ -109,7 +114,7 @@ body {
 }
 
 .tab-item:hover {
-  background: rgba(77, 168, 218, 0.08);
+  background: rgba(var(--primary-rgb), 0.08);
   color: var(--text);
 }
 
@@ -166,6 +171,98 @@ body {
 #btn-new-tab:hover {
   background: var(--accent);
   color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* ===== Nav Buttons (back / forward) ===== */
+.nav-btn {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  margin: 0 1px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.nav-btn:hover:not([disabled]) {
+  background: rgba(var(--primary-rgb), 0.1);
+  color: var(--text);
+}
+
+.nav-btn[disabled] {
+  opacity: 0.28;
+  cursor: default;
+}
+
+/* ===== Find Bar ===== */
+#find-bar {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#find-bar.visible {
+  display: flex;
+}
+
+#find-input {
+  padding: 4px 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  width: 220px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#find-input:focus {
+  border-color: var(--primary);
+}
+
+.find-match-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 72px;
+  white-space: nowrap;
+}
+
+.find-btn {
+  flex-shrink: 0;
+  width: 26px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.find-btn:hover {
+  background: var(--accent);
+  color: var(--text);
   border-color: var(--primary);
 }
 
@@ -370,7 +467,7 @@ body {
   margin: 6px 0;
   padding: 4px 10px;
   color: var(--text-muted);
-  background: rgba(77, 168, 218, 0.05);
+  background: rgba(var(--primary-rgb), 0.05);
 }
 
 #note-content h3 {
@@ -452,7 +549,7 @@ body {
 }
 
 #autosave-status.saving {
-  color: #f39c12;
+  color: var(--saving-color);
 }
 
 /* ===== Buttons ===== */
@@ -602,7 +699,7 @@ body {
 
 .history-item:hover {
   border-color: var(--primary);
-  background: #121230;
+  background: var(--surface-hover);
 }
 
 .history-item .history-time {
@@ -1054,4 +1151,74 @@ body {
 
 .tab-item.tab-drag-over-right {
   box-shadow: inset -3px 0 0 0 var(--primary);
+}
+
+/* ===== Settings — text input / column layout ===== */
+.settings-text-input {
+  flex: 1;
+  width: 100%;
+  padding: 5px 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.settings-text-input:focus {
+  border-color: var(--primary);
+}
+
+.settings-field-column {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.settings-toggle-spaced {
+  margin-top: 12px;
+}
+
+/* ===== Light Theme ===== */
+body[data-theme="light"] {
+  --body-bg: #f1f5f9;
+  --tab-bar-bg: #e2e8f0;
+  --surface-hover: #e2e8f0;
+  --saving-color: #d97706;
+  --primary-rgb: 37, 99, 235;
+  --header-bg: #ffffff;
+  --panel-bg: #f8fafc;
+  --panel-content-bg: #ffffff;
+  --accent: #dde3ec;
+  --accent-hover: #c8d0dd;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --warning: #dc2626;
+  --warning-hover: #b91c1c;
+  --text: #1e293b;
+  --text-muted: #64748b;
+  --border: #cbd5e1;
+  --success: #16a34a;
+  --input-bg: #ffffff;
+  --input-border: #94a3b8;
+  background: var(--body-bg);
+  color: var(--text);
+}
+
+/* Soften drop-shadows in light mode */
+body[data-theme="light"] .context-menu {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+body[data-theme="light"] .settings-modal,
+body[data-theme="light"] .confirm-dialog {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+body[data-theme="light"] .settings-overlay,
+body[data-theme="light"] .confirm-overlay {
+  background: rgba(0, 0, 0, 0.25);
 }

@@ -192,6 +192,16 @@ function createWindow() {
         { role: "selectAll" },
         { type: "separator" },
         {
+          label: "Find...",
+          accelerator: "CmdOrCtrl+F",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("find-in-page");
+            }
+          },
+        },
+        { type: "separator" },
+        {
           label: "Settings",
           accelerator: "CmdOrCtrl+,",
           click: () => {
@@ -288,6 +298,19 @@ function createWindow() {
       // Ignore invalid URLs
     }
     return { action: "deny" };
+  });
+
+  // Intercept keyboard shortcuts from webview guest pages that Electron's menu
+  // accelerator may not capture reliably on Windows (e.g. Ctrl+,).
+  mainWindow.webContents.on("did-attach-webview", (event, webviewContents) => {
+    webviewContents.on("before-input-event", (e, input) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (input.type !== "keyDown") return;
+      // Ctrl+, → Settings
+      if (input.control && !input.shift && !input.alt && input.key === ",") {
+        mainWindow.webContents.send("open-settings");
+      }
+    });
   });
 
   // Intercept new-window requests from webview guest pages and redirect to tabs

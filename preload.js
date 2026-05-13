@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld("backupAPI", {
   loadSettings: () => ipcRenderer.invoke("load-settings"),
   saveSettings: (settings) => ipcRenderer.invoke("save-settings", settings),
   onOpenSettings: (callback) => onIpc("open-settings", () => callback()),
+  onFindInPage: (callback) => onIpc("find-in-page", () => callback()),
   onSettingsChanged: (callback) =>
     onIpc("settings-changed", (event, settings) => callback(settings)),
 });

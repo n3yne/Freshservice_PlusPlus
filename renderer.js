@@ -35,6 +35,20 @@ document.addEventListener("DOMContentLoaded", function () {
   const tabList = document.getElementById("tab-list");
   const webviewContainer = document.getElementById("webview-container");
   const btnNewTab = document.getElementById("btn-new-tab");
+  const btnBack = document.getElementById("btn-back");
+  const btnForward = document.getElementById("btn-forward");
+
+  // --- Find Bar Elements ---
+  const findBar = document.getElementById("find-bar");
+  const findInput = document.getElementById("find-input");
+  const findMatchCount = document.getElementById("find-match-count");
+  const btnFindPrev = document.getElementById("find-prev");
+  const btnFindNext = document.getElementById("find-next");
+  const btnFindClose = document.getElementById("find-close");
+
+  // --- Settings — Navigation ---
+  const settingDefaultUrl = document.getElementById("setting-default-url");
+  const settingTheme = document.getElementById("setting-theme");
 
   // --- Confirm Dialog Elements (declared early — referenced by Escape handler) ---
   const confirmOverlay = document.getElementById("confirm-overlay");
@@ -60,6 +74,8 @@ document.addEventListener("DOMContentLoaded", function () {
     ticketSortField: "lastUpdated",
     ticketSortDirection: "desc",
     panelCollapsed: false,
+    defaultUrl: "https://na.myconnectwise.net/",
+    theme: "dark",
   };
 
   function applySettings(settings) {
@@ -82,6 +98,16 @@ document.addEventListener("DOMContentLoaded", function () {
     // (avoids clobbering the user's cursor while they type)
     if (document.activeElement !== settingSignature) {
       settingSignature.innerHTML = settings.signatureHtml || "";
+    }
+
+    // --- Theme ---
+    const theme = settings.theme || "dark";
+    document.body.setAttribute("data-theme", theme);
+    settingTheme.checked = theme === "light";
+
+    // --- Default URL ---
+    if (document.activeElement !== settingDefaultUrl) {
+      settingDefaultUrl.value = settings.defaultUrl || "https://na.myconnectwise.net/";
     }
 
     // --- Sig toolbar button visibility ---
@@ -120,6 +146,7 @@ document.addEventListener("DOMContentLoaded", function () {
     settingSortField.value = appSettings.ticketSortField || "lastUpdated";
     settingSortDirection.value = appSettings.ticketSortDirection || "desc";
     settingSignature.innerHTML = appSettings.signatureHtml || "";
+    settingDefaultUrl.value = appSettings.defaultUrl || "https://na.myconnectwise.net/";
     settingsOverlay.classList.add("visible");
   }
 
@@ -182,6 +209,31 @@ document.addEventListener("DOMContentLoaded", function () {
     }, SIG_SAVE_DEBOUNCE);
   });
 
+  // --- Theme toggle ---
+  settingTheme.addEventListener("change", function () {
+    appSettings.theme = settingTheme.checked ? "light" : "dark";
+    document.body.setAttribute("data-theme", appSettings.theme);
+    window.backupAPI.saveSettings(appSettings);
+  });
+
+  // --- Default URL: debounced save on input ---
+  let defaultUrlSaveTimer = null;
+  settingDefaultUrl.addEventListener("input", function () {
+    clearTimeout(defaultUrlSaveTimer);
+    defaultUrlSaveTimer = setTimeout(function () {
+      const val = settingDefaultUrl.value.trim();
+      try {
+        const parsed = new URL(val);
+        if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+          appSettings.defaultUrl = val;
+          window.backupAPI.saveSettings(appSettings);
+        }
+      } catch {
+        // Invalid URL — don't save
+      }
+    }, 800);
+  });
+
   // --- Insert Signature button on the note toolbar ---
   btnInsertSignature.addEventListener("click", function () {
     const sigHtml = appSettings.signatureHtml;
@@ -219,6 +271,11 @@ document.addEventListener("DOMContentLoaded", function () {
     openSettings();
   });
 
+  // Listen for menu bar "Edit > Find..."
+  window.backupAPI.onFindInPage(function () {
+    showFindBar();
+  });
+
   // Listen for settings changed from main process
   window.backupAPI.onSettingsChanged(function (settings) {
     applySettings(settings);
@@ -235,11 +292,11 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
   // ==================== Tab Management ======================================
-  const DEFAULT_URL = "https://na.myconnectwise.net/";
   const tabs = []; // Array of { id, webview, tabEl, titleSpan, title }
   let activeTabId = null;
   let tabIdCounter = 0;
   let tabHistory = []; // Stack of previously active tab IDs (most recent last, capped at TAB_HISTORY_MAX)
+  let findActive = false;
 
   // --- Title cleanup: strip common prefixes ---
   function cleanTitle(raw) {
@@ -288,7 +345,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Create webview element
     const webview = document.createElement("webview");
-    webview.setAttribute("src", url || DEFAULT_URL);
+    webview.setAttribute("src", url || appSettings.defaultUrl);
     webview.setAttribute("allowpopups", "");
     webview.style.width = "100%";
     webview.style.height = "100%";
@@ -439,12 +496,25 @@ document.addEventListener("DOMContentLoaded", function () {
       debouncedRefreshTicketList();
       updateTabTitle();
       saveTabSession();
+      if (activeTabId === id) updateNavButtons();
     });
 
     webview.addEventListener("did-navigate-in-page", function () {
       debouncedRefreshTicketList();
       updateTabTitle();
       saveTabSession();
+      if (activeTabId === id) updateNavButtons();
+    });
+
+    webview.addEventListener("found-in-page", function (e) {
+      if (findActive && activeTabId === id) {
+        if (e.result.matches > 0) {
+          findMatchCount.textContent =
+            e.result.activeMatchOrdinal + " of " + e.result.matches;
+        } else {
+          findMatchCount.textContent = "No results";
+        }
+      }
     });
 
     // --- Handle webview requesting to close itself (e.g. ConnectWise "Save and Return") ---
@@ -479,7 +549,26 @@ document.addEventListener("DOMContentLoaded", function () {
     return tabData;
   }
 
+  function updateNavButtons() {
+    const wv = getActiveWebview();
+    try {
+      btnBack.disabled = wv ? !wv.canGoBack() : true;
+      btnForward.disabled = wv ? !wv.canGoForward() : true;
+    } catch {
+      btnBack.disabled = true;
+      btnForward.disabled = true;
+    }
+  }
+
   function activateTab(id) {
+    // Stop find on the tab we're leaving so it doesn't persist in the background
+    if (findActive && activeTabId && activeTabId !== id) {
+      const prevTab = tabs.find(function (t) { return t.id === activeTabId; });
+      if (prevTab) {
+        try { prevTab.webview.stopFindInPage("clearSelection"); } catch { /* ignore */ }
+      }
+    }
+
     // Push the previous tab onto the history stack
     if (activeTabId && activeTabId !== id) {
       // Remove duplicate so the most recent position wins
@@ -506,6 +595,17 @@ document.addEventListener("DOMContentLoaded", function () {
         t.tabEl.classList.remove("active");
       }
     });
+
+    updateNavButtons();
+
+    // Re-run find on the newly active tab if the find bar is still open
+    if (findActive && findInput.value) {
+      const wv = getActiveWebview();
+      if (wv) {
+        findMatchCount.textContent = "";
+        try { wv.findInPage(findInput.value); } catch { /* ignore */ }
+      }
+    }
   }
 
   function closeTab(id) {
@@ -516,7 +616,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Don't close the last tab - navigate it home instead
     if (tabs.length === 1) {
-      tabs[0].webview.setAttribute("src", DEFAULT_URL);
+      tabs[0].webview.setAttribute("src", appSettings.defaultUrl);
       return;
     }
 
@@ -655,6 +755,7 @@ document.addEventListener("DOMContentLoaded", function () {
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
       hideTabContextMenu();
+      if (findActive) hideFindBar();
       closeSettings();
       if (confirmOverlay.classList.contains("visible")) closeConfirm(false);
     }
@@ -726,7 +827,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // --- New Tab button ---
   btnNewTab.addEventListener("click", function () {
-    createTab(DEFAULT_URL, { activate: true });
+    createTab(appSettings.defaultUrl, { activate: true });
   });
 
 
@@ -776,10 +877,81 @@ document.addEventListener("DOMContentLoaded", function () {
       console.error("[Tab] Error loading saved tabs:", err);
     }
     // Fallback: create a single default tab
-    createTab(DEFAULT_URL);
+    createTab(appSettings.defaultUrl);
   }
 
   initTabs();
+
+  // ==================== Back / Forward Navigation ====================
+  btnBack.addEventListener("click", function () {
+    const wv = getActiveWebview();
+    if (wv) try { wv.goBack(); } catch { /* ignore */ }
+  });
+
+  btnForward.addEventListener("click", function () {
+    const wv = getActiveWebview();
+    if (wv) try { wv.goForward(); } catch { /* ignore */ }
+  });
+
+  // ==================== Find in Page ====================
+  function showFindBar() {
+    if (findActive) { hideFindBar(); return; }
+    findBar.classList.add("visible");
+    findInput.focus();
+    findInput.select();
+    findActive = true;
+    if (findInput.value) runFind(false);
+  }
+
+  function hideFindBar() {
+    findBar.classList.remove("visible");
+    findMatchCount.textContent = "";
+    findActive = false;
+    const wv = getActiveWebview();
+    if (wv) try { wv.stopFindInPage("clearSelection"); } catch { /* ignore */ }
+  }
+
+  function runFind(findNext) {
+    const text = findInput.value;
+    const wv = getActiveWebview();
+    if (!wv) return;
+    if (!text) {
+      findMatchCount.textContent = "";
+      try { wv.stopFindInPage("clearSelection"); } catch { /* ignore */ }
+      return;
+    }
+    try { wv.findInPage(text, { forward: true, findNext }); } catch { /* ignore */ }
+  }
+
+  findInput.addEventListener("input", function () {
+    runFind(false);
+  });
+
+  findInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        const wv = getActiveWebview();
+        if (wv && findInput.value) {
+          try { wv.findInPage(findInput.value, { forward: false, findNext: true }); } catch { /* ignore */ }
+        }
+      } else {
+        runFind(true);
+      }
+    } else if (e.key === "Escape") {
+      hideFindBar();
+    }
+  });
+
+  btnFindPrev.addEventListener("click", function () {
+    const wv = getActiveWebview();
+    if (wv && findInput.value) {
+      try { wv.findInPage(findInput.value, { forward: false, findNext: true }); } catch { /* ignore */ }
+    }
+  });
+
+  btnFindNext.addEventListener("click", function () { runFind(true); });
+  btnFindClose.addEventListener("click", hideFindBar);
 
   // ==================== Rich Text Editor Helpers ====================
 
@@ -1529,10 +1701,27 @@ document.addEventListener("DOMContentLoaded", function () {
       e.preventDefault();
       openSettings();
     }
+    // Ctrl+F - Find in page
+    if (e.ctrlKey && !e.shiftKey && (e.key === "f" || e.key === "F")) {
+      e.preventDefault();
+      showFindBar();
+    }
+    // Alt+Left - Go back
+    if (e.altKey && e.key === "ArrowLeft") {
+      e.preventDefault();
+      const wv = getActiveWebview();
+      if (wv) try { wv.goBack(); } catch { /* ignore */ }
+    }
+    // Alt+Right - Go forward
+    if (e.altKey && e.key === "ArrowRight") {
+      e.preventDefault();
+      const wv = getActiveWebview();
+      if (wv) try { wv.goForward(); } catch { /* ignore */ }
+    }
     // Ctrl+T - New tab
     if (e.ctrlKey && !e.shiftKey && e.key === "t") {
       e.preventDefault();
-      createTab(DEFAULT_URL, { activate: true });
+      createTab(appSettings.defaultUrl, { activate: true });
     }
     // Ctrl+W - Close current tab (only when not typing in notes)
     if (e.ctrlKey && !e.shiftKey && e.key === "w") {

@@ -162,6 +162,8 @@ describe("DEFAULT_SETTINGS", () => {
       "ticketSortField",
       "ticketSortDirection",
       "panelCollapsed",
+      "defaultUrl",
+      "theme",
     ];
     for (const key of keys) {
       expect(DEFAULT_SETTINGS).toHaveProperty(key);
@@ -170,6 +172,37 @@ describe("DEFAULT_SETTINGS", () => {
 
   test("default values pass validateSettings", () => {
     expect(validateSettings(DEFAULT_SETTINGS)).toBe(true);
+  });
+
+  // defaultUrl
+  test("rejects non-string defaultUrl", () => {
+    expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: 42 })).toBe(false);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: null })).toBe(false);
+  });
+
+  test("rejects empty defaultUrl", () => {
+    expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "" })).toBe(false);
+  });
+
+  test("rejects non-http defaultUrl", () => {
+    expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "ftp://example.com" })).toBe(false);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "file:///C:/foo" })).toBe(false);
+  });
+
+  // theme
+  test("accepts valid theme values", () => {
+    expect(validateSettings({ ...DEFAULT_SETTINGS, theme: "dark" })).toBe(true);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, theme: "light" })).toBe(true);
+  });
+
+  test("rejects unknown theme", () => {
+    expect(validateSettings({ ...DEFAULT_SETTINGS, theme: "system" })).toBe(false);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, theme: "" })).toBe(false);
+  });
+
+  test("accepts valid http/https defaultUrl", () => {
+    expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "https://na.myconnectwise.net/" })).toBe(true);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "http://localhost:8080/" })).toBe(true);
   });
 
   test("is frozen against accidental mutation between tests", () => {

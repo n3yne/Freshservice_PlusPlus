@@ -10,6 +10,8 @@ const DEFAULT_SETTINGS = {
   ticketSortField: "lastUpdated",
   ticketSortDirection: "desc",
   panelCollapsed: false,
+  defaultUrl: "https://na.myconnectwise.net/",
+  theme: "dark",
 };
 
 function sanitizeTicketId(raw) {
@@ -30,6 +32,12 @@ function validateSettings(s) {
   if (!["lastUpdated", "ticketNumber"].includes(s.ticketSortField)) return false;
   if (!["asc", "desc"].includes(s.ticketSortDirection)) return false;
   if (typeof s.panelCollapsed !== "boolean") return false;
+  if (typeof s.defaultUrl !== "string" || s.defaultUrl.length === 0 || s.defaultUrl.length > 2048) return false;
+  try {
+    const parsed = new URL(s.defaultUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  } catch { return false; }
+  if (!["dark", "light"].includes(s.theme)) return false;
   return true;
 }
 
