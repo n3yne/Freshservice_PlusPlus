@@ -450,7 +450,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (grabResult && grabResult.ticket) {
           ticketIdInput.value = grabResult.ticket;
         }
-      } catch (err) { /* grab failure is non-fatal */ }
+      } catch { /* grab failure is non-fatal */ }
     }
 
     autosaveStatus.textContent =
@@ -863,7 +863,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let activeTabId = null;
   let tabIdCounter = 0;
   let tabHistory = []; // Stack of previously active tab IDs (most recent last, capped at TAB_HISTORY_MAX)
-  let closedTabHistory = []; // Stack of recently closed {url, pinned} — for "Reopen Closed Tab"
+  const closedTabHistory = []; // Stack of recently closed {url, pinned} — for "Reopen Closed Tab"
   const CLOSED_TAB_HISTORY_MAX = 10;
   let findActive = false;
 
