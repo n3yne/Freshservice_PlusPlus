@@ -534,6 +534,7 @@ body {
 #status-bar {
   display: flex;
   align-items: center;
+  gap: 8px;
   padding: 4px 0;
   flex-shrink: 0;
 }
@@ -542,6 +543,7 @@ body {
   font-size: 11px;
   color: var(--text-muted);
   font-style: italic;
+  flex: 1;
 }
 
 #autosave-status.saved {
@@ -550,6 +552,32 @@ body {
 
 #autosave-status.saving {
   color: var(--saving-color);
+}
+
+/* ===== Sync Status Pill ===== */
+.sync-status {
+  font-size: 10px;
+  font-style: normal;
+  padding: 1px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.2s, color 0.2s;
+}
+
+.sync-status.sync-off {
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.sync-status.sync-idle {
+  color: var(--success);
+  background: rgba(46, 204, 113, 0.12);
+}
+
+.sync-status.sync-active {
+  color: var(--primary);
+  background: rgba(77, 168, 218, 0.15);
 }
 
 /* ===== Buttons ===== */

@@ -166,6 +166,7 @@
           <!-- Status Bar -->
           <div id="status-bar">
             <span id="autosave-status">Ready</span>
+            <span id="sync-status" class="sync-status sync-off">⇅ No CW field</span>
           </div>
 
           <!-- CW Notes Sync -->
@@ -296,6 +297,16 @@
             <p class="settings-description">
               Show the note drafting and backup panel on the right side of the
               window.
+            </p>
+
+            <label class="settings-toggle settings-toggle-spaced">
+              <input type="checkbox" id="setting-live-sync" />
+              <span class="settings-toggle-slider"></span>
+              <span class="settings-toggle-label">Live Sync with Active Tab</span>
+            </label>
+            <p class="settings-description">
+              Automatically load ticket notes when switching tabs and keep the
+              panel in sync with the active CW notes field as you type.
             </p>
           </div>
 

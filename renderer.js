@@ -27,6 +27,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const settingsOverlay = document.getElementById("settings-overlay");
   const btnCloseSettings = document.getElementById("btn-close-settings");
   const settingNotePanel = document.getElementById("setting-note-panel");
+  const settingLiveSync = document.getElementById("setting-live-sync");
+  const syncStatus = document.getElementById("sync-status");
   const settingRetentionDays = document.getElementById("setting-retention-days");
   const settingSortField = document.getElementById("setting-sort-field");
   const settingSortDirection = document.getElementById("setting-sort-direction");
@@ -95,6 +97,7 @@ document.addEventListener("DOMContentLoaded", function () {
     defaultUrl: "https://na.myconnectwise.net/",
     theme: "dark",
     noteTemplates: [],
+    liveSyncEnabled: true,
   };
 
   function applySettings(settings) {
@@ -131,6 +134,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // --- Sig toolbar button visibility ---
     btnInsertSignature.style.display = settings.signatureHtml ? "" : "none";
+
+    // --- Live Sync ---
+    if (settingLiveSync) settingLiveSync.checked = settings.liveSyncEnabled !== false;
 
     // --- Templates ---
     btnInsertTemplate.style.display = (settings.noteTemplates && settings.noteTemplates.length > 0) ? "inline-block" : "none";
@@ -190,6 +196,14 @@ document.addEventListener("DOMContentLoaded", function () {
     window.backupAPI.saveSettings(appSettings);
     applySettings(appSettings);
   });
+
+  if (settingLiveSync) {
+    settingLiveSync.addEventListener("change", function () {
+      appSettings.liveSyncEnabled = settingLiveSync.checked;
+      window.backupAPI.saveSettings(appSettings);
+      updateSyncPill();
+    });
+  }
 
   settingRetentionDays.addEventListener("change", function () {
     let val = parseInt(settingRetentionDays.value, 10);
@@ -479,8 +493,271 @@ document.addEventListener("DOMContentLoaded", function () {
     // Strip HTML formatting — CW notes fields accept plain text only
     const plainText = getEditorPlainText();
 
-    // Build push script with the text safely JSON-encoded to avoid injection
-    const pushScript = `(async function() {
+    try {
+      const result = await webview.executeJavaScript(buildCwPushScript(plainText));
+      if (!result) {
+        autosaveStatus.textContent = "No CW notes field found on this page";
+        autosaveStatus.className = "";
+        return;
+      }
+      autosaveStatus.textContent =
+        "Pushed to CW (" + (result.type === "draft" ? "time entry" : "stopwatch") + ")";
+      autosaveStatus.className = "saved";
+    } catch (err) {
+      autosaveStatus.textContent = "Error pushing to CW notes field";
+      autosaveStatus.className = "";
+      console.error("[CW Sync] Push error:", err);
+    }
+  });
+
+  // ==================== CW Live Sync Engine ====================
+  //
+  // Three subsystems:
+  //   1. CW_WATCHER_SCRIPT — injected into each webview to emit focus/input/popup events
+  //   2. syncEngine        — per-tab state machine driving push (panel→CW) and pull (CW→panel)
+  //   3. ticketSwapper     — auto-loads content when the detected ticket changes
+
+  // ---- Sync timing constants ----
+  const SYNC_PUSH_DRAFT = 500;       // ms: Draft.js push debounce
+  const SYNC_PUSH_TA_VISIBLE = 100;  // ms: stopwatch popup visible
+  const SYNC_PUSH_TA_HIDDEN = 2000;  // ms: stopwatch popup hidden (avoids rapid open/hide)
+  const SYNC_PULL_DEBOUNCE = 300;    // ms: incoming CW change pull
+
+  // ---- Watcher script (injected once per page load) ----
+  // Emits structured messages via console.log so the host renderer can
+  // capture them through the webview's console-message event without any
+  // additional IPC channel.
+  const CW_WATCHER_SCRIPT = `(function() {
+    if (window.__cwSyncWatcherInstalled) return;
+    window.__cwSyncWatcherInstalled = true;
+
+    function emit(payload) {
+      console.log('[CW-SYNC] ' + JSON.stringify(payload));
+    }
+
+    var draftEl = null;
+    var textareaEl = null;
+    var popupVisible = false;
+    var inputDebounce = null;
+
+    function onDraftInput() {
+      clearTimeout(inputDebounce);
+      inputDebounce = setTimeout(function() {
+        if (draftEl) emit({ kind: 'input', field: 'draft', text: (draftEl.innerText || '').replace(/\\n$/, '') });
+      }, 150);
+    }
+
+    function onTextareaInput() {
+      clearTimeout(inputDebounce);
+      inputDebounce = setTimeout(function() {
+        if (textareaEl) emit({ kind: 'input', field: 'textarea', text: textareaEl.value || '' });
+      }, 150);
+    }
+
+    function attachDraft(el) {
+      if (draftEl === el) return;
+      draftEl = el;
+      el.addEventListener('focus', function() { emit({ kind: 'focus', field: 'draft', focused: true }); });
+      el.addEventListener('blur',  function() { emit({ kind: 'focus', field: 'draft', focused: false }); });
+      el.addEventListener('input', onDraftInput);
+      emit({ kind: 'fields', draft: true, textarea: !!textareaEl });
+    }
+
+    function attachTextarea(el) {
+      if (textareaEl === el) return;
+      textareaEl = el;
+      el.addEventListener('focus', function() { emit({ kind: 'focus', field: 'textarea', focused: true }); });
+      el.addEventListener('blur',  function() { emit({ kind: 'focus', field: 'textarea', focused: false }); });
+      el.addEventListener('input', onTextareaInput);
+      emit({ kind: 'fields', draft: !!draftEl, textarea: true });
+    }
+
+    function checkPopupVisibility() {
+      var popup = document.querySelector('.cw-gxt-wnd');
+      var visible = !!(popup && popup.offsetParent !== null && !popup.classList.contains('cw-sync-hidden'));
+      if (visible !== popupVisible) {
+        popupVisible = visible;
+        emit({ kind: 'popup', visible: visible });
+      }
+    }
+
+    function scanAndAttach() {
+      var draft = document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
+      if (draft && draft !== draftEl) attachDraft(draft);
+      var ta = document.querySelector('textarea.cw_PsaResizableTextArea');
+      if (ta && ta !== textareaEl) attachTextarea(ta);
+      checkPopupVisibility();
+    }
+
+    scanAndAttach();
+
+    var obs = new MutationObserver(function() { scanAndAttach(); });
+    obs.observe(document.body, {
+      childList: true, subtree: true,
+      attributes: true, attributeFilter: ['style', 'class']
+    });
+  })()`;
+
+  // ---- Sync state per tab ----
+  const syncStates = new Map();
+
+  function getSyncState(tabId) {
+    if (!syncStates.has(tabId)) {
+      syncStates.set(tabId, {
+        cwFieldType: null,     // 'draft' | 'textarea' | null
+        cwPopupVisible: false,
+        cwFocused: false,
+        panelFocused: false,
+        lastPushedText: null,  // echo suppression: text we last wrote to CW
+        lastPulledText: null,  // change detection: text we last read from CW
+        pushTimer: null,
+        pullTimer: null,
+        pushInFlight: false,
+      });
+    }
+    return syncStates.get(tabId);
+  }
+
+  function clearSyncState(tabId) {
+    const s = syncStates.get(tabId);
+    if (s) {
+      clearTimeout(s.pushTimer);
+      clearTimeout(s.pullTimer);
+      syncStates.delete(tabId);
+    }
+  }
+
+  function updateSyncPill() {
+    if (!syncStatus) return;
+    if (!appSettings.liveSyncEnabled) {
+      syncStatus.textContent = "⇅ Sync off";
+      syncStatus.className = "sync-status sync-off";
+      return;
+    }
+    const state = activeTabId ? syncStates.get(activeTabId) : null;
+    if (!state || !state.cwFieldType) {
+      syncStatus.textContent = "⇅ No CW field";
+      syncStatus.className = "sync-status sync-off";
+    } else if (state.pushInFlight) {
+      syncStatus.textContent = "⇅ Pushing…";
+      syncStatus.className = "sync-status sync-active";
+    } else {
+      syncStatus.textContent = "⇅ Synced";
+      syncStatus.className = "sync-status sync-idle";
+    }
+  }
+
+  // ---- Handle messages emitted by CW_WATCHER_SCRIPT ----
+  function handleWatcherMessage(tabId, msg) {
+    if (!appSettings.liveSyncEnabled) return;
+    if (tabId !== activeTabId) return;
+
+    const state = getSyncState(tabId);
+
+    switch (msg.kind) {
+      case "fields":
+        state.cwFieldType = msg.draft ? "draft" : (msg.textarea ? "textarea" : null);
+        updateSyncPill();
+        break;
+      case "focus":
+        state.cwFocused = msg.focused;
+        break;
+      case "popup":
+        state.cwPopupVisible = msg.visible;
+        break;
+      case "input":
+        // CW field changed while panel is not focused → schedule a pull
+        if (!state.panelFocused) {
+          clearTimeout(state.pullTimer);
+          state.pullTimer = setTimeout(function () {
+            executePull(tabId, msg.text, msg.field);
+          }, SYNC_PULL_DEBOUNCE);
+        }
+        break;
+    }
+  }
+
+  async function executePull(tabId, text, field) {
+    if (tabId !== activeTabId) return;
+    const state = getSyncState(tabId);
+    if (state.panelFocused) return;
+    if (text === state.lastPulledText) return;  // no change
+    if (text === state.lastPushedText) return;  // echo from our own push
+
+    state.lastPulledText = text;
+    const html = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+    setEditorContent(html);
+
+    if (syncStatus) {
+      syncStatus.textContent = field === "draft" ? "⇅ Pulled (time entry)" : "⇅ Pulled (stopwatch)";
+      syncStatus.className = "sync-status sync-active";
+      setTimeout(updateSyncPill, 1500);
+    }
+
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+  }
+
+  // Schedule a push with the right debounce for the current field type
+  function schedulePush(tabId) {
+    if (!appSettings.liveSyncEnabled) return;
+    if (tabId !== activeTabId) return;
+    const state = getSyncState(tabId);
+    if (!state.cwFieldType) return;
+
+    let delay;
+    if (state.cwFieldType === "draft") {
+      delay = SYNC_PUSH_DRAFT;
+    } else if (state.cwPopupVisible) {
+      delay = SYNC_PUSH_TA_VISIBLE;
+    } else {
+      delay = SYNC_PUSH_TA_HIDDEN;
+    }
+
+    clearTimeout(state.pushTimer);
+    state.pushTimer = setTimeout(function () { executePush(tabId); }, delay);
+  }
+
+  async function executePush(tabId) {
+    if (tabId !== activeTabId) return;
+    const state = getSyncState(tabId);
+    if (state.pushInFlight) return;
+
+    const plainText = getEditorPlainText();
+    if (!plainText) return;
+    if (plainText === state.lastPushedText) return;
+
+    const webview = getActiveWebview();
+    if (!webview) return;
+
+    state.pushInFlight = true;
+    updateSyncPill();
+
+    const pushScript = buildCwPushScript(plainText);
+    try {
+      const result = await webview.executeJavaScript(pushScript);
+      if (result) {
+        state.lastPushedText = plainText;
+        if (syncStatus) {
+          syncStatus.textContent = "⇅ Synced";
+          syncStatus.className = "sync-status sync-idle";
+        }
+      }
+    } catch {
+      // Best-effort — silent failure
+    } finally {
+      state.pushInFlight = false;
+      updateSyncPill();
+    }
+  }
+
+  // ---- Build the push script (extracted from btnPushToCw handler) ----
+  function buildCwPushScript(plainText) {
+    return `(async function() {
       var text = ${JSON.stringify(plainText)};
 
       function withVisible(el, fn) {
@@ -553,9 +830,6 @@ document.addEventListener("DOMContentLoaded", function () {
         if (closeBtn) makeClickFn(closeBtn)();
       }
 
-      // Draft.js editor (time-entry notes)
-      // execCommand fires the synthetic beforeinput event that Draft.js intercepts,
-      // so React state stays consistent — direct innerHTML assignment would not.
       var draftEl = document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
       if (draftEl) {
         withVisible(draftEl, function() {
@@ -566,9 +840,6 @@ document.addEventListener("DOMContentLoaded", function () {
         return { type: 'draft' };
       }
 
-      // GWT textarea (stopwatch notes)
-      // Reveal hidden ancestors so focus() works, use native value setter so GWT
-      // prototype listeners fire, then dispatch input/change events.
       var info = await ensureTextarea();
       if (!info) return null;
       withVisible(info.ta, function() {
@@ -583,23 +854,137 @@ document.addEventListener("DOMContentLoaded", function () {
       restoreState(info);
       return { type: 'textarea' };
     })()`;
+  }
 
+  // ==================== Ticket Swapper ====================
+  //
+  // Runs on tab activation and on did-finish-load.
+  // When a different ticket is detected, snapshots the outgoing content
+  // (if changed) then loads the new ticket's content from CW or local backup.
+
+  let currentPanelTicket = null;  // ticket currently bound to the panel
+  let userTypedTicket = false;    // user manually typed into the ticket ID field
+  const lastSnapshotHash = new Map();  // ticketId → hash (avoids redundant snapshots)
+  const swapQueue = new Map();         // tabId → Promise (serializes swaps per tab)
+
+  function simpleHash(str) {
+    let h = str.length;
+    const step = Math.max(1, Math.floor(str.length / 20));
+    for (let i = 0; i < str.length; i += step) {
+      h = ((h * 31) + str.charCodeAt(i)) >>> 0;
+    }
+    return h.toString(36);
+  }
+
+  function ticketSwapRun(tabId) {
+    if (!appSettings.liveSyncEnabled) return;
+    const prev = swapQueue.get(tabId) || Promise.resolve();
+    const next = prev
+      .then(function () { return doTicketSwap(tabId); })
+      .catch(function () {});
+    swapQueue.set(tabId, next);
+  }
+
+  async function doTicketSwap(tabId) {
+    if (tabId !== activeTabId) return;
+
+    const tab = tabs.find(function (t) { return t.id === tabId; });
+    if (!tab) return;
+
+    let grabResult;
     try {
-      const result = await webview.executeJavaScript(pushScript);
-      if (!result) {
-        autosaveStatus.textContent = "No CW notes field found on this page";
-        autosaveStatus.className = "";
+      grabResult = await tab.webview.executeJavaScript(TICKET_GRAB_SCRIPT);
+    } catch { return; }
+
+    if (!grabResult || !grabResult.ticket) return;
+
+    const newTicket = grabResult.ticket;
+
+    // If user manually typed a different ticket ID, don't override their choice
+    if (userTypedTicket && ticketIdInput.value.trim() && ticketIdInput.value.trim() !== newTicket) return;
+
+    // Same ticket as already loaded — no swap needed
+    if (newTicket === currentPanelTicket) return;
+
+    // Snapshot the outgoing ticket if its content has changed since last snapshot
+    if (currentPanelTicket && !isEditorEmpty()) {
+      const outgoingHtml = getEditorContent();
+      const outgoingHash = simpleHash(outgoingHtml);
+      if (outgoingHash !== lastSnapshotHash.get(currentPanelTicket)) {
+        try {
+          await window.backupAPI.saveNote({
+            ticketId: currentPanelTicket,
+            noteContent: outgoingHtml,
+            isManual: true,
+          });
+          lastSnapshotHash.set(currentPanelTicket, outgoingHash);
+          refreshTicketList();
+        } catch { /* non-fatal */ }
+      }
+    }
+
+    // Load the incoming ticket: CW first, fallback to local
+    let loadedFromCw = false;
+    try {
+      const cwResult = await tab.webview.executeJavaScript(CW_NOTES_READ_SCRIPT);
+      if (cwResult && cwResult.text && cwResult.text.trim()) {
+        const html = cwResult.text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\n/g, "<br>");
+        setEditorContent(html);
+        const state = getSyncState(tabId);
+        state.cwFieldType = cwResult.type;
+        state.lastPulledText = cwResult.text;
+        state.lastPushedText = null;
+        loadedFromCw = true;
+      }
+    } catch { /* CW read failed — fall through to local */ }
+
+    if (!loadedFromCw) {
+      await loadLocalTicketContent(newTicket);
+      // Still detect field type for sync even if CW was empty
+      try {
+        const probe = await tab.webview.executeJavaScript(CW_NOTES_READ_SCRIPT);
+        if (probe) {
+          const state = getSyncState(tabId);
+          state.cwFieldType = probe.type;
+        }
+      } catch { /* ignore */ }
+    }
+
+    ticketIdInput.value = newTicket;
+    currentPanelTicket = newTicket;
+    userTypedTicket = false;
+    lastSavedTicketId = newTicket;
+    hasAttemptedAutoGrab = true;
+
+    autosaveStatus.textContent = "Loaded ticket #" + newTicket;
+    autosaveStatus.className = "saved";
+    updateSyncPill();
+
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+  }
+
+  async function loadLocalTicketContent(ticketId) {
+    try {
+      const autosaveData = await window.backupAPI.loadAutosave();
+      if (autosaveData[ticketId] && autosaveData[ticketId].content) {
+        setEditorContent(autosaveData[ticketId].content);
         return;
       }
-      autosaveStatus.textContent =
-        "Pushed to CW (" + (result.type === "draft" ? "time entry" : "stopwatch") + ")";
-      autosaveStatus.className = "saved";
-    } catch (err) {
-      autosaveStatus.textContent = "Error pushing to CW notes field";
-      autosaveStatus.className = "";
-      console.error("[CW Sync] Push error:", err);
+      const history = await window.backupAPI.getHistory(ticketId);
+      if (history.length > 0) {
+        setEditorContent(history[0].content);
+      } else {
+        setEditorContent("");
+      }
+    } catch {
+      setEditorContent("");
     }
-  });
+  }
 
   // ==================== Note Templates ====================
 
@@ -1052,6 +1437,16 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // --- Webview events ---
+
+    // Capture messages emitted by the injected CW watcher
+    webview.addEventListener("console-message", function (e) {
+      const msg = e.message || "";
+      if (!msg.startsWith("[CW-SYNC] ")) return;
+      try {
+        handleWatcherMessage(id, JSON.parse(msg.slice(10)));
+      } catch { /* malformed payload — ignore */ }
+    });
+
     webview.addEventListener("did-stop-loading", function () {
       updateTabTitle();
       saveTabSession();
@@ -1074,13 +1469,32 @@ document.addEventListener("DOMContentLoaded", function () {
       updateTabTitle();
       saveTabSession();
       if (activeTabId === id) updateNavButtons();
+      // Re-inject watcher after full navigation; reset field state for the new page
+      const navState = syncStates.get(id);
+      if (navState) {
+        navState.cwFieldType = null;
+        navState.lastPushedText = null;
+        navState.lastPulledText = null;
+        navState.cwFocused = false;
+        navState.cwPopupVisible = false;
+      }
+    });
+
+    webview.addEventListener("did-finish-load", function () {
+      // Inject the watcher so we get field-level events from the guest page
+      webview.executeJavaScript(CW_WATCHER_SCRIPT).catch(function () {});
+      // Attempt ticket detection now that the page is ready
+      if (activeTabId === id) ticketSwapRun(id);
     });
 
     webview.addEventListener("did-navigate-in-page", function () {
       debouncedRefreshTicketList();
       updateTabTitle();
       saveTabSession();
-      if (activeTabId === id) updateNavButtons();
+      if (activeTabId === id) {
+        updateNavButtons();
+        ticketSwapRun(id);
+      }
     });
 
     webview.addEventListener("found-in-page", function (e) {
@@ -1175,6 +1589,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     updateNavButtons();
 
+    // Update sync pill for the newly active tab
+    updateSyncPill();
+
+    // Try to detect the ticket and swap content for the new tab
+    ticketSwapRun(id);
+
     // Re-run find on the newly active tab if the find bar is still open
     if (findActive && findInput.value) {
       const wv = getActiveWebview();
@@ -1239,6 +1659,9 @@ document.addEventListener("DOMContentLoaded", function () {
         if (closedTabHistory.length > CLOSED_TAB_HISTORY_MAX) closedTabHistory.shift();
       }
     } catch { /* webview may not be ready */ }
+
+    // Clean up sync state for the closed tab
+    clearSyncState(id);
 
     // Remove DOM elements
     tab.webview.remove();
@@ -1961,6 +2384,14 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  noteContent.addEventListener("focus", function () {
+    if (activeTabId) getSyncState(activeTabId).panelFocused = true;
+  });
+
+  noteContent.addEventListener("blur", function () {
+    if (activeTabId) getSyncState(activeTabId).panelFocused = false;
+  });
+
   noteContent.addEventListener("input", function () {
     // On first typing with no ticket ID, kick off a background grab
     if (!ticketIdInput.value.trim() && !hasAttemptedAutoGrab) {
@@ -1971,6 +2402,12 @@ document.addEventListener("DOMContentLoaded", function () {
     autosaveStatus.className = "saving";
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+    // Live sync: schedule a push to the active CW field
+    if (activeTabId) schedulePush(activeTabId);
+  });
+
+  ticketIdInput.addEventListener("input", function () {
+    userTypedTicket = true;
   });
 
   ticketIdInput.addEventListener("blur", function () {
@@ -2118,8 +2555,16 @@ document.addEventListener("DOMContentLoaded", function () {
     ticketIdInput.value = "";
     hasAttemptedAutoGrab = false;
     lastSavedTicketId = null;
+    currentPanelTicket = null;
+    userTypedTicket = false;
+    if (activeTabId) {
+      const cs = getSyncState(activeTabId);
+      cs.lastPushedText = null;
+      cs.lastPulledText = null;
+    }
     autosaveStatus.textContent = "Cleared";
     autosaveStatus.className = "";
+    updateSyncPill();
   });
 
   // ==================== Copy to Clipboard ====================

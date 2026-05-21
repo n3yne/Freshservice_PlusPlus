@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS = {
   defaultUrl: "https://na.myconnectwise.net/",
   theme: "dark",
   noteTemplates: [],
+  liveSyncEnabled: true,
 };
 
 function sanitizeTicketId(raw) {
@@ -39,6 +40,7 @@ function validateSettings(s) {
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   } catch { return false; }
   if (!["dark", "light"].includes(s.theme)) return false;
+  if (s.liveSyncEnabled !== undefined && typeof s.liveSyncEnabled !== "boolean") return false;
   if (!Array.isArray(s.noteTemplates)) return false;
   if (s.noteTemplates.length > 50) return false;
   for (const tmpl of s.noteTemplates) {
