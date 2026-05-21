@@ -300,19 +300,101 @@ document.addEventListener("DOMContentLoaded", function () {
   // Push: panel → CW field (plain text; uses execCommand for Draft.js so that
   //        React's event handlers recognise the change)
 
-  const CW_NOTES_READ_SCRIPT = `(function() {
+  const CW_NOTES_READ_SCRIPT = `(async function() {
+    // GWT hides components with inline style.display='none'. Temporarily reveal
+    // any such ancestors so innerText and focus() work correctly, then restore.
+    function withVisible(el, fn) {
+      var chain = [];
+      var p = el;
+      while (p && p !== document.documentElement) {
+        if (p.style.display === 'none') { chain.push(p); p.style.display = 'block'; }
+        p = p.parentElement;
+      }
+      try { return fn(); } finally {
+        chain.forEach(function(n) { n.style.display = 'none'; });
+      }
+    }
+
+    // Build a reusable click function for a toggle element.
+    function makeClickFn(el) {
+      var rect = el.getBoundingClientRect();
+      var mx = rect.left + rect.width / 2, my = rect.top + rect.height / 2;
+      return function() {
+        ['mousedown', 'mouseup', 'click'].forEach(function(type) {
+          el.dispatchEvent(new MouseEvent(type, {
+            bubbles: true, cancelable: true, view: window, clientX: mx, clientY: my
+          }));
+        });
+      };
+    }
+
+    // Ensure the stopwatch textarea is in the DOM.
+    // Injects a CSS rule with !important so GWT's own show() cannot override
+    // our hiding after the popup is inserted. Restores visibility before
+    // clicking close buttons so GWT processes those events normally.
+    async function ensureTextarea() {
+      var ta = document.querySelector('textarea.cw_PsaResizableTextArea');
+      if (ta) return { ta: ta, wasHidden: false };
+      var stopwatch = document.querySelector('.mm_stopwatch');
+      if (!stopwatch) return null;
+      var firstCwsvg = stopwatch.querySelector('div.cwsvg');
+      var toggle = firstCwsvg ? firstCwsvg.parentElement : null;
+      if (!toggle) return null;
+      // !important rule beats any inline style GWT sets during popup initialisation.
+      var styleTag = document.createElement('style');
+      styleTag.textContent = '.cw-gxt-wnd.cw-sync-hidden { visibility: hidden !important; }';
+      document.head.appendChild(styleTag);
+      var popup = null;
+      var obs = new MutationObserver(function(muts) {
+        for (var mi = 0; mi < muts.length; mi++) {
+          for (var ni = 0; ni < muts[mi].addedNodes.length; ni++) {
+            var n = muts[mi].addedNodes[ni];
+            if (n.nodeType !== 1) continue;
+            var w = n.classList.contains('cw-gxt-wnd') ? n
+                  : (n.querySelector && n.querySelector('.cw-gxt-wnd'));
+            if (w) { w.classList.add('cw-sync-hidden'); popup = w; obs.disconnect(); return; }
+          }
+        }
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      makeClickFn(toggle)();
+      for (var i = 0; i < 10; i++) {
+        await new Promise(function(r) { setTimeout(r, 200); });
+        ta = document.querySelector('textarea.cw_PsaResizableTextArea');
+        if (ta) break;
+      }
+      obs.disconnect();
+      if (!ta) { styleTag.remove(); return null; }
+      if (!popup) { popup = ta.closest('.cw-gxt-wnd'); if (popup) popup.classList.add('cw-sync-hidden'); }
+      return { ta: ta, wasHidden: true, popup: popup, styleTag: styleTag };
+    }
+
+    // Remove the hiding class FIRST (so GWT processes button events normally),
+    // then click Save as Draft → X to dismiss the popup cleanly.
+    function restoreState(info) {
+      if (!info.wasHidden || !info.popup) return;
+      info.popup.classList.remove('cw-sync-hidden');
+      if (info.styleTag) info.styleTag.remove();
+      var saveBtn = info.popup.querySelector('.cw_confirmButton .mm_button');
+      var closeBtn = info.popup.querySelector('.cwsvg.mm_icon');
+      if (saveBtn) makeClickFn(saveBtn)();
+      if (closeBtn) makeClickFn(closeBtn)();
+    }
+
     // Draft.js editor (time-entry notes)
+    // innerText returns "" on hidden elements, so reveal before reading.
     var draftEl = document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
     if (draftEl) {
-      var text = draftEl.innerText.replace(/\\n$/, '');
+      var text = withVisible(draftEl, function() { return draftEl.innerText.replace(/\\n$/, ''); });
       return { type: 'draft', text: text };
     }
+
     // GWT textarea (stopwatch notes)
-    var ta = document.querySelector('textarea.cw_PsaResizableTextArea');
-    if (ta) {
-      return { type: 'textarea', text: ta.value };
-    }
-    return null;
+    var info = await ensureTextarea();
+    if (!info) return null;
+    var text = info.ta.value;
+    restoreState(info);
+    return { type: 'textarea', text: text };
   })()`;
 
   btnPullFromCw.addEventListener("click", async function () {
@@ -360,6 +442,16 @@ document.addEventListener("DOMContentLoaded", function () {
       .replace(/\n/g, "<br>");
     setEditorContent(html);
 
+    // Auto-grab ticket number from the same page if the field is empty
+    if (!ticketIdInput.value.trim()) {
+      try {
+        const grabResult = await webview.executeJavaScript(TICKET_GRAB_SCRIPT);
+        if (grabResult && grabResult.ticket) {
+          ticketIdInput.value = grabResult.ticket;
+        }
+      } catch (err) { /* grab failure is non-fatal */ }
+    }
+
     autosaveStatus.textContent =
       "Pulled from CW (" + (result.type === "draft" ? "time entry" : "stopwatch") + ")";
     autosaveStatus.className = "saved";
@@ -387,36 +479,108 @@ document.addEventListener("DOMContentLoaded", function () {
     const plainText = getEditorPlainText();
 
     // Build push script with the text safely JSON-encoded to avoid injection
-    const pushScript = `(function() {
+    const pushScript = `(async function() {
       var text = ${JSON.stringify(plainText)};
+
+      function withVisible(el, fn) {
+        var chain = [];
+        var p = el;
+        while (p && p !== document.documentElement) {
+          if (p.style.display === 'none') { chain.push(p); p.style.display = 'block'; }
+          p = p.parentElement;
+        }
+        try { return fn(); } finally {
+          chain.forEach(function(n) { n.style.display = 'none'; });
+        }
+      }
+
+      function makeClickFn(el) {
+        var rect = el.getBoundingClientRect();
+        var mx = rect.left + rect.width / 2, my = rect.top + rect.height / 2;
+        return function() {
+          ['mousedown', 'mouseup', 'click'].forEach(function(type) {
+            el.dispatchEvent(new MouseEvent(type, {
+              bubbles: true, cancelable: true, view: window, clientX: mx, clientY: my
+            }));
+          });
+        };
+      }
+
+      async function ensureTextarea() {
+        var ta = document.querySelector('textarea.cw_PsaResizableTextArea');
+        if (ta) return { ta: ta, wasHidden: false };
+        var stopwatch = document.querySelector('.mm_stopwatch');
+        if (!stopwatch) return null;
+        var firstCwsvg = stopwatch.querySelector('div.cwsvg');
+        var toggle = firstCwsvg ? firstCwsvg.parentElement : null;
+        if (!toggle) return null;
+        var styleTag = document.createElement('style');
+        styleTag.textContent = '.cw-gxt-wnd.cw-sync-hidden { visibility: hidden !important; }';
+        document.head.appendChild(styleTag);
+        var popup = null;
+        var obs = new MutationObserver(function(muts) {
+          for (var mi = 0; mi < muts.length; mi++) {
+            for (var ni = 0; ni < muts[mi].addedNodes.length; ni++) {
+              var n = muts[mi].addedNodes[ni];
+              if (n.nodeType !== 1) continue;
+              var w = n.classList.contains('cw-gxt-wnd') ? n
+                    : (n.querySelector && n.querySelector('.cw-gxt-wnd'));
+              if (w) { w.classList.add('cw-sync-hidden'); popup = w; obs.disconnect(); return; }
+            }
+          }
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
+        makeClickFn(toggle)();
+        for (var i = 0; i < 10; i++) {
+          await new Promise(function(r) { setTimeout(r, 200); });
+          ta = document.querySelector('textarea.cw_PsaResizableTextArea');
+          if (ta) break;
+        }
+        obs.disconnect();
+        if (!ta) { styleTag.remove(); return null; }
+        if (!popup) { popup = ta.closest('.cw-gxt-wnd'); if (popup) popup.classList.add('cw-sync-hidden'); }
+        return { ta: ta, wasHidden: true, popup: popup, styleTag: styleTag };
+      }
+
+      function restoreState(info) {
+        if (!info.wasHidden || !info.popup) return;
+        info.popup.classList.remove('cw-sync-hidden');
+        if (info.styleTag) info.styleTag.remove();
+        var saveBtn = info.popup.querySelector('.cw_confirmButton .mm_button');
+        var closeBtn = info.popup.querySelector('.cwsvg.mm_icon');
+        if (saveBtn) makeClickFn(saveBtn)();
+        if (closeBtn) makeClickFn(closeBtn)();
+      }
 
       // Draft.js editor (time-entry notes)
       // execCommand fires the synthetic beforeinput event that Draft.js intercepts,
       // so React state stays consistent — direct innerHTML assignment would not.
       var draftEl = document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
       if (draftEl) {
-        draftEl.focus();
-        document.execCommand('selectAll', false, null);
-        document.execCommand('insertText', false, text);
+        withVisible(draftEl, function() {
+          draftEl.focus();
+          document.execCommand('selectAll', false, null);
+          document.execCommand('insertText', false, text);
+        });
         return { type: 'draft' };
       }
 
       // GWT textarea (stopwatch notes)
-      // Use the native value setter so any framework listeners on the prototype
-      // fire correctly, then dispatch input/change events.
-      var ta = document.querySelector('textarea.cw_PsaResizableTextArea');
-      if (ta) {
-        ta.focus();
+      // Reveal hidden ancestors so focus() works, use native value setter so GWT
+      // prototype listeners fire, then dispatch input/change events.
+      var info = await ensureTextarea();
+      if (!info) return null;
+      withVisible(info.ta, function() {
+        info.ta.focus();
         var setter = Object.getOwnPropertyDescriptor(
           window.HTMLTextAreaElement.prototype, 'value'
         ).set;
-        setter.call(ta, text);
-        ta.dispatchEvent(new Event('input',  { bubbles: true }));
-        ta.dispatchEvent(new Event('change', { bubbles: true }));
-        return { type: 'textarea' };
-      }
-
-      return null;
+        setter.call(info.ta, text);
+        info.ta.dispatchEvent(new Event('input',  { bubbles: true }));
+        info.ta.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      restoreState(info);
+      return { type: 'textarea' };
     })()`;
 
     try {
@@ -1867,12 +2031,12 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   // --- Custom confirm dialog (uses elements declared at top of DOMContentLoaded) ---
-  function showConfirm(message) {
+  function showConfirm(message, defaultYes = false) {
     return new Promise(function (resolve) {
       confirmResolve = resolve;
       confirmMessage.textContent = message;
       confirmOverlay.classList.add("visible");
-      confirmNo.focus();
+      (defaultYes ? confirmYes : confirmNo).focus();
     });
   }
 
@@ -1898,11 +2062,21 @@ document.addEventListener("DOMContentLoaded", function () {
   btnClear.addEventListener("click", async function () {
     if (!isEditorEmpty()) {
       const confirmed = await showConfirm(
-        "Clear the current note? The draft will be removed — saved snapshots are not affected.",
+        "Clear the current note? A snapshot will be saved before clearing.",
+        true,
       );
       if (!confirmed) return;
     }
     clearTimeout(autosaveTimer);
+
+    // Auto-save a snapshot so the content is recoverable after clearing
+    const snapTicketId = ticketIdInput.value.trim() || "general";
+    try {
+      await window.backupAPI.saveNote({ ticketId: snapTicketId, noteContent: getEditorContent(), isManual: true });
+      refreshTicketList();
+    } catch (err) {
+      console.error("[Clear] Auto-snapshot error:", err);
+    }
 
     // Remove the autosave entry so the editor starts blank on next launch
     if (lastSavedTicketId) {
