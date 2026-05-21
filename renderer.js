@@ -54,6 +54,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnNewTab = document.getElementById("btn-new-tab");
   const btnBack = document.getElementById("btn-back");
   const btnForward = document.getElementById("btn-forward");
+  const btnRefresh = document.getElementById("btn-refresh");
 
   // --- Find Bar Elements ---
   const findBar = document.getElementById("find-bar");
@@ -862,6 +863,8 @@ document.addEventListener("DOMContentLoaded", function () {
   let activeTabId = null;
   let tabIdCounter = 0;
   let tabHistory = []; // Stack of previously active tab IDs (most recent last, capped at TAB_HISTORY_MAX)
+  let closedTabHistory = []; // Stack of recently closed {url, pinned} — for "Reopen Closed Tab"
+  const CLOSED_TAB_HISTORY_MAX = 10;
   let findActive = false;
 
   // --- Title cleanup: strip common prefixes ---
@@ -1228,6 +1231,15 @@ document.addEventListener("DOMContentLoaded", function () {
       return hId !== id;
     });
 
+    // Record the closed tab so it can be reopened
+    try {
+      const closedUrl = tab.webview.getURL() || tab.webview.getAttribute("src");
+      if (closedUrl) {
+        closedTabHistory.push({ url: closedUrl, pinned: tab.pinned });
+        if (closedTabHistory.length > CLOSED_TAB_HISTORY_MAX) closedTabHistory.shift();
+      }
+    } catch { /* webview may not be ready */ }
+
     // Remove DOM elements
     tab.webview.remove();
     tab.tabEl.remove();
@@ -1392,6 +1404,20 @@ document.addEventListener("DOMContentLoaded", function () {
     hideTabContextMenu();
 
     switch (action) {
+      case "refresh": {
+        const tab = tabs.find(function (t) { return t.id === targetTabId; });
+        if (tab) try { tab.webview.reload(); } catch { /* ignore */ }
+        break;
+      }
+
+      case "reopen-closed": {
+        const closed = closedTabHistory.pop();
+        if (closed) {
+          createTab(closed.url, { activate: true, pinned: closed.pinned });
+        }
+        break;
+      }
+
       case "open-browser": {
         const url = getTabUrl(targetTabId);
         if (url) {
@@ -1519,6 +1545,11 @@ document.addEventListener("DOMContentLoaded", function () {
   btnForward.addEventListener("click", function () {
     const wv = getActiveWebview();
     if (wv) try { wv.goForward(); } catch { /* ignore */ }
+  });
+
+  btnRefresh.addEventListener("click", function () {
+    const wv = getActiveWebview();
+    if (wv) try { wv.reload(); } catch { /* ignore */ }
   });
 
   // ==================== Find in Page ====================
@@ -2356,10 +2387,22 @@ document.addEventListener("DOMContentLoaded", function () {
       const wv = getActiveWebview();
       if (wv) try { wv.goForward(); } catch { /* ignore */ }
     }
+    // F5 - Refresh
+    if (e.key === "F5" && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+      e.preventDefault();
+      const wv = getActiveWebview();
+      if (wv) try { wv.reload(); } catch { /* ignore */ }
+    }
     // Ctrl+T - New tab
     if (e.ctrlKey && !e.shiftKey && e.key === "t") {
       e.preventDefault();
       createTab(appSettings.defaultUrl, { activate: true });
+    }
+    // Ctrl+Shift+T - Reopen last closed tab
+    if (e.ctrlKey && e.shiftKey && (e.key === "T" || e.key === "t")) {
+      e.preventDefault();
+      const closed = closedTabHistory.pop();
+      if (closed) createTab(closed.url, { activate: true, pinned: closed.pinned });
     }
     // Ctrl+W - Close current tab (only when not typing in notes)
     if (e.ctrlKey && !e.shiftKey && e.key === "w") {

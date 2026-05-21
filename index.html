@@ -15,8 +15,9 @@
         <div id="tab-bar">
           <button type="button" id="btn-back" class="nav-btn" title="Go back (Alt+Left)" disabled>&#8249;</button>
           <button type="button" id="btn-forward" class="nav-btn" title="Go forward (Alt+Right)" disabled>&#8250;</button>
+          <button type="button" id="btn-refresh" class="nav-btn" title="Refresh (F5)">&#8635;</button>
           <div id="tab-list"></div>
-          <button id="btn-new-tab" title="New tab">+</button>
+          <button type="button" id="btn-new-tab" title="New tab">+</button>
         </div>
         <!-- Find Bar (shown on Ctrl+F) -->
         <div id="find-bar">
@@ -467,6 +468,9 @@
 
     <!-- Tab Context Menu -->
     <div id="tab-context-menu" class="context-menu">
+      <div class="context-menu-item" data-action="refresh">&#8635; Refresh Tab</div>
+      <div class="context-menu-item" data-action="reopen-closed">&#8630; Reopen Closed Tab</div>
+      <div class="context-menu-separator"></div>
       <div class="context-menu-item" data-action="open-browser">
         🌐 Open in Default Browser
       </div>
