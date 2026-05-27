@@ -449,6 +449,9 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!confirmed) return;
     }
 
+    // Snapshot current content before overwriting if the change is substantial
+    await snapshotBeforeBulkImport(result.text);
+
     // Convert plain text to safe HTML for the contenteditable panel
     const html = result.text
       .replace(/&/g, "&amp;")
@@ -685,6 +688,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (text === state.lastPushedText) return;  // echo from our own push
 
     state.lastPulledText = text;
+    await snapshotBeforeBulkImport(text);
     const html = text
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
@@ -928,6 +932,7 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
       const cwResult = await tab.webview.executeJavaScript(CW_NOTES_READ_SCRIPT);
       if (cwResult && cwResult.text && cwResult.text.trim()) {
+        await snapshotBeforeBulkImport(cwResult.text);
         const html = cwResult.text
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
@@ -966,6 +971,24 @@ document.addEventListener("DOMContentLoaded", function () {
 
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+  }
+
+  // Save a snapshot before any bulk import that changes the panel by more than 4 chars.
+  // Prevents losing panel content when live sync or a manual pull overwrites it.
+  async function snapshotBeforeBulkImport(incomingPlainText) {
+    if (isEditorEmpty()) return;
+    const currentText = getEditorPlainText();
+    if (Math.abs(currentText.length - incomingPlainText.length) <= 4) return;
+    const ticketId = ticketIdInput.value.trim() || "general";
+    try {
+      const html = getEditorContent();
+      const hash = simpleHash(html);
+      if (hash !== lastSnapshotHash.get(ticketId)) {
+        await window.backupAPI.saveNote({ ticketId, noteContent: html, isManual: true });
+        lastSnapshotHash.set(ticketId, hash);
+        refreshTicketList();
+      }
+    } catch { /* non-fatal */ }
   }
 
   async function loadLocalTicketContent(ticketId) {
