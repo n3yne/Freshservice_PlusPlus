@@ -29,6 +29,21 @@ document.addEventListener("DOMContentLoaded", function () {
   const settingNotePanel = document.getElementById("setting-note-panel");
   const settingLiveSync = document.getElementById("setting-live-sync");
   const syncStatus = document.getElementById("sync-status");
+
+  // --- AI Elements ---
+  const settingAiProvider = document.getElementById("setting-ai-provider");
+  const settingAiModel = document.getElementById("setting-ai-model");
+  const settingAiKey = document.getElementById("setting-ai-key");
+  const aiProviderFields = document.getElementById("ai-provider-fields");
+  const btnAiSuggest = document.getElementById("btn-ai-suggest");
+  const btnAiSummarize = document.getElementById("btn-ai-summarize");
+  const aiOverlay = document.getElementById("ai-overlay");
+  const aiDialogTitle = document.getElementById("ai-dialog-title");
+  const aiDialogBody = document.getElementById("ai-dialog-body");
+  const btnAiApply = document.getElementById("btn-ai-apply");
+  const btnAiCopy = document.getElementById("btn-ai-copy");
+  const btnAiCancel = document.getElementById("btn-ai-cancel");
+  const btnAiClose = document.getElementById("btn-ai-close");
   const settingRetentionDays = document.getElementById("setting-retention-days");
   const settingSortField = document.getElementById("setting-sort-field");
   const settingSortDirection = document.getElementById("setting-sort-direction");
@@ -98,6 +113,9 @@ document.addEventListener("DOMContentLoaded", function () {
     theme: "dark",
     noteTemplates: [],
     liveSyncEnabled: true,
+    aiProvider: "none",
+    aiModelName: "",
+    aiApiKey: "",
   };
 
   function applySettings(settings) {
@@ -137,6 +155,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // --- Live Sync ---
     if (settingLiveSync) settingLiveSync.checked = settings.liveSyncEnabled !== false;
+
+    // --- AI Assistant ---
+    const aiEnabled = settings.aiProvider && settings.aiProvider !== "none";
+    if (settingAiProvider) settingAiProvider.value = settings.aiProvider || "none";
+    if (settingAiModel) settingAiModel.value = settings.aiModelName || "";
+    if (settingAiKey) {
+      settingAiKey.value = "";
+      settingAiKey.placeholder = settings.aiApiKey ? "••••••••  (saved)" : "Paste your API key here";
+    }
+    if (aiProviderFields) aiProviderFields.style.display = aiEnabled ? "" : "none";
+    if (btnAiSuggest) btnAiSuggest.style.display = aiEnabled ? "" : "none";
+    if (btnAiSummarize) btnAiSummarize.style.display = aiEnabled ? "" : "none";
 
     // --- Templates ---
     btnInsertTemplate.style.display = (settings.noteTemplates && settings.noteTemplates.length > 0) ? "inline-block" : "none";
@@ -202,6 +232,37 @@ document.addEventListener("DOMContentLoaded", function () {
       appSettings.liveSyncEnabled = settingLiveSync.checked;
       window.backupAPI.saveSettings(appSettings);
       updateSyncPill();
+    });
+  }
+
+  if (settingAiProvider) {
+    settingAiProvider.addEventListener("change", function () {
+      appSettings.aiProvider = settingAiProvider.value;
+      window.backupAPI.saveSettings(appSettings);
+      applySettings(appSettings);
+    });
+  }
+
+  let aiModelSaveTimer = null;
+  if (settingAiModel) {
+    settingAiModel.addEventListener("input", function () {
+      clearTimeout(aiModelSaveTimer);
+      aiModelSaveTimer = setTimeout(function () {
+        appSettings.aiModelName = settingAiModel.value.trim();
+        window.backupAPI.saveSettings(appSettings);
+      }, 800);
+    });
+  }
+
+  if (settingAiKey) {
+    settingAiKey.addEventListener("change", function () {
+      const val = settingAiKey.value.trim();
+      if (val) {
+        appSettings.aiApiKey = val;
+        window.backupAPI.saveSettings(appSettings);
+        settingAiKey.value = "";
+        settingAiKey.placeholder = "••••••••  (saved)";
+      }
     });
   }
 
@@ -302,6 +363,175 @@ document.addEventListener("DOMContentLoaded", function () {
 
     autosaveStatus.textContent = "Signature inserted";
     autosaveStatus.className = "saved";
+  });
+
+  // ==================== AI Assistant ====================
+
+  // Scrapes all ticket note entries from the active CW ticket page.
+  // Each note block lives in label.TicketNote-noteLabel; author/date are
+  // pulled from the enclosing .TicketNote-rowWrap for context.
+  const CW_NOTES_SCRAPE_SCRIPT = `(function() {
+    var parts = [];
+    document.querySelectorAll('.TicketNote-noteLabel').forEach(function(label) {
+      var text = (label.innerText || label.textContent || '').trim();
+      if (!text) return;
+      var row = label.closest('.TicketNote-rowWrap') || label.closest('.TicketNote-row');
+      var author = '';
+      var date = '';
+      if (row) {
+        var authorEl = row.querySelector('.TicketNote-clickableName') || row.querySelector('.TicketNote-basicName');
+        if (authorEl) author = (authorEl.innerText || '').trim();
+        var dateEl = row.querySelector('.TimeText-date');
+        if (dateEl) {
+          date = Array.from(dateEl.childNodes)
+            .filter(function(n) { return n.nodeType === 3; })
+            .map(function(n) { return n.textContent.trim(); })
+            .join(' ').trim();
+        }
+      }
+      var header = [author, date].filter(Boolean).join(' — ');
+      parts.push((header ? '[' + header + ']\\n' : '') + text);
+    });
+    return parts.join('\\n\\n---\\n\\n').substring(0, 15000);
+  })()`;
+
+  let aiApplyCallback = null;
+
+  function showAiOverlay(title, bodyHtml, applyCallback) {
+    aiDialogTitle.textContent = title;
+    aiDialogBody.innerHTML = bodyHtml;
+    aiApplyCallback = applyCallback || null;
+    btnAiApply.style.display = applyCallback ? "" : "none";
+    aiOverlay.classList.add("visible");
+  }
+
+  function closeAiOverlay() {
+    aiOverlay.classList.remove("visible");
+    aiApplyCallback = null;
+  }
+
+  btnAiClose.addEventListener("click", closeAiOverlay);
+  btnAiCancel.addEventListener("click", closeAiOverlay);
+  aiOverlay.addEventListener("click", function (e) {
+    if (e.target === aiOverlay) closeAiOverlay();
+  });
+
+  btnAiApply.addEventListener("click", async function () {
+    if (aiApplyCallback) await aiApplyCallback();
+    closeAiOverlay();
+  });
+
+  btnAiCopy.addEventListener("click", function () {
+    const text = aiDialogBody.innerText;
+    navigator.clipboard.writeText(text).catch(function () {});
+  });
+
+  function aiSettings() {
+    return {
+      aiProvider: appSettings.aiProvider,
+      aiApiKey: appSettings.aiApiKey,
+      aiModelName: appSettings.aiModelName,
+    };
+  }
+
+  // ---- Suggest button ----
+  btnAiSuggest.addEventListener("click", async function () {
+    if (isEditorEmpty()) {
+      autosaveStatus.textContent = "Nothing to suggest — add some notes first";
+      autosaveStatus.className = "";
+      return;
+    }
+
+    const plainText = getEditorPlainText();
+    showAiOverlay("✨ AI Suggestion", '<div class="ai-loading">Thinking…</div>', null);
+
+    let response;
+    try {
+      response = await window.backupAPI.aiSuggest({ text: plainText, settings: aiSettings() });
+    } catch (err) {
+      aiDialogBody.innerHTML = '<p class="ai-error">Request failed — check your connection.</p>';
+      console.error("[AI] Suggest error:", err);
+      return;
+    }
+
+    if (response.error) {
+      aiDialogBody.innerHTML = `<p class="ai-error">${response.error.replace(/</g, "&lt;")}</p>`;
+      return;
+    }
+
+    if (!response.result) {
+      aiDialogBody.innerHTML = '<p class="ai-error">AI returned an empty response.</p>';
+      return;
+    }
+
+    const escaped = response.result
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+    aiDialogBody.innerHTML = `<div class="ai-result">${escaped}</div>`;
+
+    const resultText = response.result;
+    aiApplyCallback = async function () {
+      await snapshotBeforeBulkImport(resultText);
+      const resultHtml = aiDialogBody.querySelector(".ai-result").innerHTML;
+      setEditorContent(resultHtml);
+      autosaveStatus.textContent = "AI suggestion applied";
+      autosaveStatus.className = "saved";
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+    };
+    btnAiApply.style.display = "";
+  });
+
+  // ---- Summarize button ----
+  btnAiSummarize.addEventListener("click", async function () {
+    const webview = getActiveWebview();
+    if (!webview) {
+      autosaveStatus.textContent = "No active tab";
+      autosaveStatus.className = "";
+      return;
+    }
+
+    showAiOverlay("📋 Ticket Summary", '<div class="ai-loading">Reading ticket notes…</div>', null);
+
+    let pageText;
+    try {
+      pageText = await webview.executeJavaScript(CW_NOTES_SCRAPE_SCRIPT);
+    } catch {
+      aiDialogBody.innerHTML = '<p class="ai-error">Could not read the ticket page.</p>';
+      return;
+    }
+
+    if (!pageText || pageText.trim().length < 20) {
+      aiDialogBody.innerHTML = '<p class="ai-error">No note content found on this page.</p>';
+      return;
+    }
+
+    aiDialogBody.innerHTML = '<div class="ai-loading">Summarizing…</div>';
+
+    let response;
+    try {
+      response = await window.backupAPI.aiSummarize({ text: pageText, settings: aiSettings() });
+    } catch (err) {
+      aiDialogBody.innerHTML = '<p class="ai-error">Request failed — check your connection.</p>';
+      console.error("[AI] Summarize error:", err);
+      return;
+    }
+
+    if (response.error) {
+      aiDialogBody.innerHTML = `<p class="ai-error">${response.error.replace(/</g, "&lt;")}</p>`;
+      return;
+    }
+
+    if (!response.result) {
+      aiDialogBody.innerHTML = '<p class="ai-error">AI returned an empty response.</p>';
+      return;
+    }
+
+    const escaped = response.result
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+    aiDialogBody.innerHTML = `<div class="ai-result">${escaped}</div>`;
+    // No Apply for summary — read-only view
   });
 
   // ==================== CW Notes Sync ====================
@@ -1837,6 +2067,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (findActive) hideFindBar();
       closeSettings();
       if (confirmOverlay.classList.contains("visible")) closeConfirm(false);
+      if (aiOverlay.classList.contains("visible")) closeAiOverlay();
     }
   });
 

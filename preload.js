@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("backupAPI", {
   searchNotes: (query) => ipcRenderer.invoke("search-notes", query),
   loadSettings: () => ipcRenderer.invoke("load-settings"),
   saveSettings: (settings) => ipcRenderer.invoke("save-settings", settings),
+  aiSuggest: (data) => ipcRenderer.invoke("ai-suggest", data),
+  aiSummarize: (data) => ipcRenderer.invoke("ai-summarize", data),
   onOpenSettings: (callback) => onIpc("open-settings", () => callback()),
   onFindInPage: (callback) => onIpc("find-in-page", () => callback()),
   onSettingsChanged: (callback) =>

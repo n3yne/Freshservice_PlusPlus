@@ -185,6 +185,22 @@
             >⬆ Push to CW</button>
           </div>
 
+          <!-- AI Buttons -->
+          <div id="ai-buttons">
+            <button
+              type="button"
+              id="btn-ai-suggest"
+              class="btn btn-small btn-ai"
+              title="Get AI wording and clarity suggestions for these notes"
+            >✨ Suggest</button>
+            <button
+              type="button"
+              id="btn-ai-summarize"
+              class="btn btn-small btn-ai"
+              title="Summarize all ticket notes from the current CW page"
+            >📋 Summarize</button>
+          </div>
+
           <!-- Action Buttons -->
           <div id="action-buttons">
             <button
@@ -387,6 +403,51 @@
             </p>
           </div>
 
+          <!-- AI Assistant Section -->
+          <div class="settings-section">
+            <h3 class="settings-section-title">AI Assistant</h3>
+            <div class="settings-field">
+              <label class="settings-field-label" for="setting-ai-provider">Provider</label>
+              <div class="settings-field-row">
+                <select id="setting-ai-provider" class="settings-select-input" title="AI provider">
+                  <option value="none">None</option>
+                  <option value="hatz">Hatz AI</option>
+                </select>
+              </div>
+            </div>
+            <p class="settings-description settings-description-field">
+              Choose an AI provider to enable note suggestions and ticket summarization.
+            </p>
+            <div id="ai-provider-fields" class="ai-provider-fields">
+              <div class="settings-field settings-field-column">
+                <label class="settings-field-label" for="setting-ai-model">Model</label>
+                <input
+                  type="text"
+                  id="setting-ai-model"
+                  class="settings-text-input"
+                  placeholder="e.g. gpt-4o"
+                  maxlength="100"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </div>
+              <div class="settings-field settings-field-column">
+                <label class="settings-field-label" for="setting-ai-key">API Key</label>
+                <input
+                  type="password"
+                  id="setting-ai-key"
+                  class="settings-text-input"
+                  placeholder="Paste your API key here"
+                  maxlength="500"
+                  autocomplete="off"
+                />
+              </div>
+              <p class="settings-description settings-description-field">
+                For Hatz AI, generate your API key from the Hatz Admin Dashboard.
+              </p>
+            </div>
+          </div>
+
           <!-- Templates Section -->
           <div class="settings-section">
             <h3 class="settings-section-title">Note Templates</h3>
@@ -462,6 +523,22 @@
               data-placeholder="e.g. Thanks, John Smith | IT Support | ext. 1234"
             ></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Result Overlay -->
+    <div id="ai-overlay" class="ai-overlay">
+      <div class="ai-dialog">
+        <div class="ai-dialog-header">
+          <h3 id="ai-dialog-title">AI Suggestion</h3>
+          <button type="button" id="btn-ai-close" class="settings-close" title="Close">&times;</button>
+        </div>
+        <div id="ai-dialog-body" class="ai-dialog-body"></div>
+        <div class="ai-dialog-footer">
+          <button type="button" id="btn-ai-apply" class="btn btn-primary">Apply</button>
+          <button type="button" id="btn-ai-copy" class="btn btn-secondary">📋 Copy</button>
+          <button type="button" id="btn-ai-cancel" class="btn btn-secondary">Cancel</button>
         </div>
       </div>
     </div>

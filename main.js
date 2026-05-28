@@ -841,6 +841,59 @@ function registerIpcHandlers() {
     return results;
   });
 
+  // AI: send panel notes to Hatz AI for wording/clarity suggestions
+  electron.ipcMain.handle("ai-suggest", async (_event, { text, settings: aiSettings }) => {
+    if (!aiSettings || aiSettings.aiProvider !== "hatz" || !aiSettings.aiApiKey) {
+      return { error: "No AI provider configured. Add your API key in Settings → AI Assistant." };
+    }
+    const model = aiSettings.aiModelName || "gpt-4o";
+    const prompt =
+      "Review the following technical support notes and provide an improved version with better clarity, grammar, and professionalism. " +
+      "Reply with only the improved notes text — no preamble, no labels, no explanation:\n\n" + text;
+    try {
+      const resp = await fetch("https://ai.hatz.ai/v1/chat/completions", {
+        method: "POST",
+        headers: { "X-API-Key": aiSettings.aiApiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [{ role: "user", content: prompt }], model }),
+      });
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => "");
+        return { error: `Hatz AI error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}` };
+      }
+      const json = await resp.json();
+      return { result: json.choices?.[0]?.message?.content ?? "" };
+    } catch (err) {
+      return { error: "Request failed: " + (err.message || String(err)) };
+    }
+  });
+
+  // AI: summarize all scraped note text from the active CW ticket page
+  electron.ipcMain.handle("ai-summarize", async (_event, { text, settings: aiSettings }) => {
+    if (!aiSettings || aiSettings.aiProvider !== "hatz" || !aiSettings.aiApiKey) {
+      return { error: "No AI provider configured. Add your API key in Settings → AI Assistant." };
+    }
+    const model = aiSettings.aiModelName || "gpt-4o";
+    const prompt =
+      "Summarize the following ConnectWise ticket notes into a concise bullet-point summary. " +
+      "Capture the key issue, actions taken, and current status. " +
+      "Reply with only the summary, no preamble:\n\n" + text;
+    try {
+      const resp = await fetch("https://ai.hatz.ai/v1/chat/completions", {
+        method: "POST",
+        headers: { "X-API-Key": aiSettings.aiApiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [{ role: "user", content: prompt }], model }),
+      });
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => "");
+        return { error: `Hatz AI error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}` };
+      }
+      const json = await resp.json();
+      return { result: json.choices?.[0]?.message?.content ?? "" };
+    } catch (err) {
+      return { error: "Request failed: " + (err.message || String(err)) };
+    }
+  });
+
   // Load saved tab URLs from disk
   electron.ipcMain.handle("load-tabs", async () => {
     try {

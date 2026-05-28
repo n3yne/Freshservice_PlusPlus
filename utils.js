@@ -14,6 +14,9 @@ const DEFAULT_SETTINGS = {
   theme: "dark",
   noteTemplates: [],
   liveSyncEnabled: true,
+  aiProvider: "none",
+  aiModelName: "",
+  aiApiKey: "",
 };
 
 function sanitizeTicketId(raw) {
@@ -41,6 +44,9 @@ function validateSettings(s) {
   } catch { return false; }
   if (!["dark", "light"].includes(s.theme)) return false;
   if (s.liveSyncEnabled !== undefined && typeof s.liveSyncEnabled !== "boolean") return false;
+  if (s.aiProvider !== undefined && !["none", "hatz"].includes(s.aiProvider)) return false;
+  if (s.aiModelName !== undefined && (typeof s.aiModelName !== "string" || s.aiModelName.length > 100)) return false;
+  if (s.aiApiKey !== undefined && (typeof s.aiApiKey !== "string" || s.aiApiKey.length > 500)) return false;
   if (!Array.isArray(s.noteTemplates)) return false;
   if (s.noteTemplates.length > 50) return false;
   for (const tmpl of s.noteTemplates) {

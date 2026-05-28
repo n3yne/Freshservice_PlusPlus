@@ -1327,6 +1327,105 @@ body {
   justify-content: flex-end;
 }
 
+/* ===== AI Buttons Row ===== */
+#ai-buttons {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+#ai-buttons .btn-ai {
+  flex: 1;
+}
+
+/* ===== AI Result Overlay ===== */
+.ai-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 30000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-overlay.visible {
+  display: flex;
+}
+
+.ai-dialog {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: 480px;
+  max-width: 90vw;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.ai-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ai-dialog-header h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.ai-dialog-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.ai-dialog-footer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.ai-loading {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.ai-error {
+  color: var(--warning);
+}
+
+.ai-result {
+  white-space: pre-wrap;
+}
+
+/* ===== AI Settings Fields ===== */
+.ai-provider-fields {
+  margin-top: 10px;
+}
+
+/* Light theme overrides */
+body[data-theme="light"] .ai-dialog {
+  background: #fff;
+  border-color: #dde;
+}
+
 /* ===== Tab Drag & Drop ===== */
 .tab-item[draggable="true"] {
   cursor: grab;
