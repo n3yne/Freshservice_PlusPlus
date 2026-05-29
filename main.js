@@ -842,14 +842,22 @@ function registerIpcHandlers() {
   });
 
   // AI: send panel notes to Hatz AI for wording/clarity suggestions
-  electron.ipcMain.handle("ai-suggest", async (_event, { text, settings: aiSettings }) => {
+  electron.ipcMain.handle("ai-suggest", async (_event, { text, ticketContext, settings: aiSettings }) => {
     if (!aiSettings || aiSettings.aiProvider !== "hatz" || !aiSettings.aiApiKey) {
       return { error: "No AI provider configured. Add your API key in Settings → AI Assistant." };
     }
     const model = aiSettings.aiModelName || "gpt-4o";
+    const contextSection =
+      ticketContext && ticketContext.trim().length > 20
+        ? "\n\nFor background, here are the existing ticket notes for context (do not repeat or summarize these — they are reference only):\n\n" +
+          ticketContext.trim() + "\n\n---\n\n"
+        : "";
     const prompt =
       "Review the following technical support notes and provide an improved version with better clarity, grammar, and professionalism. " +
-      "Reply with only the improved notes text — no preamble, no labels, no explanation:\n\n" + text;
+      "Do not use em-dashes or en-dashes in your response — use commas, periods, or hyphens instead. " +
+      "Reply with only the improved notes text, no preamble, no labels, no explanation:" +
+      contextSection +
+      "\n\nNotes to improve:\n\n" + text;
     try {
       const resp = await fetch("https://ai.hatz.ai/v1/chat/completions", {
         method: "POST",
@@ -876,6 +884,7 @@ function registerIpcHandlers() {
     const prompt =
       "Summarize the following ConnectWise ticket notes into a concise bullet-point summary. " +
       "Capture the key issue, actions taken, and current status. " +
+      "Do not use em-dashes or en-dashes in your response — use commas, periods, or hyphens instead. " +
       "Reply with only the summary, no preamble:\n\n" + text;
     try {
       const resp = await fetch("https://ai.hatz.ai/v1/chat/completions", {

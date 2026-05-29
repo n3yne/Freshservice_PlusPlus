@@ -397,10 +397,44 @@ document.addEventListener("DOMContentLoaded", function () {
 
   let aiApplyCallback = null;
 
-  function showAiOverlay(title, bodyHtml, applyCallback) {
+  // Convert AI markdown output to panel-compatible HTML.
+  // Handles bullets (- / * / •), headers (#/##/###), **bold**, *italic*.
+  // Uses <br> line breaks so output is compatible with setEditorContent().
+  function markdownToHtml(text) {
+    function inlineMarkdown(str) {
+      return str
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(.+?)\*/g, "<em>$1</em>");
+    }
+    const lines = text.split("\n");
+    const parts = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        parts.push("<br>");
+        continue;
+      }
+      const header = trimmed.match(/^#{1,3}\s+(.+)/);
+      if (header) {
+        parts.push("<strong>" + inlineMarkdown(header[1]) + "</strong><br>");
+        continue;
+      }
+      const bullet = trimmed.match(/^[-*•]\s+(.*)/);
+      if (bullet) {
+        parts.push("&nbsp;&nbsp;• " + inlineMarkdown(bullet[1]) + "<br>");
+        continue;
+      }
+      parts.push(inlineMarkdown(trimmed) + "<br>");
+    }
+    return parts.join("").replace(/(<br>)+$/, "");
+  }
+
+  function showAiOverlay(title, bodyHtml, applyCallback, applyLabel) {
     aiDialogTitle.textContent = title;
     aiDialogBody.innerHTML = bodyHtml;
     aiApplyCallback = applyCallback || null;
+    btnAiApply.textContent = applyLabel || "Apply";
     btnAiApply.style.display = applyCallback ? "" : "none";
     aiOverlay.classList.add("visible");
   }
@@ -445,9 +479,17 @@ document.addEventListener("DOMContentLoaded", function () {
     const plainText = getEditorPlainText();
     showAiOverlay("✨ AI Suggestion", '<div class="ai-loading">Thinking…</div>', null);
 
+    let ticketContext = "";
+    const suggestWebview = getActiveWebview();
+    if (suggestWebview) {
+      try {
+        ticketContext = await suggestWebview.executeJavaScript(CW_NOTES_SCRAPE_SCRIPT) || "";
+      } catch { /* non-fatal — context is optional */ }
+    }
+
     let response;
     try {
-      response = await window.backupAPI.aiSuggest({ text: plainText, settings: aiSettings() });
+      response = await window.backupAPI.aiSuggest({ text: plainText, ticketContext, settings: aiSettings() });
     } catch (err) {
       aiDialogBody.innerHTML = '<p class="ai-error">Request failed — check your connection.</p>';
       console.error("[AI] Suggest error:", err);
@@ -527,11 +569,23 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    const escaped = response.result
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/\n/g, "<br>");
-    aiDialogBody.innerHTML = `<div class="ai-result">${escaped}</div>`;
-    // No Apply for summary — read-only view
+    const summaryHtml = markdownToHtml(response.result);
+    aiDialogBody.innerHTML = `<div class="ai-result">${summaryHtml}</div>`;
+
+    const summaryResult = response.result;
+    aiApplyCallback = async function () {
+      const insertHtml =
+        "<strong>AI Ticket Summary:</strong><br><br>" + markdownToHtml(summaryResult);
+      await snapshotBeforeBulkImport(summaryResult);
+      const existing = getEditorContent().trim();
+      setEditorContent(existing ? existing + "<br><br>" + insertHtml : insertHtml);
+      autosaveStatus.textContent = "Summary inserted";
+      autosaveStatus.className = "saved";
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+    };
+    btnAiApply.textContent = "Insert";
+    btnAiApply.style.display = "";
   });
 
   // ==================== CW Notes Sync ====================
@@ -696,6 +750,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const grabResult = await webview.executeJavaScript(TICKET_GRAB_SCRIPT);
         if (grabResult && grabResult.ticket) {
           ticketIdInput.value = grabResult.ticket;
+          refreshTicketList(grabResult.ticket);
         }
       } catch { /* grab failure is non-fatal */ }
     }
@@ -1152,7 +1207,6 @@ document.addEventListener("DOMContentLoaded", function () {
             isManual: true,
           });
           lastSnapshotHash.set(currentPanelTicket, outgoingHash);
-          refreshTicketList();
         } catch { /* non-fatal */ }
       }
     }
@@ -1198,6 +1252,9 @@ document.addEventListener("DOMContentLoaded", function () {
     autosaveStatus.textContent = "Loaded ticket #" + newTicket;
     autosaveStatus.className = "saved";
     updateSyncPill();
+
+    // Refresh dropdown and select the new ticket (also picks up any outgoing snapshot saved above)
+    await refreshTicketList(newTicket);
 
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
@@ -2594,6 +2651,7 @@ document.addEventListener("DOMContentLoaded", function () {
           ticketIdInput.value = result.ticket;
           autosaveStatus.textContent = "Auto-grabbed ticket #" + result.ticket;
           autosaveStatus.className = "saved";
+          refreshTicketList(result.ticket);
         }
         // If no ticket found, do nothing — the user can keep typing freely
       })
@@ -2691,6 +2749,7 @@ document.addEventListener("DOMContentLoaded", function () {
           "text:",
           result.text,
         );
+        refreshTicketList(result.ticket);
         if (!isEditorEmpty()) {
           performAutosave();
         }
@@ -2871,7 +2930,7 @@ document.addEventListener("DOMContentLoaded", function () {
     refreshTicketListTimer = setTimeout(refreshTicketList, 500);
   }
 
-  async function refreshTicketList() {
+  async function refreshTicketList(selectTicketId = null) {
     try {
       const tickets = await window.backupAPI.getAllTickets();
 
@@ -2899,7 +2958,7 @@ document.addEventListener("DOMContentLoaded", function () {
         return sortDir === "desc" ? -result : result;
       });
 
-      const previousValue = ticketSelect.value;
+      const previousValue = selectTicketId || ticketSelect.value;
       ticketSelect.innerHTML =
         '<option value="">-- Select a ticket --</option>';
       tickets.forEach(function (t) {
@@ -2915,9 +2974,11 @@ document.addEventListener("DOMContentLoaded", function () {
         ticketSelect.appendChild(opt);
       });
 
-      // Restore previously selected value if it still exists
       if (previousValue) {
         ticketSelect.value = previousValue;
+        if (selectTicketId && ticketSelect.value === selectTicketId) {
+          loadHistory(selectTicketId);
+        }
       }
     } catch (err) {
       console.error("Error refreshing ticket list:", err);
