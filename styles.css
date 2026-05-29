@@ -1513,3 +1513,164 @@ body[data-theme="light"] .settings-overlay,
 body[data-theme="light"] .confirm-overlay {
   background: rgba(0, 0, 0, 0.25);
 }
+
+/* ===== Download Manager ===== */
+#btn-downloads {
+  position: relative;
+  font-size: 16px;
+}
+
+#btn-downloads[data-badge]:not([data-badge=""])::after {
+  content: attr(data-badge);
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.downloads-panel {
+  position: fixed;
+  top: 36px;
+  right: 8px;
+  width: 360px;
+  max-height: 480px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  z-index: 1200;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.downloads-panel.visible {
+  display: flex;
+}
+
+.downloads-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.downloads-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.downloads-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.downloads-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.downloads-close:hover {
+  color: var(--text);
+}
+
+.downloads-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 6px 0;
+}
+
+.downloads-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.dl-item {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dl-item:last-child {
+  border-bottom: none;
+}
+
+.dl-item-name {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+
+.dl-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.dl-state {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.dl-active  { color: var(--primary); }
+.dl-complete { color: var(--success); }
+.dl-failed  { color: var(--warning); }
+
+.dl-size {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.dl-progress-track {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-bottom: 5px;
+  overflow: hidden;
+}
+
+.dl-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 2px;
+  transition: width 0.2s;
+}
+
+.dl-item-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.dl-btn-open,
+.dl-btn-folder {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+body[data-theme="light"] .downloads-panel {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}

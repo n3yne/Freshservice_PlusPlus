@@ -18,6 +18,7 @@
           <button type="button" id="btn-refresh" class="nav-btn" title="Refresh (F5)">&#8635;</button>
           <div id="tab-list"></div>
           <button type="button" id="btn-new-tab" title="New tab">+</button>
+          <button type="button" id="btn-downloads" class="nav-btn" title="Downloads">&#8659;</button>
         </div>
         <!-- Find Bar (shown on Ctrl+F) -->
         <div id="find-bar">
@@ -544,6 +545,20 @@
     </div>
 
     <!-- Confirm Dialog (replaces native confirm() to avoid webview focus trap) -->
+    <!-- Downloads Panel -->
+    <div id="downloads-panel" class="downloads-panel">
+      <div class="downloads-panel-header">
+        <span class="downloads-panel-title">Downloads</span>
+        <div class="downloads-panel-actions">
+          <button type="button" id="btn-clear-downloads" class="btn btn-small">Clear All</button>
+          <button type="button" id="btn-close-downloads" class="downloads-close">&times;</button>
+        </div>
+      </div>
+      <div id="downloads-list" class="downloads-list">
+        <div class="downloads-empty">No downloads yet</div>
+      </div>
+    </div>
+
     <div id="confirm-overlay" class="confirm-overlay">
       <div class="confirm-dialog">
         <p id="confirm-message" class="confirm-message"></p>

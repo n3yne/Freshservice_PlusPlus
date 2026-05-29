@@ -13,6 +13,10 @@ let TABS_FILE;
 let SETTINGS_FILE;
 let EDITOR_STATE_FILE;
 
+// In-memory download history (cleared on app restart)
+const downloads = [];
+let nextDownloadId = 1;
+
 // Microsoft SSO hostnames — these popups communicate login state back to the
 // ConnectWise page via window.opener / postMessage and must open as real windows.
 const MICROSOFT_SSO_PATTERNS = [
@@ -912,6 +916,24 @@ function registerIpcHandlers() {
       return [];
     }
   });
+
+  // Download manager IPC
+  electron.ipcMain.handle("get-downloads", () => downloads.map((d) => ({ ...d })));
+
+  electron.ipcMain.handle("open-download-file", async (_e, savePath) => {
+    const err = await electron.shell.openPath(savePath);
+    return err ? { error: err } : { ok: true };
+  });
+
+  electron.ipcMain.handle("show-download-folder", (_e, savePath) => {
+    electron.shell.showItemInFolder(savePath);
+    return { ok: true };
+  });
+
+  electron.ipcMain.handle("clear-downloads", () => {
+    downloads.splice(0);
+    return { ok: true };
+  });
 }
 
 // ===================== App Lifecycle =====================
@@ -950,6 +972,41 @@ electron.app.whenReady().then(() => {
       callback({ requestHeaders: details.requestHeaders });
     },
   );
+
+  // Track all downloads from webview sessions
+  electron.session.defaultSession.on("will-download", (_event, item) => {
+    const id = nextDownloadId++;
+    const record = {
+      id,
+      filename: item.getFilename(),
+      savePath: "",
+      totalBytes: item.getTotalBytes(),
+      receivedBytes: 0,
+      state: "progressing",
+      startTime: Date.now(),
+    };
+    downloads.unshift(record);
+
+    item.on("updated", (_e, state) => {
+      record.state = state;
+      record.receivedBytes = item.getReceivedBytes();
+      record.totalBytes = item.getTotalBytes();
+      record.savePath = item.getSavePath();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("download-update", { ...record });
+      }
+    });
+
+    item.once("done", (_e, state) => {
+      record.state = state;
+      record.receivedBytes = item.getReceivedBytes();
+      record.totalBytes = item.getTotalBytes();
+      record.savePath = item.getSavePath();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("download-update", { ...record });
+      }
+    });
+  });
 
   // Register all IPC handlers
   registerIpcHandlers();

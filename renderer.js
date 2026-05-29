@@ -44,6 +44,11 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnAiCopy = document.getElementById("btn-ai-copy");
   const btnAiCancel = document.getElementById("btn-ai-cancel");
   const btnAiClose = document.getElementById("btn-ai-close");
+  const btnDownloads = document.getElementById("btn-downloads");
+  const downloadsPanel = document.getElementById("downloads-panel");
+  const downloadsList = document.getElementById("downloads-list");
+  const btnCloseDownloads = document.getElementById("btn-close-downloads");
+  const btnClearDownloads = document.getElementById("btn-clear-downloads");
   const settingRetentionDays = document.getElementById("setting-retention-days");
   const settingSortField = document.getElementById("setting-sort-field");
   const settingSortDirection = document.getElementById("setting-sort-direction");
@@ -586,6 +591,114 @@ document.addEventListener("DOMContentLoaded", function () {
     };
     btnAiApply.textContent = "Insert";
     btnAiApply.style.display = "";
+  });
+
+  // ==================== Download Manager ====================
+
+  function formatBytes(bytes) {
+    if (!bytes || bytes <= 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB"];
+    const i = Math.min(Math.floor(Math.log2(bytes) / 10), units.length - 1);
+    return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + " " + units[i];
+  }
+
+  function renderDownloadItem(dl) {
+    const pct =
+      dl.totalBytes > 0 ? Math.round((dl.receivedBytes / dl.totalBytes) * 100) : 0;
+    const isComplete = dl.state === "completed";
+    const isFailed = dl.state === "interrupted" || dl.state === "cancelled";
+    const inProgress = dl.state === "progressing";
+
+    const stateLabel = isComplete
+      ? "Complete"
+      : isFailed
+        ? dl.state.charAt(0).toUpperCase() + dl.state.slice(1)
+        : pct + "%";
+
+    const progressBar = inProgress
+      ? `<div class="dl-progress-track"><div class="dl-progress-fill" style="width:${pct}%"></div></div>`
+      : "";
+
+    const sizeInfo =
+      dl.totalBytes > 0
+        ? isComplete
+          ? formatBytes(dl.totalBytes)
+          : formatBytes(dl.receivedBytes) + " / " + formatBytes(dl.totalBytes)
+        : "";
+
+    return `<div class="dl-item" data-dl-id="${dl.id}">
+      <div class="dl-item-name" title="${dl.savePath || dl.filename}">${dl.filename}</div>
+      <div class="dl-item-meta">
+        <span class="dl-state ${isComplete ? "dl-complete" : isFailed ? "dl-failed" : "dl-active"}">${stateLabel}</span>
+        ${sizeInfo ? `<span class="dl-size">${sizeInfo}</span>` : ""}
+      </div>
+      ${progressBar}
+      <div class="dl-item-actions">
+        ${isComplete ? `<button class="btn btn-small dl-btn-open" data-path="${dl.savePath}">Open File</button>` : ""}
+        ${isComplete ? `<button class="btn btn-small dl-btn-folder" data-path="${dl.savePath}">Open Folder</button>` : ""}
+      </div>
+    </div>`;
+  }
+
+  async function openDownloadsPanel() {
+    const items = await window.backupAPI.getDownloads();
+    if (items.length === 0) {
+      downloadsList.innerHTML = '<div class="downloads-empty">No downloads yet</div>';
+    } else {
+      downloadsList.innerHTML = items.map(renderDownloadItem).join("");
+    }
+    downloadsPanel.classList.add("visible");
+    updateDownloadBadge(items);
+  }
+
+  function closeDownloadsPanel() {
+    downloadsPanel.classList.remove("visible");
+  }
+
+  function updateDownloadBadge(items) {
+    const active = items.filter((d) => d.state === "progressing").length;
+    btnDownloads.setAttribute("data-badge", active > 0 ? String(active) : "");
+  }
+
+  btnDownloads.addEventListener("click", () => {
+    if (downloadsPanel.classList.contains("visible")) {
+      closeDownloadsPanel();
+    } else {
+      openDownloadsPanel();
+    }
+  });
+
+  btnCloseDownloads.addEventListener("click", closeDownloadsPanel);
+
+  btnClearDownloads.addEventListener("click", async () => {
+    await window.backupAPI.clearDownloads();
+    downloadsList.innerHTML = '<div class="downloads-empty">No downloads yet</div>';
+    btnDownloads.setAttribute("data-badge", "");
+  });
+
+  downloadsList.addEventListener("click", function (e) {
+    const openBtn = e.target.closest(".dl-btn-open");
+    const folderBtn = e.target.closest(".dl-btn-folder");
+    if (openBtn) window.backupAPI.openDownloadFile(openBtn.dataset.path);
+    if (folderBtn) window.backupAPI.showDownloadFolder(folderBtn.dataset.path);
+  });
+
+  // Live update a single download item when main pushes progress
+  window.backupAPI.onDownloadUpdate(function (dl) {
+    // Update badge on any active download
+    window.backupAPI.getDownloads().then(updateDownloadBadge);
+
+    if (!downloadsPanel.classList.contains("visible")) return;
+    const existing = downloadsList.querySelector(`[data-dl-id="${dl.id}"]`);
+    const html = renderDownloadItem(dl);
+    if (existing) {
+      existing.outerHTML = html;
+    } else {
+      // New download started — prepend it
+      downloadsList.insertAdjacentHTML("afterbegin", html);
+      const empty = downloadsList.querySelector(".downloads-empty");
+      if (empty) empty.remove();
+    }
   });
 
   // ==================== CW Notes Sync ====================
