@@ -17,6 +17,16 @@ let EDITOR_STATE_FILE;
 const downloads = [];
 let nextDownloadId = 1;
 
+// Serializes all reads+writes to autosave.json so concurrent IPC calls
+// (autosave, live-sync snapshot, ticket-swap snapshot) can't interleave and
+// overwrite each other with stale data.
+let autosaveWriteQueue = Promise.resolve();
+function withAutosaveLock(fn) {
+  const queued = autosaveWriteQueue.then(fn);
+  autosaveWriteQueue = queued.catch(() => {});
+  return queued;
+}
+
 // Microsoft SSO hostnames — these popups communicate login state back to the
 // ConnectWise page via window.opener / postMessage and must open as real windows.
 const MICROSOFT_SSO_PATTERNS = [
@@ -173,6 +183,8 @@ function createWindow() {
       nodeIntegration: false,
       webviewTag: true,
       spellcheck: true,
+      webSecurity: true,
+      sandbox: true,
     },
   });
 
@@ -489,25 +501,32 @@ function registerIpcHandlers() {
   electron.ipcMain.handle(
     "save-note",
     async (event, { ticketId, noteContent, isManual }) => {
+      const MAX_NOTE_BYTES = 10 * 1024 * 1024; // 10 MB
+      if (typeof noteContent !== "string" || noteContent.length > MAX_NOTE_BYTES) {
+        return { success: false, error: "Note content exceeds size limit" };
+      }
       await ensureBackupDir();
 
       const timestamp = new Date().toISOString();
       const safeTicketId = sanitizeTicketId(ticketId);
 
-      // Always update the autosave file (latest state of all drafts)
-      let autosaveData = {};
-      try {
-        const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
-        autosaveData = JSON.parse(raw);
-      } catch {
-        // File doesn't exist yet or is corrupt — start fresh
-      }
-      autosaveData[safeTicketId] = { content: noteContent, updatedAt: timestamp };
-      await fsp.writeFile(
-        AUTOSAVE_FILE,
-        JSON.stringify(autosaveData, null, 2),
-        "utf-8",
-      );
+      // Always update the autosave file (latest state of all drafts).
+      // Serialized through withAutosaveLock to prevent concurrent read-modify-write races.
+      await withAutosaveLock(async () => {
+        let autosaveData = {};
+        try {
+          const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
+          autosaveData = JSON.parse(raw);
+        } catch {
+          // File doesn't exist yet or is corrupt — start fresh
+        }
+        autosaveData[safeTicketId] = { content: noteContent, updatedAt: timestamp };
+        await fsp.writeFile(
+          AUTOSAVE_FILE,
+          JSON.stringify(autosaveData, null, 2),
+          "utf-8",
+        );
+      });
 
       // On manual save, also write a timestamped history file (HTML format)
       if (isManual) {
@@ -622,14 +641,16 @@ function registerIpcHandlers() {
   // Delete autosave entry for a ticket
   electron.ipcMain.handle("delete-autosave", async (event, ticketId) => {
     const safeTicketId = sanitizeTicketId(ticketId);
-    try {
-      const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
-      const data = JSON.parse(raw);
-      delete data[safeTicketId];
-      await fsp.writeFile(AUTOSAVE_FILE, JSON.stringify(data, null, 2), "utf-8");
-    } catch {
-      // File doesn't exist or is corrupt — nothing to delete
-    }
+    await withAutosaveLock(async () => {
+      try {
+        const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
+        const data = JSON.parse(raw);
+        delete data[safeTicketId];
+        await fsp.writeFile(AUTOSAVE_FILE, JSON.stringify(data, null, 2), "utf-8");
+      } catch {
+        // File doesn't exist or is corrupt — nothing to delete
+      }
+    });
     return { success: true };
   });
 
@@ -638,14 +659,16 @@ function registerIpcHandlers() {
     const safeTicketId = sanitizeTicketId(ticketId);
 
     // Remove from autosave.json
-    try {
-      const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
-      const data = JSON.parse(raw);
-      delete data[safeTicketId];
-      await fsp.writeFile(AUTOSAVE_FILE, JSON.stringify(data, null, 2), "utf-8");
-    } catch {
-      // File doesn't exist or is corrupt
-    }
+    await withAutosaveLock(async () => {
+      try {
+        const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
+        const data = JSON.parse(raw);
+        delete data[safeTicketId];
+        await fsp.writeFile(AUTOSAVE_FILE, JSON.stringify(data, null, 2), "utf-8");
+      } catch {
+        // File doesn't exist or is corrupt
+      }
+    });
 
     // Remove the history folder
     try {
@@ -660,15 +683,27 @@ function registerIpcHandlers() {
   // Open backup folder in file explorer
   electron.ipcMain.handle("open-backup-folder", async () => {
     await ensureBackupDir();
-    electron.shell.openPath(BACKUP_DIR);
-    return { success: true };
+    const err = await electron.shell.openPath(BACKUP_DIR);
+    return err ? { success: false, error: err } : { success: true };
   });
+
+  function sanitizeTabUrls(tabUrls) {
+    if (!Array.isArray(tabUrls)) return [];
+    return tabUrls.filter((entry) => {
+      const url = typeof entry === "string" ? entry : entry?.url;
+      if (typeof url !== "string") return false;
+      try {
+        const p = new URL(url);
+        return p.protocol === "http:" || p.protocol === "https:";
+      } catch { return false; }
+    });
+  }
 
   // Save open tab URLs to disk (async, returns result)
   electron.ipcMain.handle("save-tabs", async (event, tabUrls) => {
     await ensureBackupDir();
     try {
-      await fsp.writeFile(TABS_FILE, JSON.stringify(tabUrls, null, 2), "utf-8");
+      await fsp.writeFile(TABS_FILE, JSON.stringify(sanitizeTabUrls(tabUrls), null, 2), "utf-8");
       return { success: true };
     } catch (e) {
       console.error("[Tabs] Error saving tabs:", e);
@@ -680,7 +715,7 @@ function registerIpcHandlers() {
   electron.ipcMain.on("save-tabs-sync", (event, tabUrls) => {
     try {
       fs.mkdirSync(BACKUP_DIR, { recursive: true });
-      fs.writeFileSync(TABS_FILE, JSON.stringify(tabUrls, null, 2), "utf-8");
+      fs.writeFileSync(TABS_FILE, JSON.stringify(sanitizeTabUrls(tabUrls), null, 2), "utf-8");
     } catch (e) {
       console.error("[Tabs] Error saving tabs (sync):", e);
     }
@@ -921,11 +956,17 @@ function registerIpcHandlers() {
   electron.ipcMain.handle("get-downloads", () => downloads.map((d) => ({ ...d })));
 
   electron.ipcMain.handle("open-download-file", async (_e, savePath) => {
+    if (!savePath || typeof savePath !== "string" || !path.isAbsolute(savePath)) {
+      return { error: "Invalid path" };
+    }
     const err = await electron.shell.openPath(savePath);
     return err ? { error: err } : { ok: true };
   });
 
   electron.ipcMain.handle("show-download-folder", (_e, savePath) => {
+    if (!savePath || typeof savePath !== "string" || !path.isAbsolute(savePath)) {
+      return { error: "Invalid path" };
+    }
     electron.shell.showItemInFolder(savePath);
     return { ok: true };
   });

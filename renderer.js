@@ -519,8 +519,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const resultText = response.result;
     aiApplyCallback = async function () {
       await snapshotBeforeBulkImport(resultText);
-      const resultHtml = aiDialogBody.querySelector(".ai-result").innerHTML;
-      setEditorContent(resultHtml);
+      setEditorContent(escaped);
       autosaveStatus.textContent = "AI suggestion applied";
       autosaveStatus.className = "saved";
       clearTimeout(autosaveTimer);
@@ -603,6 +602,16 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function renderDownloadItem(dl) {
+    function escAttr(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    function escText(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
     const pct =
       dl.totalBytes > 0 ? Math.round((dl.receivedBytes / dl.totalBytes) * 100) : 0;
     const isComplete = dl.state === "completed";
@@ -612,7 +621,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const stateLabel = isComplete
       ? "Complete"
       : isFailed
-        ? dl.state.charAt(0).toUpperCase() + dl.state.slice(1)
+        ? escText(dl.state.charAt(0).toUpperCase() + dl.state.slice(1))
         : pct + "%";
 
     const progressBar = inProgress
@@ -626,16 +635,20 @@ document.addEventListener("DOMContentLoaded", function () {
           : formatBytes(dl.receivedBytes) + " / " + formatBytes(dl.totalBytes)
         : "";
 
+    const safePath = escAttr(dl.savePath);
+    const safeFilename = escText(dl.filename);
+    const safeTitle = escAttr(dl.savePath || dl.filename);
+
     return `<div class="dl-item" data-dl-id="${dl.id}">
-      <div class="dl-item-name" title="${dl.savePath || dl.filename}">${dl.filename}</div>
+      <div class="dl-item-name" title="${safeTitle}">${safeFilename}</div>
       <div class="dl-item-meta">
         <span class="dl-state ${isComplete ? "dl-complete" : isFailed ? "dl-failed" : "dl-active"}">${stateLabel}</span>
         ${sizeInfo ? `<span class="dl-size">${sizeInfo}</span>` : ""}
       </div>
       ${progressBar}
       <div class="dl-item-actions">
-        ${isComplete ? `<button class="btn btn-small dl-btn-open" data-path="${dl.savePath}">Open File</button>` : ""}
-        ${isComplete ? `<button class="btn btn-small dl-btn-folder" data-path="${dl.savePath}">Open Folder</button>` : ""}
+        ${isComplete ? `<button class="btn btn-small dl-btn-open" data-path="${safePath}">Open File</button>` : ""}
+        ${isComplete ? `<button class="btn btn-small dl-btn-folder" data-path="${safePath}">Open Folder</button>` : ""}
       </div>
     </div>`;
   }
@@ -1266,17 +1279,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
   let currentPanelTicket = null;  // ticket currently bound to the panel
   let userTypedTicket = false;    // user manually typed into the ticket ID field
-  const lastSnapshotHash = new Map();  // ticketId → hash (avoids redundant snapshots)
-  const swapQueue = new Map();         // tabId → Promise (serializes swaps per tab)
-
-  function simpleHash(str) {
-    let h = str.length;
-    const step = Math.max(1, Math.floor(str.length / 20));
-    for (let i = 0; i < str.length; i += step) {
-      h = ((h * 31) + str.charCodeAt(i)) >>> 0;
-    }
-    return h.toString(36);
-  }
+  const lastSnapshotContent = new Map();  // ticketId → html (avoids redundant snapshots)
+  const swapQueue = new Map();            // tabId → Promise (serializes swaps per tab)
 
   function ticketSwapRun(tabId) {
     if (!appSettings.liveSyncEnabled) return;
@@ -1311,15 +1315,14 @@ document.addEventListener("DOMContentLoaded", function () {
     // Snapshot the outgoing ticket if its content has changed since last snapshot
     if (currentPanelTicket && !isEditorEmpty()) {
       const outgoingHtml = getEditorContent();
-      const outgoingHash = simpleHash(outgoingHtml);
-      if (outgoingHash !== lastSnapshotHash.get(currentPanelTicket)) {
+      if (outgoingHtml !== lastSnapshotContent.get(currentPanelTicket)) {
         try {
           await window.backupAPI.saveNote({
             ticketId: currentPanelTicket,
             noteContent: outgoingHtml,
             isManual: true,
           });
-          lastSnapshotHash.set(currentPanelTicket, outgoingHash);
+          lastSnapshotContent.set(currentPanelTicket, outgoingHtml);
         } catch { /* non-fatal */ }
       }
     }
@@ -1382,10 +1385,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const ticketId = ticketIdInput.value.trim() || "general";
     try {
       const html = getEditorContent();
-      const hash = simpleHash(html);
-      if (hash !== lastSnapshotHash.get(ticketId)) {
+      if (html !== lastSnapshotContent.get(ticketId)) {
         await window.backupAPI.saveNote({ ticketId, noteContent: html, isManual: true });
-        lastSnapshotHash.set(ticketId, hash);
+        lastSnapshotContent.set(ticketId, html);
         refreshTicketList();
       }
     } catch { /* non-fatal */ }
@@ -2974,7 +2976,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Remove the autosave entry so the editor starts blank on next launch
     if (lastSavedTicketId) {
-      window.backupAPI.deleteAutosave(lastSavedTicketId);
+      await window.backupAPI.deleteAutosave(lastSavedTicketId);
     }
 
     setEditorContent("");
@@ -3114,9 +3116,9 @@ document.addEventListener("DOMContentLoaded", function () {
         const div = document.createElement("div");
         div.className = "history-item";
 
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = item.content;
-        const preview = tempDiv.innerText.substring(0, PREVIEW_MAX_LENGTH);
+        const preview = new DOMParser()
+          .parseFromString(item.content, "text/html")
+          .body.innerText.substring(0, PREVIEW_MAX_LENGTH);
 
         const displayName = item.filename
           .replace(".html", "")
