@@ -125,64 +125,48 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function applySettings(settings) {
     appSettings = settings;
-    // Sync the local collapsed state from persisted settings
     panelCollapsed = settings.panelCollapsed || false;
 
-    // --- Note Panel ---
     settingNotePanel.checked = settings.notePanelEnabled;
-
-    // --- Backup Retention ---
     settingRetentionDays.value = settings.backupRetentionDays;
-
-    // --- Ticket Sort Order ---
     settingSortField.value = settings.ticketSortField || "lastUpdated";
     settingSortDirection.value = settings.ticketSortDirection || "desc";
 
-    // --- Signature ---
-    // Only update the contenteditable if it doesn't currently have focus
-    // (avoids clobbering the user's cursor while they type)
+    // Skip updating the contenteditable if it has focus — avoids clobbering the cursor mid-edit.
     if (document.activeElement !== settingSignature) {
       settingSignature.innerHTML = settings.signatureHtml || "";
     }
 
-    // --- Theme ---
     const theme = settings.theme || "dark";
     document.body.setAttribute("data-theme", theme);
     settingTheme.checked = theme === "light";
 
-    // --- Default URL ---
     if (document.activeElement !== settingDefaultUrl) {
       settingDefaultUrl.value = settings.defaultUrl || "https://na.myconnectwise.net/";
     }
 
-    // --- Sig toolbar button visibility ---
     btnInsertSignature.style.display = settings.signatureHtml ? "" : "none";
-
-    // --- Live Sync ---
     if (settingLiveSync) settingLiveSync.checked = settings.liveSyncEnabled !== false;
 
-    // --- AI Assistant ---
     const aiEnabled = settings.aiProvider && settings.aiProvider !== "none";
     if (settingAiProvider) settingAiProvider.value = settings.aiProvider || "none";
     if (settingAiModel) settingAiModel.value = settings.aiModelName || "";
     if (settingAiKey) {
       settingAiKey.value = "";
+      // Never restore the raw key — show a masked placeholder so it's not visible in the DOM.
       settingAiKey.placeholder = settings.aiApiKey ? "••••••••  (saved)" : "Paste your API key here";
     }
     if (aiProviderFields) aiProviderFields.style.display = aiEnabled ? "" : "none";
     if (btnAiSuggest) btnAiSuggest.style.display = aiEnabled ? "" : "none";
     if (btnAiSummarize) btnAiSummarize.style.display = aiEnabled ? "" : "none";
 
-    // --- Templates ---
     btnInsertTemplate.style.display = (settings.noteTemplates && settings.noteTemplates.length > 0) ? "inline-block" : "none";
     renderTemplateList();
 
     if (settings.notePanelEnabled) {
-      // Restore the panel visibility
       sidePanel.style.display = "";
       btnToggle.style.display = "";
       if (panelCollapsed) {
-        // Panel was collapsed before being disabled — keep it collapsed
         sidePanel.classList.add("collapsed");
         resizeHandle.style.display = "none";
         btnExpand.classList.add("visible");
@@ -192,7 +176,6 @@ document.addEventListener("DOMContentLoaded", function () {
         btnExpand.classList.remove("visible");
       }
     } else {
-      // Fully hide the panel, resize handle, and expand button
       sidePanel.style.display = "none";
       resizeHandle.style.display = "none";
       btnExpand.classList.remove("visible");
@@ -201,10 +184,8 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function openSettings() {
-    // Don't re-open if already visible
     if (settingsOverlay.classList.contains("visible")) return;
 
-    // Sync controls with current settings
     settingNotePanel.checked = appSettings.notePanelEnabled;
     settingRetentionDays.value = appSettings.backupRetentionDays;
     settingSortField.value = appSettings.ticketSortField || "lastUpdated";
@@ -219,13 +200,11 @@ document.addEventListener("DOMContentLoaded", function () {
     settingsOverlay.classList.remove("visible");
   }
 
-  // Close modal
   btnCloseSettings.addEventListener("click", closeSettings);
   settingsOverlay.addEventListener("click", function (e) {
     if (e.target === settingsOverlay) closeSettings();
   });
 
-  // Setting toggles - save immediately on change
   settingNotePanel.addEventListener("change", function () {
     appSettings.notePanelEnabled = settingNotePanel.checked;
     window.backupAPI.saveSettings(appSettings);
@@ -293,7 +272,6 @@ document.addEventListener("DOMContentLoaded", function () {
     refreshTicketList();
   });
 
-  // --- Signature editor: formatting toolbar ---
   document
     .getElementById("signature-toolbar")
     .addEventListener("click", function (e) {
@@ -303,7 +281,6 @@ document.addEventListener("DOMContentLoaded", function () {
       document.execCommand(btn.dataset.sigCommand, false, null);
     });
 
-  // --- Signature editor: debounced save on input ---
   let sigSaveTimer = null;
   settingSignature.addEventListener("input", function () {
     clearTimeout(sigSaveTimer);
@@ -313,14 +290,12 @@ document.addEventListener("DOMContentLoaded", function () {
     }, SIG_SAVE_DEBOUNCE);
   });
 
-  // --- Theme toggle ---
   settingTheme.addEventListener("change", function () {
     appSettings.theme = settingTheme.checked ? "light" : "dark";
     document.body.setAttribute("data-theme", appSettings.theme);
     window.backupAPI.saveSettings(appSettings);
   });
 
-  // --- Default URL: debounced save on input ---
   let defaultUrlSaveTimer = null;
   settingDefaultUrl.addEventListener("input", function () {
     clearTimeout(defaultUrlSaveTimer);
@@ -338,7 +313,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }, 800);
   });
 
-  // --- Insert Signature button on the note toolbar ---
   btnInsertSignature.addEventListener("click", function () {
     const sigHtml = appSettings.signatureHtml;
     if (!sigHtml) {
@@ -348,22 +322,17 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    // Build the signature block with a leading line break for spacing,
-    // but no trailing line break so the cursor lands right at the end.
+    // Leading <br> adds a blank line before the signature; no trailing <br> so
+    // the cursor stays at the end of the signature content, not a blank line after.
     const block = "<br>" + sigHtml;
 
-    // Append to the end of the editor
     noteContent.focus();
-
-    // Move cursor to the very end
     const sel = window.getSelection();
     const range = document.createRange();
     range.selectNodeContents(noteContent);
     range.collapse(false);
     sel.removeAllRanges();
     sel.addRange(range);
-
-    // Insert the HTML at the cursor position
     document.execCommand("insertHTML", false, block);
 
     autosaveStatus.textContent = "Signature inserted";
@@ -696,9 +665,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (folderBtn) window.backupAPI.showDownloadFolder(folderBtn.dataset.path);
   });
 
-  // Live update a single download item when main pushes progress
   window.backupAPI.onDownloadUpdate(function (dl) {
-    // Update badge on any active download
     window.backupAPI.getDownloads().then(updateDownloadBadge);
 
     if (!downloadsPanel.classList.contains("visible")) return;
@@ -707,7 +674,6 @@ document.addEventListener("DOMContentLoaded", function () {
     if (existing) {
       existing.outerHTML = html;
     } else {
-      // New download started — prepend it
       downloadsList.insertAdjacentHTML("afterbegin", html);
       const empty = downloadsList.querySelector(".downloads-empty");
       if (empty) empty.remove();
@@ -931,16 +897,14 @@ document.addEventListener("DOMContentLoaded", function () {
   //   2. syncEngine        — per-tab state machine driving push (panel→CW) and pull (CW→panel)
   //   3. ticketSwapper     — auto-loads content when the detected ticket changes
 
-  // ---- Sync timing constants ----
-  const SYNC_PUSH_DRAFT = 500;       // ms: Draft.js push debounce
-  const SYNC_PUSH_TA_VISIBLE = 100;  // ms: stopwatch popup visible
-  const SYNC_PUSH_TA_HIDDEN = 2000;  // ms: stopwatch popup hidden (avoids rapid open/hide)
-  const SYNC_PULL_DEBOUNCE = 300;    // ms: incoming CW change pull
+  const SYNC_PUSH_DRAFT = 500;       // ms — Draft.js push debounce
+  const SYNC_PUSH_TA_VISIBLE = 100;  // ms — stopwatch popup visible
+  const SYNC_PUSH_TA_HIDDEN = 2000;  // ms — stopwatch hidden (longer debounce avoids rapid popup open/hide)
+  const SYNC_PULL_DEBOUNCE = 300;    // ms — incoming CW change pull
 
-  // ---- Watcher script (injected once per page load) ----
-  // Emits structured messages via console.log so the host renderer can
-  // capture them through the webview's console-message event without any
-  // additional IPC channel.
+  // Injected once per page load. Uses console.log as the outbound channel so it
+  // works without an extra IPC registration — the renderer filters by the [CW-SYNC]
+  // prefix in the webview console-message event.
   const CW_WATCHER_SCRIPT = `(function() {
     if (window.__cwSyncWatcherInstalled) return;
     window.__cwSyncWatcherInstalled = true;
@@ -1012,7 +976,6 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   })()`;
 
-  // ---- Sync state per tab ----
   const syncStates = new Map();
 
   function getSyncState(tabId) {
@@ -1061,7 +1024,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // ---- Handle messages emitted by CW_WATCHER_SCRIPT ----
   function handleWatcherMessage(tabId, msg) {
     if (!appSettings.liveSyncEnabled) return;
     if (tabId !== activeTabId) return;
@@ -1117,7 +1079,6 @@ document.addEventListener("DOMContentLoaded", function () {
     autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
   }
 
-  // Schedule a push with the right debounce for the current field type
   function schedulePush(tabId) {
     if (!appSettings.liveSyncEnabled) return;
     if (tabId !== activeTabId) return;
@@ -1170,7 +1131,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // ---- Build the push script (extracted from btnPushToCw handler) ----
   function buildCwPushScript(plainText) {
     return `(async function() {
       var text = ${JSON.stringify(plainText)};
@@ -1273,14 +1233,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ==================== Ticket Swapper ====================
   //
-  // Runs on tab activation and on did-finish-load.
-  // When a different ticket is detected, snapshots the outgoing content
-  // (if changed) then loads the new ticket's content from CW or local backup.
+  // Runs on tab activation and did-finish-load. When the detected ticket differs
+  // from currentPanelTicket: snapshot the outgoing content (if changed), then
+  // load the incoming ticket from CW first, falling back to local backup.
 
   let currentPanelTicket = null;  // ticket currently bound to the panel
-  let userTypedTicket = false;    // user manually typed into the ticket ID field
-  const lastSnapshotContent = new Map();  // ticketId → html (avoids redundant snapshots)
-  const swapQueue = new Map();            // tabId → Promise (serializes swaps per tab)
+  let userTypedTicket = false;    // set when the user types in ticketIdInput — suppresses auto-swap
+  const lastSnapshotContent = new Map();  // ticketId → html — skips saves when content is unchanged
+  const swapQueue = new Map();            // tabId → Promise — serializes swaps so rapid navigation doesn't race
 
   function ticketSwapRun(tabId) {
     if (!appSettings.liveSyncEnabled) return;
@@ -1306,13 +1266,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const newTicket = grabResult.ticket;
 
-    // If user manually typed a different ticket ID, don't override their choice
     if (userTypedTicket && ticketIdInput.value.trim() && ticketIdInput.value.trim() !== newTicket) return;
-
-    // Same ticket as already loaded — no swap needed
     if (newTicket === currentPanelTicket) return;
 
-    // Snapshot the outgoing ticket if its content has changed since last snapshot
     if (currentPanelTicket && !isEditorEmpty()) {
       const outgoingHtml = getEditorContent();
       if (outgoingHtml !== lastSnapshotContent.get(currentPanelTicket)) {
@@ -1327,7 +1283,6 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
-    // Load the incoming ticket: CW first, fallback to local
     let loadedFromCw = false;
     try {
       const cwResult = await tab.webview.executeJavaScript(CW_NOTES_READ_SCRIPT);
@@ -1369,7 +1324,6 @@ document.addEventListener("DOMContentLoaded", function () {
     autosaveStatus.className = "saved";
     updateSyncPill();
 
-    // Refresh dropdown and select the new ticket (also picks up any outgoing snapshot saved above)
     await refreshTicketList(newTicket);
 
     clearTimeout(autosaveTimer);
@@ -1530,7 +1484,6 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    // Build dropdown items
     templateDropdown.innerHTML = "";
     const templates = appSettings.noteTemplates || [];
     if (templates.length === 0) {
@@ -1548,13 +1501,11 @@ document.addEventListener("DOMContentLoaded", function () {
       templateDropdown.appendChild(item);
     });
 
-    // Position below the button
     const rect = btnInsertTemplate.getBoundingClientRect();
     templateDropdown.style.left = rect.left + "px";
     templateDropdown.style.top = (rect.bottom + 2) + "px";
     templateDropdown.classList.add("visible");
 
-    // Adjust if overflowing the window
     const menuRect = templateDropdown.getBoundingClientRect();
     if (menuRect.right > window.innerWidth) {
       templateDropdown.style.left = (window.innerWidth - menuRect.width - MENU_EDGE_PADDING) + "px";
@@ -1765,14 +1716,12 @@ document.addEventListener("DOMContentLoaded", function () {
       closeBtn.style.display = "none";
     }
 
-    // --- Tab click to activate (use click instead of mousedown to avoid
-    //     activating during drag initiation) ---
+    // click (not mousedown) to avoid activating the tab while the user is starting a drag
     tabEl.addEventListener("click", function (e) {
       if (e.target.closest(".tab-close")) return;
       activateTab(id);
     });
 
-    // --- Middle-click on TAB to close ---
     tabEl.addEventListener("auxclick", function (e) {
       if (e.button === 1) {
         e.preventDefault();
@@ -1780,18 +1729,15 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
-    // --- Close button ---
     closeBtn.addEventListener("click", function (e) {
       e.stopPropagation();
       closeTab(id);
     });
 
-    // --- Right-click context menu ---
     tabEl.addEventListener("contextmenu", function (e) {
       showTabContextMenu(e, id);
     });
 
-    // --- Drag & Drop to reorder ---
     tabEl.setAttribute("draggable", "true");
 
     tabEl.addEventListener("dragstart", function (e) {
@@ -1847,7 +1793,6 @@ document.addEventListener("DOMContentLoaded", function () {
       draggedTabId = null;
     });
 
-    // --- Helper to set title on the tab ---
     function updateTabTitle() {
       try {
         const raw = webview.getTitle();
@@ -1861,9 +1806,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
-    // --- Webview events ---
-
-    // Capture messages emitted by the injected CW watcher
+    // Messages emitted by the injected CW watcher arrive here as console-message events.
     webview.addEventListener("console-message", function (e) {
       const msg = e.message || "";
       if (!msg.startsWith("[CW-SYNC] ")) return;
@@ -1894,7 +1837,7 @@ document.addEventListener("DOMContentLoaded", function () {
       updateTabTitle();
       saveTabSession();
       if (activeTabId === id) updateNavButtons();
-      // Re-inject watcher after full navigation; reset field state for the new page
+      // Reset sync state so the watcher re-detects the fields on the new page.
       const navState = syncStates.get(id);
       if (navState) {
         navState.cwFieldType = null;
@@ -1906,9 +1849,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     webview.addEventListener("did-finish-load", function () {
-      // Inject the watcher so we get field-level events from the guest page
       webview.executeJavaScript(CW_WATCHER_SCRIPT).catch(function () {});
-      // Attempt ticket detection now that the page is ready
       if (activeTabId === id) ticketSwapRun(id);
     });
 
@@ -1933,12 +1874,12 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
-    // --- Handle webview requesting to close itself (e.g. ConnectWise "Save and Return") ---
+    // CW's "Save and Return" button calls window.close() on the child page.
+    // After closing that tab, click the refresh button on the parent so CW reloads its list.
+    // The refresh button is identified by its SVG path data — no stable class or ID is available.
     webview.addEventListener("close", function () {
       console.log("[Tab] Webview requested close for tab:", id);
       closeTab(id);
-      // Click the refresh button on the tab we returned to, identified by the
-      // refresh icon SVG path (d attribute starting with "M43.4 24.4").
       const returnedWebview = getActiveWebview();
       if (returnedWebview) {
         returnedWebview
@@ -1957,7 +1898,6 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
-    // Activate the tab
     if (activate) {
       activateTab(id);
     }
@@ -1977,7 +1917,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function activateTab(id) {
-    // Stop find on the tab we're leaving so it doesn't persist in the background
+    // Stop an active find so it doesn't persist in a background tab.
     if (findActive && activeTabId && activeTabId !== id) {
       const prevTab = tabs.find(function (t) { return t.id === activeTabId; });
       if (prevTab) {
@@ -1985,21 +1925,17 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
-    // Push the previous tab onto the history stack
     if (activeTabId && activeTabId !== id) {
-      // Remove duplicate so the most recent position wins
-      tabHistory = tabHistory.filter(function (hId) {
-        return hId !== activeTabId;
-      });
+      // Deduplicate so the stack always tracks the most-recent visit order.
+      tabHistory = tabHistory.filter(function (hId) { return hId !== activeTabId; });
       tabHistory.push(activeTabId);
-      // Cap history size to prevent unbounded growth
       if (tabHistory.length > TAB_HISTORY_MAX) {
         tabHistory = tabHistory.slice(tabHistory.length - TAB_HISTORY_MAX);
       }
     }
     activeTabId = id;
 
-    // Reset auto-grab flag so the new tab context can be detected
+    // Each tab has its own page context, so the previous auto-grab result doesn't apply.
     hasAttemptedAutoGrab = false;
 
     tabs.forEach(function (t) {
@@ -2013,14 +1949,9 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     updateNavButtons();
-
-    // Update sync pill for the newly active tab
     updateSyncPill();
-
-    // Try to detect the ticket and swap content for the new tab
     ticketSwapRun(id);
 
-    // Re-run find on the newly active tab if the find bar is still open
     if (findActive && findInput.value) {
       const wv = getActiveWebview();
       if (wv) {
@@ -2036,10 +1967,9 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     if (idx === -1) return;
 
-    // Don't close pinned tabs
     if (tabs[idx].pinned) return;
 
-    // Don't close the last tab - navigate it home instead
+    // Closing the last tab navigates home instead of leaving an empty window.
     if (tabs.length === 1) {
       tabs[0].webview.setAttribute("src", appSettings.defaultUrl);
       return;
@@ -2047,10 +1977,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const tab = tabs[idx];
 
-    // If closing the active tab, activate the most recent tab from history
     if (activeTabId === id) {
       let nextId = null;
-      // Pop from history until we find a tab that still exists and isn't the one being closed
+      // Walk back through history — stale IDs accumulate so we scan until finding one that still exists.
       while (tabHistory.length > 0) {
         const candidate = tabHistory.pop();
         if (
@@ -2063,7 +1992,6 @@ document.addEventListener("DOMContentLoaded", function () {
           break;
         }
       }
-      // Fallback to adjacent tab if no valid history
       if (!nextId) {
         const newIdx = idx > 0 ? idx - 1 : idx + 1;
         nextId = tabs[newIdx].id;
@@ -2071,12 +1999,8 @@ document.addEventListener("DOMContentLoaded", function () {
       activateTab(nextId);
     }
 
-    // Remove all references to this tab from history
-    tabHistory = tabHistory.filter(function (hId) {
-      return hId !== id;
-    });
+    tabHistory = tabHistory.filter(function (hId) { return hId !== id; });
 
-    // Record the closed tab so it can be reopened
     try {
       const closedUrl = tab.webview.getURL() || tab.webview.getAttribute("src");
       if (closedUrl) {
@@ -2085,15 +2009,10 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     } catch { /* webview may not be ready */ }
 
-    // Clean up sync state for the closed tab
     clearSyncState(id);
-
-    // Remove DOM elements
     tab.webview.remove();
     tab.tabEl.remove();
     tabs.splice(idx, 1);
-
-    // Save session after closing
     saveTabSession();
   }
 
@@ -2120,19 +2039,13 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     if (fromIdx === -1 || toIdx === -1) return;
 
-    // Remove from current position in array
     const movedTab = tabs.splice(fromIdx, 1)[0];
 
-    // Recalculate target index after removal
-    let newIdx = tabs.findIndex(function (t) {
-      return t.id === toId;
-    });
-    if (insertAfter) {
-      newIdx = newIdx + 1;
-    }
+    // Re-find the target index after splicing out the moved tab; offset by 1 if inserting after.
+    let newIdx = tabs.findIndex(function (t) { return t.id === toId; });
+    if (insertAfter) newIdx = newIdx + 1;
     tabs.splice(newIdx, 0, movedTab);
 
-    // Reorder DOM elements to match the tabs array
     for (let i = 0; i < tabs.length; i++) {
       tabList.appendChild(tabs[i].tabEl);
     }
@@ -2150,7 +2063,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const closeBtn = tab.tabEl.querySelector(".tab-close");
     if (closeBtn) closeBtn.style.display = "none";
 
-    // Move to the end of the pinned group (front of tab bar)
     const idx = tabs.indexOf(tab);
     if (idx > 0) {
       tabs.splice(idx, 1);
@@ -2193,7 +2105,6 @@ document.addEventListener("DOMContentLoaded", function () {
     e.preventDefault();
     contextMenuTabId = tabId;
 
-    // Show "Pin Tab" or "Unpin Tab" depending on current state
     const ctxTab = tabs.find(function (t) { return t.id === tabId; });
     const isTabPinned = ctxTab && ctxTab.pinned;
     const pinItem = tabContextMenu.querySelector('[data-action="pin"]');
@@ -2201,12 +2112,10 @@ document.addEventListener("DOMContentLoaded", function () {
     if (pinItem) pinItem.style.display = isTabPinned ? "none" : "";
     if (unpinItem) unpinItem.style.display = isTabPinned ? "" : "none";
 
-    // Position the menu at the cursor
     tabContextMenu.style.left = e.clientX + "px";
     tabContextMenu.style.top = e.clientY + "px";
     tabContextMenu.classList.add("visible");
 
-    // Ensure the menu doesn't overflow the window
     const rect = tabContextMenu.getBoundingClientRect();
     if (rect.right > window.innerWidth) {
       tabContextMenu.style.left =
@@ -2223,7 +2132,6 @@ document.addEventListener("DOMContentLoaded", function () {
     contextMenuTabId = null;
   }
 
-  // --- Single document click handler for dismissing all context menus ---
   document.addEventListener("click", function (e) {
     if (!e.target.closest("#tab-context-menu")) {
       hideTabContextMenu();
@@ -2243,7 +2151,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  // Handle context menu actions
   tabContextMenu.addEventListener("click", function (e) {
     const item = e.target.closest(".context-menu-item");
     if (!item || !contextMenuTabId) return;
@@ -2329,20 +2236,15 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  // --- New Tab button ---
   btnNewTab.addEventListener("click", function () {
     createTab(appSettings.defaultUrl, { activate: true });
   });
 
-
-  // --- Listen for new-tab requests from the main process ---
   window.backupAPI.onOpenInNewTab(function (url) {
     console.log("[Tab] Opening in new tab:", url);
     createTab(url, { activate: true });
   });
 
-  // --- Listen for webview self-close requests from the main process ---
-  // (e.g. ConnectWise "Save and Close" button calls window.close())
   window.backupAPI.onWebviewClose(function (webContentsId) {
     console.log(
       "[Tab] Webview close request for webContentsId:",
@@ -2361,13 +2263,12 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  // --- Restore tabs from previous session, or create a default tab ---
   async function initTabs() {
     try {
       const savedData = await window.backupAPI.loadTabs();
       if (savedData && savedData.length > 0) {
         for (let i = 0; i < savedData.length; i++) {
-          // Support both old string[] format and new {url, pinned}[] format
+          // Backwards-compatible with the old string[] format written before the {url,pinned} shape.
           const item = savedData[i];
           const url = typeof item === "string" ? item : (item.url || appSettings.defaultUrl);
           const pinned = typeof item === "object" && !!item.pinned;
@@ -2379,7 +2280,6 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (err) {
       console.error("[Tab] Error loading saved tabs:", err);
     }
-    // Fallback: create a single default tab
     createTab(appSettings.defaultUrl);
   }
 
@@ -2528,7 +2428,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const items = (e.clipboardData || {}).items;
     if (!items) return;
 
-    // Collect all image items first, then process them all
     const imageItems = [];
     for (let i = 0; i < items.length; i++) {
       if (items[i].type.indexOf("image/") === 0) {
@@ -2581,7 +2480,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
 
-    // Collect all image files, then process them all
     const imageFiles = [];
     for (let i = 0; i < files.length; i++) {
       if (files[i].type.indexOf("image/") === 0) {
@@ -2615,7 +2513,6 @@ document.addEventListener("DOMContentLoaded", function () {
   let panelCollapsed = false;
 
   function togglePanel() {
-    // Don't allow toggling if the panel is disabled in settings
     if (!appSettings.notePanelEnabled) return;
 
     panelCollapsed = !panelCollapsed;
@@ -2629,7 +2526,6 @@ document.addEventListener("DOMContentLoaded", function () {
       btnExpand.classList.remove("visible");
     }
 
-    // Persist collapsed state
     appSettings.panelCollapsed = panelCollapsed;
     window.backupAPI.saveSettings(appSettings);
   }
@@ -2672,8 +2568,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ==================== Grab Ticket from ConnectWise ====================
 
-  // Shared ticket-grab script injected into webviews.
-  // The backgroundAutoGrab() and manual grab button both use this.
   const TICKET_GRAB_SCRIPT = `(function() {
   var selectors = [
     ".cw-header-ticket-number",
@@ -2747,10 +2641,8 @@ document.addEventListener("DOMContentLoaded", function () {
 })()`;
 
   // ==================== Auto-Grab on First Typing ====================
-  // Triggered by the first input event when ticket ID is empty.
-  // Runs in the background via .then()/.catch() and NEVER calls
-  // noteContent.focus() — so the editor is never interrupted.
-  // Reset on tab switch (in activateTab) and on Clear.
+  // Fires once per tab context (reset on tab switch and Clear).
+  // Runs fully asynchronously — never focuses the editor or blocks typing.
   let hasAttemptedAutoGrab = false;
 
   function backgroundAutoGrab() {
@@ -2760,7 +2652,7 @@ document.addEventListener("DOMContentLoaded", function () {
     webview
       .executeJavaScript(TICKET_GRAB_SCRIPT)
       .then(function (result) {
-        // Only fill if the user hasn't manually entered something while we were scanning
+        // Abort if the user has already typed a ticket ID while the scan was running.
         if (ticketIdInput.value.trim()) return;
         if (result && result.ticket) {
           ticketIdInput.value = result.ticket;
@@ -2768,11 +2660,8 @@ document.addEventListener("DOMContentLoaded", function () {
           autosaveStatus.className = "saved";
           refreshTicketList(result.ticket);
         }
-        // If no ticket found, do nothing — the user can keep typing freely
       })
-      .catch(function () {
-        // Silently ignore errors — don't interrupt the user
-      });
+      .catch(function () {});
   }
 
   // ==================== Autosave (Debounced) ====================
@@ -2820,7 +2709,6 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   noteContent.addEventListener("input", function () {
-    // On first typing with no ticket ID, kick off a background grab
     if (!ticketIdInput.value.trim() && !hasAttemptedAutoGrab) {
       hasAttemptedAutoGrab = true;
       backgroundAutoGrab();
@@ -2829,7 +2717,6 @@ document.addEventListener("DOMContentLoaded", function () {
     autosaveStatus.className = "saving";
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
-    // Live sync: schedule a push to the active CW field
     if (activeTabId) schedulePush(activeTabId);
   });
 
@@ -2913,20 +2800,19 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   // ==================== Focus Management ======================================
-  // In Electron, the <webview> runs in a separate guest process that can
-  // hold OS-level focus even when the user clicks in the renderer's DOM.
-  // Native confirm()/alert() dialogs transfer OS focus to the webview guest
-  // and never give it back. We use a custom in-page dialog instead.
+  // The <webview> guest process holds OS-level focus independently of the renderer.
+  // Native confirm()/alert() hand focus to the guest and never return it, which is
+  // why we use a custom in-page confirm dialog instead of the native one.
 
-  // Any mousedown on the side panel should reclaim focus from the webview
-  // so that inputs and the contenteditable editor respond immediately.
+  // Mousedown on the panel explicitly reclaims focus before the user's click lands,
+  // so inputs and the contenteditable respond immediately without a second click.
   sidePanel.addEventListener("mousedown", function () {
     const webview = getActiveWebview();
     if (webview) webview.blur();
     window.focus();
   });
 
-  // --- Custom confirm dialog (uses elements declared at top of DOMContentLoaded) ---
+  // Elements declared at the top of DOMContentLoaded so the Escape keydown handler can access them.
   function showConfirm(message, defaultYes = false) {
     return new Promise(function (resolve) {
       confirmResolve = resolve;
@@ -2965,7 +2851,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     clearTimeout(autosaveTimer);
 
-    // Auto-save a snapshot so the content is recoverable after clearing
     const snapTicketId = ticketIdInput.value.trim() || "general";
     try {
       await window.backupAPI.saveNote({ ticketId: snapTicketId, noteContent: getEditorContent(), isManual: true });
@@ -2974,7 +2859,7 @@ document.addEventListener("DOMContentLoaded", function () {
       console.error("[Clear] Auto-snapshot error:", err);
     }
 
-    // Remove the autosave entry so the editor starts blank on next launch
+    // Delete the autosave entry so the next launch doesn't restore a note the user explicitly cleared.
     if (lastSavedTicketId) {
       await window.backupAPI.deleteAutosave(lastSavedTicketId);
     }
@@ -3038,7 +2923,6 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   // ==================== History ====================
-  // --- Debounced refreshTicketList for navigation events ---
   let refreshTicketListTimer = null;
   function debouncedRefreshTicketList() {
     clearTimeout(refreshTicketListTimer);
@@ -3048,8 +2932,6 @@ document.addEventListener("DOMContentLoaded", function () {
   async function refreshTicketList(selectTicketId = null) {
     try {
       const tickets = await window.backupAPI.getAllTickets();
-
-      // Sort tickets based on current settings
       const sortField = appSettings.ticketSortField || "lastUpdated";
       const sortDir = appSettings.ticketSortDirection || "desc";
 
@@ -3189,7 +3071,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // ==================== Load Autosaved Data on Start ====================
   async function loadAutosaved() {
     try {
-      // If the editor was blank when the app last closed, don't restore anything.
+      // If the user cleared the editor before closing, don't restore the previous draft.
       const editorState = await window.backupAPI.loadEditorState();
       if (editorState && editorState.blankAtClose) {
         return;
@@ -3230,56 +3112,47 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ==================== Keyboard Shortcuts ====================
   document.addEventListener("keydown", function (e) {
-    // Ctrl+Shift+S - Save snapshot
     if (e.ctrlKey && e.shiftKey && (e.key === "S" || e.key === "s")) {
       e.preventDefault();
       btnSave.click();
     }
-    // Ctrl+Shift+B - Toggle side panel
     if (e.ctrlKey && e.shiftKey && (e.key === "B" || e.key === "b")) {
       e.preventDefault();
       togglePanel();
     }
-    // Ctrl+, - Open settings
     if (e.ctrlKey && !e.shiftKey && e.key === ",") {
       e.preventDefault();
       openSettings();
     }
-    // Ctrl+F - Find in page
     if (e.ctrlKey && !e.shiftKey && (e.key === "f" || e.key === "F")) {
       e.preventDefault();
       showFindBar();
     }
-    // Alt+Left - Go back
     if (e.altKey && e.key === "ArrowLeft") {
       e.preventDefault();
       const wv = getActiveWebview();
       if (wv) try { wv.goBack(); } catch { /* ignore */ }
     }
-    // Alt+Right - Go forward
     if (e.altKey && e.key === "ArrowRight") {
       e.preventDefault();
       const wv = getActiveWebview();
       if (wv) try { wv.goForward(); } catch { /* ignore */ }
     }
-    // F5 - Refresh
     if (e.key === "F5" && !e.ctrlKey && !e.altKey && !e.shiftKey) {
       e.preventDefault();
       const wv = getActiveWebview();
       if (wv) try { wv.reload(); } catch { /* ignore */ }
     }
-    // Ctrl+T - New tab
     if (e.ctrlKey && !e.shiftKey && e.key === "t") {
       e.preventDefault();
       createTab(appSettings.defaultUrl, { activate: true });
     }
-    // Ctrl+Shift+T - Reopen last closed tab
     if (e.ctrlKey && e.shiftKey && (e.key === "T" || e.key === "t")) {
       e.preventDefault();
       const closed = closedTabHistory.pop();
       if (closed) createTab(closed.url, { activate: true, pinned: closed.pinned });
     }
-    // Ctrl+W - Close current tab (only when not typing in notes)
+    // Ctrl+W is skipped when focus is in the notes panel — the user may be typing a "w".
     if (e.ctrlKey && !e.shiftKey && e.key === "w") {
       if (
         document.activeElement !== noteContent &&
@@ -3289,31 +3162,22 @@ document.addEventListener("DOMContentLoaded", function () {
         if (activeTabId) closeTab(activeTabId);
       }
     }
-    // Ctrl+Tab - Next tab
     if (e.ctrlKey && !e.shiftKey && e.key === "Tab") {
       e.preventDefault();
-      const idx = tabs.findIndex(function (t) {
-        return t.id === activeTabId;
-      });
+      const idx = tabs.findIndex(function (t) { return t.id === activeTabId; });
       if (idx !== -1 && tabs.length > 1) {
-        const nextIdx = (idx + 1) % tabs.length;
-        activateTab(tabs[nextIdx].id);
+        activateTab(tabs[(idx + 1) % tabs.length].id);
       }
     }
-    // Ctrl+Shift+Tab - Previous tab
     if (e.ctrlKey && e.shiftKey && e.key === "Tab") {
       e.preventDefault();
-      const idx = tabs.findIndex(function (t) {
-        return t.id === activeTabId;
-      });
+      const idx = tabs.findIndex(function (t) { return t.id === activeTabId; });
       if (idx !== -1 && tabs.length > 1) {
-        const prevIdx = (idx - 1 + tabs.length) % tabs.length;
-        activateTab(tabs[prevIdx].id);
+        activateTab(tabs[(idx - 1 + tabs.length) % tabs.length].id);
       }
     }
   });
 
-  // ==================== Save tabs before window closes ====================
   window.addEventListener("beforeunload", function () {
     const tabData = [];
     for (let i = 0; i < tabs.length; i++) {
@@ -3322,20 +3186,16 @@ document.addEventListener("DOMContentLoaded", function () {
         if (url && url !== "" && url !== "about:blank") {
           tabData.push({ url, pinned: tabs[i].pinned || false });
         }
-      } catch {
-        /* ignore */
-      }
+      } catch { /* webview may have been destroyed already */ }
     }
     if (tabData.length > 0) {
-      // Use fire-and-forget send (not async invoke) so the message is
-      // queued synchronously before the renderer process is destroyed.
+      // ipcRenderer.send (not invoke) because the renderer may be destroyed before an async
+      // round-trip completes; main handles this with synchronous fs.writeFileSync.
       window.backupAPI.saveTabsSync(tabData);
     }
 
-    // Persist whether the editor was blank at close so we can skip draft
-    // restoration on the next launch if the user had cleared the editor.
-    const blankAtClose =
-      isEditorEmpty() && !ticketIdInput.value.trim();
+    // Persisted so the next launch can skip draft restoration when the user closed cleanly.
+    const blankAtClose = isEditorEmpty() && !ticketIdInput.value.trim();
     window.backupAPI.saveEditorStateSync({ blankAtClose });
   });
 });

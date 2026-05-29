@@ -510,8 +510,7 @@ function registerIpcHandlers() {
       const timestamp = new Date().toISOString();
       const safeTicketId = sanitizeTicketId(ticketId);
 
-      // Always update the autosave file (latest state of all drafts).
-      // Serialized through withAutosaveLock to prevent concurrent read-modify-write races.
+      // Serialized through withAutosaveLock to prevent concurrent read-modify-write races on autosave.json.
       await withAutosaveLock(async () => {
         let autosaveData = {};
         try {
@@ -1014,7 +1013,6 @@ electron.app.whenReady().then(() => {
     },
   );
 
-  // Track all downloads from webview sessions
   electron.session.defaultSession.on("will-download", (_event, item) => {
     const id = nextDownloadId++;
     const record = {
@@ -1049,13 +1047,8 @@ electron.app.whenReady().then(() => {
     });
   });
 
-  // Register all IPC handlers
   registerIpcHandlers();
-
-  // Create the window
   createWindow();
-
-  // Clean up old backups after window is created (non-blocking)
   setTimeout(() => cleanupOldBackups(), 0);
 
   electron.app.on("activate", () => {
