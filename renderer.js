@@ -50,6 +50,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnCloseDownloads = document.getElementById("btn-close-downloads");
   const btnClearDownloads = document.getElementById("btn-clear-downloads");
   const settingRetentionDays = document.getElementById("setting-retention-days");
+  const settingSnapshotThreshold = document.getElementById("setting-snapshot-threshold");
   const settingSortField = document.getElementById("setting-sort-field");
   const settingSortDirection = document.getElementById("setting-sort-direction");
   const settingSignature = document.getElementById("setting-signature");
@@ -118,6 +119,7 @@ document.addEventListener("DOMContentLoaded", function () {
     theme: "dark",
     noteTemplates: [],
     liveSyncEnabled: true,
+    snapshotThreshold: 5,
     aiProvider: "none",
     aiModelName: "",
     aiApiKey: "",
@@ -129,6 +131,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     settingNotePanel.checked = settings.notePanelEnabled;
     settingRetentionDays.value = settings.backupRetentionDays;
+    settingSnapshotThreshold.value = settings.snapshotThreshold ?? 5;
     settingSortField.value = settings.ticketSortField || "lastUpdated";
     settingSortDirection.value = settings.ticketSortDirection || "desc";
 
@@ -150,7 +153,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const aiEnabled = settings.aiProvider && settings.aiProvider !== "none";
     if (settingAiProvider) settingAiProvider.value = settings.aiProvider || "none";
-    if (settingAiModel) settingAiModel.value = settings.aiModelName || "";
     if (settingAiKey) {
       settingAiKey.value = "";
       // Never restore the raw key — show a masked placeholder so it's not visible in the DOM.
@@ -188,12 +190,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
     settingNotePanel.checked = appSettings.notePanelEnabled;
     settingRetentionDays.value = appSettings.backupRetentionDays;
+    settingSnapshotThreshold.value = appSettings.snapshotThreshold ?? 5;
     settingSortField.value = appSettings.ticketSortField || "lastUpdated";
     settingSortDirection.value = appSettings.ticketSortDirection || "desc";
     settingSignature.innerHTML = appSettings.signatureHtml || "";
     settingDefaultUrl.value = appSettings.defaultUrl || "https://na.myconnectwise.net/";
     renderTemplateList();
     settingsOverlay.classList.add("visible");
+    if (appSettings.aiProvider === "hatz") populateAiModelDropdown();
   }
 
   function closeSettings() {
@@ -219,22 +223,64 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  async function populateAiModelDropdown() {
+    if (!settingAiModel) return;
+    if (!appSettings.aiApiKey) {
+      settingAiModel.innerHTML = '<option value="" disabled selected>Enter API key first</option>';
+      settingAiModel.disabled = true;
+      return;
+    }
+    settingAiModel.innerHTML = '<option value="" disabled selected>Loading models…</option>';
+    settingAiModel.disabled = true;
+    const result = await window.backupAPI.aiGetModels({
+      aiProvider: appSettings.aiProvider,
+      aiApiKey: appSettings.aiApiKey,
+    });
+    if (result.error || !result.models || result.models.length === 0) {
+      const detail = result.error || "Empty model list returned";
+      console.error("[AI models]", detail, result);
+      settingAiModel.innerHTML = `<option value="" disabled selected>Error: ${detail.substring(0, 80)}</option>`;
+      settingAiModel.disabled = false;
+      return;
+    }
+    settingAiModel.innerHTML = "";
+    for (const { value, label } of result.models) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = label;
+      settingAiModel.appendChild(opt);
+    }
+    // If the saved model isn't in the list, add it so the user's saved choice is preserved
+    const saved = appSettings.aiModelName;
+    const values = result.models.map((m) => m.value);
+    if (saved && !values.includes(saved)) {
+      const opt = document.createElement("option");
+      opt.value = saved;
+      opt.textContent = saved;
+      settingAiModel.insertBefore(opt, settingAiModel.firstChild);
+    }
+    settingAiModel.value = saved || values[0] || "";
+    settingAiModel.disabled = false;
+    // Persist if the first-load selection differs from what was saved
+    if (settingAiModel.value !== saved) {
+      appSettings.aiModelName = settingAiModel.value;
+      window.backupAPI.saveSettings(appSettings);
+    }
+  }
+
   if (settingAiProvider) {
     settingAiProvider.addEventListener("change", function () {
       appSettings.aiProvider = settingAiProvider.value;
       window.backupAPI.saveSettings(appSettings);
       applySettings(appSettings);
+      if (appSettings.aiProvider === "hatz") populateAiModelDropdown();
     });
   }
 
-  let aiModelSaveTimer = null;
   if (settingAiModel) {
-    settingAiModel.addEventListener("input", function () {
-      clearTimeout(aiModelSaveTimer);
-      aiModelSaveTimer = setTimeout(function () {
-        appSettings.aiModelName = settingAiModel.value.trim();
-        window.backupAPI.saveSettings(appSettings);
-      }, 800);
+    settingAiModel.addEventListener("change", function () {
+      appSettings.aiModelName = settingAiModel.value;
+      window.backupAPI.saveSettings(appSettings);
     });
   }
 
@@ -246,6 +292,7 @@ document.addEventListener("DOMContentLoaded", function () {
         window.backupAPI.saveSettings(appSettings);
         settingAiKey.value = "";
         settingAiKey.placeholder = "••••••••  (saved)";
+        populateAiModelDropdown();
       }
     });
   }
@@ -257,6 +304,15 @@ document.addEventListener("DOMContentLoaded", function () {
     if (val > 365) val = 365;
     settingRetentionDays.value = val;
     appSettings.backupRetentionDays = val;
+    window.backupAPI.saveSettings(appSettings);
+  });
+
+  settingSnapshotThreshold.addEventListener("change", function () {
+    let val = parseInt(settingSnapshotThreshold.value, 10);
+    if (isNaN(val) || val < 1) val = 1;
+    if (val > 9999) val = 9999;
+    settingSnapshotThreshold.value = val;
+    appSettings.snapshotThreshold = val;
     window.backupAPI.saveSettings(appSettings);
   });
 
@@ -450,7 +506,25 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    const plainText = getEditorPlainText();
+    // Strip the saved signature from the end before sending to AI so it is never reworded.
+    // Re-append the original signature HTML when applying the result.
+    const sigHtml = appSettings.signatureHtml || "";
+    const sigPlain = sigHtml
+      ? new DOMParser().parseFromString(sigHtml, "text/html").body.innerText.trim()
+      : "";
+    const fullText = getEditorPlainText();
+    const trimmedFull = fullText.trimEnd();
+    const textToSend =
+      sigPlain && trimmedFull.endsWith(sigPlain)
+        ? trimmedFull.slice(0, -sigPlain.length).trimEnd()
+        : fullText;
+
+    if (!textToSend.trim()) {
+      autosaveStatus.textContent = "Nothing to suggest — add some notes first";
+      autosaveStatus.className = "";
+      return;
+    }
+
     showAiOverlay("✨ AI Suggestion", '<div class="ai-loading">Thinking…</div>', null);
 
     let ticketContext = "";
@@ -463,7 +537,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     let response;
     try {
-      response = await window.backupAPI.aiSuggest({ text: plainText, ticketContext, settings: aiSettings() });
+      response = await window.backupAPI.aiSuggest({ text: textToSend, ticketContext, settings: aiSettings() });
     } catch (err) {
       aiDialogBody.innerHTML = '<p class="ai-error">Request failed — check your connection.</p>';
       console.error("[AI] Suggest error:", err);
@@ -488,7 +562,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const resultText = response.result;
     aiApplyCallback = async function () {
       await snapshotBeforeBulkImport(resultText);
-      setEditorContent(escaped);
+      const finalHtml = sigHtml ? escaped + "<br>" + sigHtml : escaped;
+      setEditorContent(finalHtml);
       autosaveStatus.textContent = "AI suggestion applied";
       autosaveStatus.className = "saved";
       clearTimeout(autosaveTimer);
@@ -1330,12 +1405,13 @@ document.addEventListener("DOMContentLoaded", function () {
     autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
   }
 
-  // Save a snapshot before any bulk import that changes the panel by more than 4 chars.
+  // Save a snapshot before any bulk import that changes the panel beyond the configured threshold.
   // Prevents losing panel content when live sync or a manual pull overwrites it.
   async function snapshotBeforeBulkImport(incomingPlainText) {
     if (isEditorEmpty()) return;
     const currentText = getEditorPlainText();
-    if (Math.abs(currentText.length - incomingPlainText.length) <= 4) return;
+    const threshold = appSettings.snapshotThreshold ?? 5;
+    if (Math.abs(currentText.length - incomingPlainText.length) < threshold) return;
     const ticketId = ticketIdInput.value.trim() || "general";
     try {
       const html = getEditorContent();

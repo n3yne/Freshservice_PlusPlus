@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld("backupAPI", {
   saveSettings: (settings) => ipcRenderer.invoke("save-settings", settings),
   aiSuggest: (data) => ipcRenderer.invoke("ai-suggest", data),
   aiSummarize: (data) => ipcRenderer.invoke("ai-summarize", data),
+  aiGetModels: (data) => ipcRenderer.invoke("ai-get-models", data),
   getDownloads: () => ipcRenderer.invoke("get-downloads"),
   openDownloadFile: (savePath) => ipcRenderer.invoke("open-download-file", savePath),
   showDownloadFolder: (savePath) => ipcRenderer.invoke("show-download-folder", savePath),

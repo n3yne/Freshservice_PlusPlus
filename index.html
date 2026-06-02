@@ -376,6 +376,30 @@
             </p>
 
             <div class="settings-field">
+              <label class="settings-field-label" for="setting-snapshot-threshold"
+                >Snapshot Threshold</label
+              >
+              <div class="settings-field-row">
+                <input
+                  type="number"
+                  id="setting-snapshot-threshold"
+                  class="settings-number-input"
+                  min="1"
+                  max="9999"
+                  step="1"
+                  value="5"
+                />
+                <span class="settings-field-suffix">chars</span>
+              </div>
+            </div>
+            <p
+              class="settings-description settings-description-field settings-description-field-spaced"
+            >
+              Minimum character difference between panel content and the last snapshot before a new
+              snapshot is auto-saved on tab switch or sync pull.
+            </p>
+
+            <div class="settings-field">
               <label class="settings-field-label" for="setting-sort-field"
                 >Ticket Sort Order</label
               >
@@ -422,15 +446,9 @@
             <div id="ai-provider-fields" class="ai-provider-fields">
               <div class="settings-field settings-field-column">
                 <label class="settings-field-label" for="setting-ai-model">Model</label>
-                <input
-                  type="text"
-                  id="setting-ai-model"
-                  class="settings-text-input"
-                  placeholder="e.g. gpt-4o"
-                  maxlength="100"
-                  autocomplete="off"
-                  spellcheck="false"
-                />
+                <select id="setting-ai-model" class="settings-select-input">
+                  <option value="" disabled selected>Enter API key first</option>
+                </select>
               </div>
               <div class="settings-field settings-field-column">
                 <label class="settings-field-label" for="setting-ai-key">API Key</label>

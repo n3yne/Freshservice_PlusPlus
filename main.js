@@ -941,6 +941,42 @@ function registerIpcHandlers() {
     }
   });
 
+  // AI: fetch available model IDs from the configured provider
+  electron.ipcMain.handle("ai-get-models", async (_event, { aiProvider, aiApiKey }) => {
+    if (aiProvider !== "hatz" || !aiApiKey) {
+      return { error: "No provider configured" };
+    }
+    try {
+      const resp = await fetch("https://ai.hatz.ai/v1/chat/models", {
+        headers: { "X-API-Key": aiApiKey },
+      });
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => "");
+        const err = `API error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`;
+        console.error("[ai-get-models]", err);
+        return { error: err };
+      }
+      const json = await resp.json();
+      console.log("[ai-get-models] raw response:", JSON.stringify(json).substring(0, 500));
+      // Handle both OpenAI-compatible { data: [{id}, ...] } and plain array shapes
+      const raw = Array.isArray(json) ? json : (json.data || json.models || []);
+      // Hatz API uses "name" as the model identifier; fall back to "id" for OpenAI-compatible providers
+      const models = raw
+        .map((m) => {
+          if (typeof m === "string") return { value: m, label: m };
+          const value = m?.name || m?.id;
+          const label = m?.display_name ? `${m.display_name} (${value})` : value;
+          return value ? { value, label } : null;
+        })
+        .filter(Boolean);
+      console.log("[ai-get-models] parsed models:", models);
+      return { models };
+    } catch (err) {
+      console.error("[ai-get-models] fetch failed:", err);
+      return { error: err.message || String(err) };
+    }
+  });
+
   // Load saved tab URLs from disk
   electron.ipcMain.handle("load-tabs", async () => {
     try {
