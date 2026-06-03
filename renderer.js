@@ -103,6 +103,14 @@ document.addEventListener("DOMContentLoaded", function () {
   const confirmNo = document.getElementById("confirm-no");
   let confirmResolve = null;
 
+  // --- Diff Overlay Elements (declared early — referenced by Escape handler) ---
+  const diffOverlay = document.getElementById("diff-overlay");
+  const diffSnapshotName = document.getElementById("diff-snapshot-name");
+  const diffBody = document.getElementById("diff-body");
+  const btnDiffClose = document.getElementById("btn-diff-close");
+  const btnDiffRestore = document.getElementById("btn-diff-restore");
+  const btnDiffCancel = document.getElementById("btn-diff-cancel");
+
   // ==================== Constants ====================
   const SIG_SAVE_DEBOUNCE = 800; // ms — signature editor save delay
   const MENU_EDGE_PADDING = 4; // px — context menu window-edge padding
@@ -2442,6 +2450,7 @@ document.addEventListener("DOMContentLoaded", function () {
       closeSettings();
       if (confirmOverlay.classList.contains("visible")) closeConfirm(false);
       if (aiOverlay.classList.contains("visible")) closeAiOverlay();
+      if (diffOverlay.classList.contains("visible")) closeDiffOverlay();
     }
   });
 
@@ -3324,11 +3333,13 @@ document.addEventListener("DOMContentLoaded", function () {
         div.appendChild(previewDiv);
 
         div.addEventListener("click", function () {
-          setEditorContent(item.content);
-          ticketIdInput.value = ticketId;
-          lastSavedTicketId = ticketId;
-          autosaveStatus.textContent = "Restored from snapshot";
-          autosaveStatus.className = "saved";
+          showDiffOverlay(displayName, item.content, function () {
+            setEditorContent(item.content);
+            ticketIdInput.value = ticketId;
+            lastSavedTicketId = ticketId;
+            autosaveStatus.textContent = "Restored from snapshot";
+            autosaveStatus.className = "saved";
+          });
         });
 
         historyList.appendChild(div);
@@ -3344,6 +3355,140 @@ document.addEventListener("DOMContentLoaded", function () {
 
   ticketSelect.addEventListener("change", function () {
     loadHistory(ticketSelect.value);
+  });
+
+  // ==================== Snapshot Diff Overlay ====================
+
+  function computeLineDiff(oldLines, newLines) {
+    const m = oldLines.length;
+    const n = newLines.length;
+    if (m > 500 || n > 500) return null;
+    const dp = [];
+    for (let i = 0; i <= m; i++) {
+      dp.push(new Array(n + 1).fill(0));
+    }
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        if (oldLines[i - 1] === newLines[j - 1]) {
+          dp[i][j] = dp[i - 1][j - 1] + 1;
+        } else {
+          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+        }
+      }
+    }
+    const result = [];
+    let i = m;
+    let j = n;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+        result.unshift({ type: "equal", text: oldLines[i - 1] });
+        i--;
+        j--;
+      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        result.unshift({ type: "add", text: newLines[j - 1] });
+        j--;
+      } else {
+        result.unshift({ type: "remove", text: oldLines[i - 1] });
+        i--;
+      }
+    }
+    return result;
+  }
+
+  const DIFF_CONTEXT = 3;
+
+  function renderDiff(currentText, snapshotText) {
+    const oldLines = currentText.split("\n");
+    const newLines = snapshotText.split("\n");
+    const hunks = computeLineDiff(oldLines, newLines);
+
+    if (!hunks) {
+      diffBody.innerHTML = '<div class="diff-identical">Notes are too large to compare — click Restore to apply anyway.</div>';
+      return;
+    }
+    if (!hunks.some(function (h) { return h.type !== "equal"; })) {
+      diffBody.innerHTML = '<div class="diff-identical">Snapshot is identical to the current content.</div>';
+      return;
+    }
+
+    const visible = new Array(hunks.length).fill(false);
+    for (let k = 0; k < hunks.length; k++) {
+      if (hunks[k].type !== "equal") {
+        const lo = Math.max(0, k - DIFF_CONTEXT);
+        const hi = Math.min(hunks.length - 1, k + DIFF_CONTEXT);
+        for (let c = lo; c <= hi; c++) visible[c] = true;
+      }
+    }
+
+    const frag = document.createDocumentFragment();
+    let k = 0;
+    while (k < hunks.length) {
+      if (!visible[k]) {
+        let end = k;
+        while (end < hunks.length && !visible[end]) end++;
+        const count = end - k;
+        const sep = document.createElement("div");
+        sep.className = "diff-hunk-sep";
+        sep.textContent = "… " + count + " unchanged line" + (count === 1 ? "" : "s") + " …";
+        frag.appendChild(sep);
+        k = end;
+      } else {
+        const h = hunks[k];
+        const line = document.createElement("div");
+        if (h.type === "equal") {
+          line.className = "diff-line diff-line-equal";
+          line.textContent = "  " + h.text;
+        } else if (h.type === "remove") {
+          line.className = "diff-line diff-line-remove";
+          line.textContent = "- " + h.text;
+        } else {
+          line.className = "diff-line diff-line-add";
+          line.textContent = "+ " + h.text;
+        }
+        frag.appendChild(line);
+        k++;
+      }
+    }
+    diffBody.innerHTML = "";
+    diffBody.appendChild(frag);
+  }
+
+  let pendingDiffRestore = null;
+
+  function htmlToText(html) {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    div.querySelectorAll("br").forEach(function (br) {
+      br.replaceWith(document.createTextNode("\n"));
+    });
+    div.querySelectorAll("div, p, li, blockquote, h1, h2, h3, h4, h5, h6").forEach(function (el) {
+      el.prepend(document.createTextNode("\n"));
+    });
+    return (div.textContent || "").replace(/^\n/, "").replace(/\n{3,}/g, "\n\n");
+  }
+
+  function showDiffOverlay(snapshotName, snapshotContent, onRestore) {
+    const currentText = noteContent.innerText;
+    const snapshotText = htmlToText(snapshotContent);
+    diffSnapshotName.textContent = snapshotName;
+    renderDiff(currentText, snapshotText);
+    pendingDiffRestore = onRestore;
+    diffOverlay.classList.add("visible");
+  }
+
+  function closeDiffOverlay() {
+    diffOverlay.classList.remove("visible");
+    pendingDiffRestore = null;
+  }
+
+  btnDiffClose.addEventListener("click", closeDiffOverlay);
+  btnDiffCancel.addEventListener("click", closeDiffOverlay);
+  diffOverlay.addEventListener("click", function (e) {
+    if (e.target === diffOverlay) closeDiffOverlay();
+  });
+  btnDiffRestore.addEventListener("click", function () {
+    if (pendingDiffRestore) pendingDiffRestore();
+    closeDiffOverlay();
   });
 
   // ==================== Delete Saved Ticket ====================
@@ -3480,6 +3625,21 @@ document.addEventListener("DOMContentLoaded", function () {
       const idx = tabs.findIndex(function (t) { return t.id === activeTabId; });
       if (idx !== -1 && tabs.length > 1) {
         activateTab(tabs[(idx - 1 + tabs.length) % tabs.length].id);
+      }
+    }
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
+      const tabIdx = parseInt(e.key, 10) - 1;
+      if (tabIdx < tabs.length) {
+        e.preventDefault();
+        activateTab(tabs[tabIdx].id);
+      }
+    }
+    if (e.ctrlKey && e.shiftKey && (e.key === "V" || e.key === "v")) {
+      if (document.activeElement === noteContent || noteContent.contains(document.activeElement)) {
+        e.preventDefault();
+        navigator.clipboard.readText().then(function (text) {
+          if (text) document.execCommand("insertText", false, text);
+        }).catch(function () { /* clipboard access denied */ });
       }
     }
   });

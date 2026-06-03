@@ -625,6 +625,28 @@
       </div>
     </div>
 
+    <!-- Snapshot Diff Overlay -->
+    <div id="diff-overlay" class="diff-overlay">
+      <div class="diff-dialog">
+        <div class="diff-dialog-header">
+          <h3>Compare Snapshot</h3>
+          <button type="button" id="btn-diff-close" class="settings-close" title="Close">&times;</button>
+        </div>
+        <div class="diff-meta">
+          <span id="diff-snapshot-name" class="diff-snapshot-name"></span>
+          <div class="diff-legend">
+            <span class="diff-legend-item diff-remove-legend">&#x2212; Current</span>
+            <span class="diff-legend-item diff-add-legend">+ Snapshot</span>
+          </div>
+        </div>
+        <div id="diff-body" class="diff-body"></div>
+        <div class="diff-dialog-footer">
+          <button type="button" id="btn-diff-restore" class="btn btn-primary">Restore this snapshot</button>
+          <button type="button" id="btn-diff-cancel" class="btn btn-secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Tab Context Menu -->
     <div id="tab-context-menu" class="context-menu">
       <div class="context-menu-item" data-action="refresh">&#8635; Refresh Tab</div>

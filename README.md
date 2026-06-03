@@ -56,10 +56,17 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 |---|---|
 | `Ctrl+Shift+S` | Save snapshot |
 | `Ctrl+Shift+B` | Toggle side panel |
+| `Ctrl+Shift+V` | Paste as plain text (in note editor) |
 | `Ctrl+F` | Find in page |
 | `Alt+Left` | Navigate back |
 | `Alt+Right` | Navigate forward |
 | `F5` | Refresh active tab |
+| `Ctrl+T` | New tab |
+| `Ctrl+W` | Close tab |
+| `Ctrl+Shift+T` | Reopen closed tab |
+| `Ctrl+Tab` | Next tab |
+| `Ctrl+Shift+Tab` | Previous tab |
+| `Ctrl+1` – `Ctrl+9` | Switch to tab by position |
 
 ---
 
