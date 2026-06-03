@@ -1540,8 +1540,6 @@ body[data-theme="light"] .confirm-overlay {
 
 .downloads-panel {
   position: fixed;
-  top: 36px;
-  right: 8px;
   width: 360px;
   max-height: 480px;
   background: var(--panel-bg);

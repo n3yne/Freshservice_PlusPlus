@@ -509,9 +509,16 @@ document.addEventListener("DOMContentLoaded", function () {
     // Strip the saved signature from the end before sending to AI so it is never reworded.
     // Re-append the original signature HTML when applying the result.
     const sigHtml = appSettings.signatureHtml || "";
-    const sigPlain = sigHtml
-      ? new DOMParser().parseFromString(sigHtml, "text/html").body.innerText.trim()
-      : "";
+    // DOMParser produces a non-rendered document, so innerText falls back to textContent
+    // and does not convert <br> to \n. Attach a live element instead for correct extraction.
+    let sigPlain = "";
+    if (sigHtml) {
+      const tmp = document.createElement("div");
+      document.body.appendChild(tmp);
+      tmp.innerHTML = sigHtml;
+      sigPlain = tmp.innerText.trim();
+      document.body.removeChild(tmp);
+    }
     const fullText = getEditorPlainText();
     const trimmedFull = fullText.trimEnd();
     const textToSend =
@@ -704,6 +711,11 @@ document.addEventListener("DOMContentLoaded", function () {
     } else {
       downloadsList.innerHTML = items.map(renderDownloadItem).join("");
     }
+    // Align the panel's right edge with the button's right edge so it opens leftward
+    const btnRect = btnDownloads.getBoundingClientRect();
+    downloadsPanel.style.top = (btnRect.bottom + 4) + "px";
+    downloadsPanel.style.right = (window.innerWidth - btnRect.right) + "px";
+
     downloadsPanel.classList.add("visible");
     updateDownloadBadge(items);
   }
@@ -1758,6 +1770,13 @@ document.addEventListener("DOMContentLoaded", function () {
     webview.style.height = "100%";
     webviewContainer.appendChild(webview);
 
+    // Clicks inside a webview don't bubble to document, so close floating panels on webview focus
+    webview.addEventListener("focus", function () {
+      closeDownloadsPanel();
+      hideTabContextMenu();
+      templateDropdown.classList.remove("visible");
+    });
+
     // Create tab button
     const tabEl = document.createElement("div");
     tabEl.className = "tab-item";
@@ -2212,6 +2231,9 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!e.target.closest("#tab-context-menu")) {
       hideTabContextMenu();
     }
+    if (!e.target.closest("#downloads-panel") && !e.target.closest("#btn-downloads")) {
+      closeDownloadsPanel();
+    }
     if (!e.target.closest("#template-dropdown") && !e.target.closest("#btn-insert-template")) {
       templateDropdown.classList.remove("visible");
     }
@@ -2247,6 +2269,12 @@ document.addEventListener("DOMContentLoaded", function () {
         if (closed) {
           createTab(closed.url, { activate: true, pinned: closed.pinned });
         }
+        break;
+      }
+
+      case "copy-url": {
+        const urlToCopy = getTabUrl(targetTabId);
+        if (urlToCopy) navigator.clipboard.writeText(urlToCopy).catch(() => {});
         break;
       }
 
