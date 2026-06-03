@@ -1,66 +1,126 @@
-# ConnectWise Backup Wrapper
+# ConnectWise Manage++
 
-An Electron-based wrapper for ConnectWise that automatically backs up your ticket notes to prevent data loss when the website crashes.
+An Electron-based wrapper for ConnectWise Manage that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, and quality-of-life browser improvements on top of the standard web interface.
+
+**Current version:** 0.1.2
+
+---
 
 ## Features
 
-- **Full ConnectWise access** – The site loads in an embedded browser, just like using Chrome
-- **Side panel note editor** – Draft your notes in the side panel before (or while) entering them in ConnectWise
-- **Auto-save** – Notes are automatically saved to disk ~1.5 seconds after you stop typing
-- **Manual snapshots** – Click "Save Snapshot" to create a timestamped backup you can restore later
-- **History & restore** – Browse past snapshots per ticket and click to restore any of them
-- **Copy to clipboard** – One-click copy so you can paste directly into ConnectWise
-- **Resizable panel** – Drag the border to adjust panel width
-- **Collapsible** – Hide the panel entirely when you don't need it
-- **Keyboard shortcuts**:
-  - `Ctrl+Shift+S` – Save snapshot
-  - `Ctrl+Shift+B` – Toggle side panel
+### Browser
+- **Multi-tab browsing** – Open multiple ConnectWise pages simultaneously; tabs persist between launches
+- **Tab management** – Pin tabs, duplicate, close others, reopen closed tabs, copy URL, open in default browser (right-click any tab)
+- **Find in page** – `Ctrl+F` to search text on the current page
+- **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions and an active-download badge
+
+### Note Editor
+- **Rich text side panel** – Draft and edit notes with a full formatting toolbar (bold, italic, underline, lists, clear formatting)
+- **Auto-save** – Notes are saved to disk ~1.5 seconds after you stop typing
+- **Manual snapshots** – Click **💾 Save Snapshot** to create a timestamped backup at any time
+- **Snapshot threshold** – Configurable minimum character difference before an auto-snapshot is triggered on tab switch or sync pull (default: 5 chars)
+- **History & restore** – Browse all saved snapshots per ticket and click any entry to restore it
+- **Note search** – Full-text search across all saved notes and autosave drafts
+- **Copy to clipboard** – One-click copy of the current note
+- **Signatures** – Save an HTML signature that can be inserted at the end of any note
+- **Templates** – Create reusable note templates accessible from the toolbar
+
+### ConnectWise Sync
+- **Live two-way sync** – With "Live Sync" enabled, the panel and the active CW notes field (Draft.js time-entry editor or stopwatch textarea) stay in sync as you type — no manual copy-paste needed
+- **Pull from CW / Push to CW** – Manual sync buttons for when live sync is off or you want an explicit transfer
+- **Auto ticket detection** – Switching tabs automatically loads the correct ticket content into the panel
+
+### AI Assistant
+- **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes
+- **📋 Summarize** – Scrapes all visible note content from the active CW ticket page and asks the AI to produce a concise bullet-point summary
+- Supports **Hatz AI** as the provider; model is selected from a live dropdown populated from the API
+
+### Notifications
+A bell icon in the tab bar shows a badge when there are unread notifications. Current notification types:
+- **Update available** – Checks GitHub Releases on startup and alerts you when a newer version is published; includes View Release, Hide for now, and Don't remind me for this version actions
+- **Auto-save failed** – Fires once if a note cannot be written to disk (permissions or disk-full)
+- **Backup storage warning** – Alerts when the backup folder exceeds a configurable size threshold (default: 100 MB; set to 0 to disable)
+- **Live sync push failed** – Fires once when the first push to a CW notes field fails (e.g. session expired)
+
+### Appearance & Settings
+- **Dark / Light theme**
+- **Collapsible panel** – Hide the side panel entirely; a slim toggle button brings it back
+- **Resizable panel** – Drag the divider to adjust the panel width
+- All settings are persisted to disk and applied immediately
+
+---
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+Shift+S` | Save snapshot |
+| `Ctrl+Shift+B` | Toggle side panel |
+| `Ctrl+F` | Find in page |
+| `Alt+Left` | Navigate back |
+| `Alt+Right` | Navigate forward |
+| `F5` | Refresh active tab |
+
+---
 
 ## Where Are Backups Stored?
 
-All backup files are saved to your Electron `userData` directory:
+All data is saved under Electron's `userData` directory:
 
 ```
-%APPDATA%/connectwise-backup/note-backups/
+%APPDATA%\connectwise-manage-pp\note-backups\
 ```
 
 Inside you'll find:
-- `autosave.json` – The latest auto-saved draft for each ticket
-- A folder per ticket ID containing timestamped `.txt` snapshot files
+- `autosave.json` – Latest auto-saved draft for each ticket
+- `settings.json` – All app settings
+- `open-tabs.json` – Tab URLs restored on next launch
+- A folder per ticket ID containing timestamped `.html` snapshot files
 
-You can click the **📁 Open Folder** button in the app to jump directly there.
+Click **📁 Open Folder** in the app to jump there directly.
+
+---
 
 ## Getting Started
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (v18 or later recommended)
+- [Node.js](https://nodejs.org/) v18 or later
 
 ### Install & Run
 
 ```bash
-cd connectwise-backup
 npm install
 npm start
 ```
 
-### Build a Distributable .exe
+### Build a Distributable
 
 ```bash
+# Windows portable .exe
 npm run build
+
+# macOS .dmg
+npm run build-mac
 ```
 
-The output will be in the `dist/` folder.
+Output is placed in the `dist/` folder.
 
-## Workflow Tips
+---
 
-1. **Before entering notes in ConnectWise**, type them in the side panel first
-2. Give each note a **Ticket ID** (e.g., `SR-123456`) so backups are organized
-3. When you're happy with the note, click **📋 Copy** and paste into ConnectWise
-4. Click **💾 Save Snapshot** before submitting in ConnectWise for an extra safety net
-5. If ConnectWise crashes, your notes are safe – just reopen the app and they'll be right where you left them
+## AI Assistant Setup
+
+1. Open **Settings** and go to the **AI Assistant** section
+2. Set **Provider** to **Hatz AI**
+3. Paste your API key from the [Hatz Admin Dashboard](https://ai.hatz.ai)
+4. Select a model from the dropdown (populated automatically from the API)
+
+The ✨ Suggest and 📋 Summarize buttons will appear in the note panel once a provider is configured.
+
+---
 
 ## Troubleshooting
 
-- **ConnectWise doesn't load**: The app sets a Chrome user-agent string. If you encounter issues, make sure you're connected to the internet and `na.myconnectwise.net` is accessible.
-- **Login issues**: The embedded browser maintains its own session/cookies. You'll need to log in once; after that, your session should persist between app launches.
-- **Blank screen**: Try `Ctrl+Shift+I` to open DevTools and check for errors in the console.
+- **ConnectWise doesn't load** – The app sets a Chrome user-agent for `*.myconnectwise.net`. Ensure you have network access to your CW instance.
+- **Login issues** – The embedded browser keeps its own session cookies. Log in once and the session will persist across launches.
+- **Live sync not working** – Check that you're on a ticket page with a visible notes field. The sync status pill at the bottom of the panel shows the current state (`⇅ Synced`, `⇅ Pushing…`, `⇅ No CW field`).
+- **Blank screen or errors** – Press `Ctrl+Shift+I` to open DevTools and check the console.
