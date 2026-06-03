@@ -1010,6 +1010,55 @@ function registerIpcHandlers() {
     downloads.splice(0);
     return { ok: true };
   });
+
+  electron.ipcMain.handle("check-backup-size", async () => {
+    try {
+      await ensureBackupDir();
+      let totalBytes = 0;
+      const entries = await fsp.readdir(BACKUP_DIR, { withFileTypes: true });
+      for (const entry of entries) {
+        const entryPath = path.join(BACKUP_DIR, entry.name);
+        if (entry.isDirectory()) {
+          try {
+            const files = await fsp.readdir(entryPath);
+            for (const file of files) {
+              try {
+                const stat = await fsp.stat(path.join(entryPath, file));
+                totalBytes += stat.size;
+              } catch { /* skip unreadable file */ }
+            }
+          } catch { /* skip unreadable directory */ }
+        } else {
+          try {
+            const stat = await fsp.stat(entryPath);
+            totalBytes += stat.size;
+          } catch { /* skip unreadable entry */ }
+        }
+      }
+      return { totalBytes, totalMb: Math.round((totalBytes / (1024 * 1024)) * 10) / 10 };
+    } catch (err) {
+      return { error: err.message || String(err) };
+    }
+  });
+
+  electron.ipcMain.handle("check-for-updates", async () => {
+    const currentVersion = electron.app.getVersion();
+    try {
+      const resp = await fetch(
+        "https://api.github.com/repos/PGH-Networks/Connectwise_Manage_PlusPlus/releases/latest",
+        { headers: { "User-Agent": "ConnectWise-Manage-PP/" + currentVersion } },
+      );
+      if (!resp.ok) return { error: `GitHub API error ${resp.status}`, currentVersion };
+      const json = await resp.json();
+      const tagName = typeof json.tag_name === "string" ? json.tag_name : "";
+      const latestVersion = tagName.replace(/^v/, "");
+      const releaseUrl = typeof json.html_url === "string" ? json.html_url : "";
+      const releaseName = typeof json.name === "string" ? json.name : tagName;
+      return { currentVersion, latestVersion, releaseUrl, releaseName };
+    } catch (err) {
+      return { error: err.message || String(err), currentVersion };
+    }
+  });
 }
 
 // ===================== App Lifecycle =====================

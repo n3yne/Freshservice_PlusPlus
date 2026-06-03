@@ -18,6 +18,8 @@ const DEFAULT_SETTINGS = {
   aiProvider: "none",
   aiModelName: "",
   aiApiKey: "",
+  dismissedReleaseVersion: "",
+  backupStorageWarningMb: 100,
 };
 
 function sanitizeTicketId(raw) {
@@ -53,6 +55,8 @@ function validateSettings(s) {
   if (s.aiProvider !== undefined && !["none", "hatz"].includes(s.aiProvider)) return false;
   if (s.aiModelName !== undefined && (typeof s.aiModelName !== "string" || s.aiModelName.length > 100)) return false;
   if (s.aiApiKey !== undefined && (typeof s.aiApiKey !== "string" || s.aiApiKey.length > 500)) return false;
+  if (s.dismissedReleaseVersion !== undefined && (typeof s.dismissedReleaseVersion !== "string" || s.dismissedReleaseVersion.length > 20)) return false;
+  if (s.backupStorageWarningMb !== undefined && (typeof s.backupStorageWarningMb !== "number" || s.backupStorageWarningMb < 0 || s.backupStorageWarningMb > 100000)) return false;
   if (!Array.isArray(s.noteTemplates)) return false;
   if (s.noteTemplates.length > 50) return false;
   for (const tmpl of s.noteTemplates) {

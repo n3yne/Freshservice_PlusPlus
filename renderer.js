@@ -49,8 +49,13 @@ document.addEventListener("DOMContentLoaded", function () {
   const downloadsList = document.getElementById("downloads-list");
   const btnCloseDownloads = document.getElementById("btn-close-downloads");
   const btnClearDownloads = document.getElementById("btn-clear-downloads");
+  const btnNotifications = document.getElementById("btn-notifications");
+  const notificationsPanel = document.getElementById("notifications-panel");
+  const notificationsList = document.getElementById("notifications-list");
+  const btnCloseNotifications = document.getElementById("btn-close-notifications");
   const settingRetentionDays = document.getElementById("setting-retention-days");
   const settingSnapshotThreshold = document.getElementById("setting-snapshot-threshold");
+  const settingStorageWarning = document.getElementById("setting-storage-warning");
   const settingSortField = document.getElementById("setting-sort-field");
   const settingSortDirection = document.getElementById("setting-sort-direction");
   const settingSignature = document.getElementById("setting-signature");
@@ -123,6 +128,8 @@ document.addEventListener("DOMContentLoaded", function () {
     aiProvider: "none",
     aiModelName: "",
     aiApiKey: "",
+    dismissedReleaseVersion: "",
+    backupStorageWarningMb: 100,
   };
 
   function applySettings(settings) {
@@ -132,6 +139,7 @@ document.addEventListener("DOMContentLoaded", function () {
     settingNotePanel.checked = settings.notePanelEnabled;
     settingRetentionDays.value = settings.backupRetentionDays;
     settingSnapshotThreshold.value = settings.snapshotThreshold ?? 5;
+    settingStorageWarning.value = settings.backupStorageWarningMb ?? 100;
     settingSortField.value = settings.ticketSortField || "lastUpdated";
     settingSortDirection.value = settings.ticketSortDirection || "desc";
 
@@ -191,6 +199,7 @@ document.addEventListener("DOMContentLoaded", function () {
     settingNotePanel.checked = appSettings.notePanelEnabled;
     settingRetentionDays.value = appSettings.backupRetentionDays;
     settingSnapshotThreshold.value = appSettings.snapshotThreshold ?? 5;
+    settingStorageWarning.value = appSettings.backupStorageWarningMb ?? 100;
     settingSortField.value = appSettings.ticketSortField || "lastUpdated";
     settingSortDirection.value = appSettings.ticketSortDirection || "desc";
     settingSignature.innerHTML = appSettings.signatureHtml || "";
@@ -313,6 +322,15 @@ document.addEventListener("DOMContentLoaded", function () {
     if (val > 9999) val = 9999;
     settingSnapshotThreshold.value = val;
     appSettings.snapshotThreshold = val;
+    window.backupAPI.saveSettings(appSettings);
+  });
+
+  settingStorageWarning.addEventListener("change", function () {
+    let val = parseInt(settingStorageWarning.value, 10);
+    if (isNaN(val) || val < 0) val = 0;
+    if (val > 100000) val = 100000;
+    settingStorageWarning.value = val;
+    appSettings.backupStorageWarningMb = val;
     window.backupAPI.saveSettings(appSettings);
   });
 
@@ -767,6 +785,166 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
+  // ==================== Notifications ====================
+  // Notification shape: { id, type, title, desc, action?: { label, kind, url? } }
+  //   action.kind: "open-url" | "open-backup-folder"
+  //   type === "update" also has a `version` field for "don't remind me" persistence
+
+  const pendingNotifications = [];
+  let notifNextId = 1;
+
+  function isNewerVersion(current, latest) {
+    const parse = (v) => v.replace(/^v/, "").split(".").map(Number);
+    const [ca, cb, cc] = parse(current);
+    const [la, lb, lc] = parse(latest);
+    if (la !== ca) return la > ca;
+    if (lb !== cb) return lb > cb;
+    return lc > cc;
+  }
+
+  function addUniqueNotification(notif) {
+    if (pendingNotifications.some((n) => n.type === notif.type)) return;
+    pendingNotifications.push(notif);
+    updateNotificationsBadge();
+  }
+
+  function updateNotificationsBadge() {
+    const count = pendingNotifications.length;
+    btnNotifications.setAttribute("data-badge", count > 0 ? String(count) : "");
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function renderNotifications() {
+    if (pendingNotifications.length === 0) {
+      notificationsList.innerHTML = '<div class="downloads-empty">No notifications</div>';
+      return;
+    }
+    notificationsList.innerHTML = pendingNotifications
+      .map((n) => {
+        const actionBtn = n.action
+          ? `<button class="btn btn-small btn-primary notif-btn-open" data-notif-id="${n.id}">${esc(n.action.label)}</button>`
+          : "";
+        const dismissLabel = n.type === "update" ? "Don't remind me" : "Dismiss";
+        const hideBtn = n.type === "update"
+          ? `<button class="btn btn-small notif-btn-hide" data-notif-id="${n.id}">Hide for now</button>`
+          : "";
+        return `<div class="notif-item" data-notif-id="${n.id}">
+  <div class="notif-icon">&#128276;</div>
+  <div class="notif-body">
+    <div class="notif-title">${esc(n.title)}</div>
+    <div class="notif-desc">${esc(n.desc)}</div>
+    <div class="notif-actions">
+      ${actionBtn}
+      ${hideBtn}
+      <button class="btn btn-small notif-btn-dismiss" data-notif-id="${n.id}">${esc(dismissLabel)}</button>
+    </div>
+  </div>
+</div>`;
+      })
+      .join("");
+  }
+
+  function openNotificationsPanel() {
+    renderNotifications();
+    const btnRect = btnNotifications.getBoundingClientRect();
+    notificationsPanel.style.top = btnRect.bottom + 4 + "px";
+    notificationsPanel.style.right = window.innerWidth - btnRect.right + "px";
+    notificationsPanel.classList.add("visible");
+    updateNotificationsBadge();
+  }
+
+  function closeNotificationsPanel() {
+    notificationsPanel.classList.remove("visible");
+  }
+
+  btnNotifications.addEventListener("click", () => {
+    if (notificationsPanel.classList.contains("visible")) {
+      closeNotificationsPanel();
+    } else {
+      openNotificationsPanel();
+    }
+  });
+
+  btnCloseNotifications.addEventListener("click", closeNotificationsPanel);
+
+  notificationsList.addEventListener("click", function (e) {
+    const openBtn = e.target.closest(".notif-btn-open");
+    const hideBtn = e.target.closest(".notif-btn-hide");
+    const dismissBtn = e.target.closest(".notif-btn-dismiss");
+
+    if (openBtn) {
+      const id = parseInt(openBtn.dataset.notifId, 10);
+      const notif = pendingNotifications.find((n) => n.id === id);
+      if (notif?.action?.kind === "open-url" && notif.action.url) {
+        window.backupAPI.openInBrowser(notif.action.url);
+      } else if (notif?.action?.kind === "open-backup-folder") {
+        window.backupAPI.openBackupFolder();
+      }
+    }
+
+    if (hideBtn) {
+      const id = parseInt(hideBtn.dataset.notifId, 10);
+      const idx = pendingNotifications.findIndex((n) => n.id === id);
+      if (idx !== -1) pendingNotifications.splice(idx, 1);
+      renderNotifications();
+      updateNotificationsBadge();
+    }
+
+    if (dismissBtn) {
+      const id = parseInt(dismissBtn.dataset.notifId, 10);
+      const notif = pendingNotifications.find((n) => n.id === id);
+      if (notif?.type === "update") {
+        appSettings.dismissedReleaseVersion = notif.version;
+        window.backupAPI.saveSettings(appSettings);
+      }
+      const idx = pendingNotifications.findIndex((n) => n.id === id);
+      if (idx !== -1) pendingNotifications.splice(idx, 1);
+      renderNotifications();
+      updateNotificationsBadge();
+    }
+  });
+
+  async function checkForUpdates() {
+    try {
+      const result = await window.backupAPI.checkForUpdates();
+      if (result.error || !result.latestVersion || !result.currentVersion) return;
+      if (!isNewerVersion(result.currentVersion, result.latestVersion)) return;
+      if (appSettings.dismissedReleaseVersion === result.latestVersion) return;
+      addUniqueNotification({
+        id: notifNextId++,
+        type: "update",
+        version: result.latestVersion,
+        title: `Update Available: v${result.latestVersion}`,
+        desc: `A newer version is available. You are running v${result.currentVersion}.`,
+        action: { label: "View Release", kind: "open-url", url: result.releaseUrl },
+      });
+    } catch {
+      // Network failure — silently skip
+    }
+  }
+
+  async function checkBackupSize() {
+    const warningMb = appSettings.backupStorageWarningMb ?? 100;
+    if (!warningMb) return;
+    try {
+      const result = await window.backupAPI.checkBackupSize();
+      if (result.error || result.totalMb === undefined) return;
+      if (result.totalMb < warningMb) return;
+      addUniqueNotification({
+        id: notifNextId++,
+        type: "storage-warning",
+        title: "Backup Storage Warning",
+        desc: `Your note backups are using ${result.totalMb} MB (threshold: ${warningMb} MB). Consider reducing the backup retention period or clearing old snapshots.`,
+        action: { label: "Open Backup Folder", kind: "open-backup-folder" },
+      });
+    } catch {
+      // Silently skip
+    }
+  }
+
   // ==================== CW Notes Sync ====================
   //
   // Reads from / writes to whichever CW notes field is currently on screen.
@@ -1077,6 +1255,7 @@ document.addEventListener("DOMContentLoaded", function () {
         pushTimer: null,
         pullTimer: null,
         pushInFlight: false,
+        consecutivePushFailures: 0,
       });
     }
     return syncStates.get(tabId);
@@ -1205,13 +1384,22 @@ document.addEventListener("DOMContentLoaded", function () {
       const result = await webview.executeJavaScript(pushScript);
       if (result) {
         state.lastPushedText = plainText;
+        state.consecutivePushFailures = 0;
         if (syncStatus) {
           syncStatus.textContent = "⇅ Synced";
           syncStatus.className = "sync-status sync-idle";
         }
       }
     } catch {
-      // Best-effort — silent failure
+      state.consecutivePushFailures = (state.consecutivePushFailures || 0) + 1;
+      if (state.consecutivePushFailures === 1) {
+        addUniqueNotification({
+          id: notifNextId++,
+          type: "sync-failure",
+          title: "Live Sync Push Failed",
+          desc: "Could not write notes to the CW notes field. Your ConnectWise session may have expired or the notes field is not available on this page.",
+        });
+      }
     } finally {
       state.pushInFlight = false;
       updateSyncPill();
@@ -1702,6 +1890,8 @@ document.addEventListener("DOMContentLoaded", function () {
     .loadSettings()
     .then(function (settings) {
       applySettings(settings);
+      checkForUpdates();
+      checkBackupSize();
     })
     .catch(function (err) {
       console.error("[Settings] Error loading settings:", err);
@@ -1773,6 +1963,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Clicks inside a webview don't bubble to document, so close floating panels on webview focus
     webview.addEventListener("focus", function () {
       closeDownloadsPanel();
+      closeNotificationsPanel();
       hideTabContextMenu();
       templateDropdown.classList.remove("visible");
     });
@@ -2234,6 +2425,9 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!e.target.closest("#downloads-panel") && !e.target.closest("#btn-downloads")) {
       closeDownloadsPanel();
     }
+    if (!e.target.closest("#notifications-panel") && !e.target.closest("#btn-notifications")) {
+      closeNotificationsPanel();
+    }
     if (!e.target.closest("#template-dropdown") && !e.target.closest("#btn-insert-template")) {
       templateDropdown.classList.remove("visible");
     }
@@ -2242,6 +2436,8 @@ document.addEventListener("DOMContentLoaded", function () {
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
       hideTabContextMenu();
+      closeDownloadsPanel();
+      closeNotificationsPanel();
       if (findActive) hideFindBar();
       closeSettings();
       if (confirmOverlay.classList.contains("visible")) closeConfirm(false);
@@ -2801,6 +2997,12 @@ document.addEventListener("DOMContentLoaded", function () {
       autosaveStatus.textContent = "Auto-save error!";
       autosaveStatus.className = "";
       console.error("Autosave error:", err);
+      addUniqueNotification({
+        id: notifNextId++,
+        type: "autosave-failure",
+        title: "Auto-save Failed",
+        desc: "A note could not be saved to disk. Check that the backup folder is accessible and you have write permissions.",
+      });
     }
   }
 

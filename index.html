@@ -19,6 +19,11 @@
           <div id="tab-list"></div>
           <button type="button" id="btn-new-tab" title="New tab">+</button>
           <button type="button" id="btn-downloads" class="nav-btn" title="Downloads">&#8659;</button>
+          <button type="button" id="btn-notifications" class="nav-btn" title="Notifications">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 22c1.1 0 2-.9 2-2h-4a2 2 0 0 0 2 2zm6-6V11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+            </svg>
+          </button>
         </div>
         <!-- Find Bar (shown on Ctrl+F) -->
         <div id="find-bar">
@@ -400,6 +405,26 @@
             </p>
 
             <div class="settings-field">
+              <label class="settings-field-label" for="setting-storage-warning">Storage Warning</label>
+              <div class="settings-field-row">
+                <input
+                  type="number"
+                  id="setting-storage-warning"
+                  class="settings-number-input"
+                  min="0"
+                  max="100000"
+                  step="1"
+                  value="100"
+                />
+                <span class="settings-field-suffix">MB</span>
+              </div>
+            </div>
+            <p class="settings-description settings-description-field settings-description-field-spaced">
+              Show a notification when the backup folder exceeds this size.
+              Set to <strong>0</strong> to disable.
+            </p>
+
+            <div class="settings-field">
               <label class="settings-field-label" for="setting-sort-field"
                 >Ticket Sort Order</label
               >
@@ -563,6 +588,19 @@
     </div>
 
     <!-- Confirm Dialog (replaces native confirm() to avoid webview focus trap) -->
+    <!-- Notifications Panel -->
+    <div id="notifications-panel" class="downloads-panel">
+      <div class="downloads-panel-header">
+        <span class="downloads-panel-title">Notifications</span>
+        <div class="downloads-panel-actions">
+          <button type="button" id="btn-close-notifications" class="downloads-close">&times;</button>
+        </div>
+      </div>
+      <div id="notifications-list" class="downloads-list">
+        <div class="downloads-empty">No notifications</div>
+      </div>
+    </div>
+
     <!-- Downloads Panel -->
     <div id="downloads-panel" class="downloads-panel">
       <div class="downloads-panel-header">
