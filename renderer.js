@@ -44,6 +44,31 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnAiCopy = document.getElementById("btn-ai-copy");
   const btnAiCancel = document.getElementById("btn-ai-cancel");
   const btnAiClose = document.getElementById("btn-ai-close");
+
+  // --- Metrics Bar Elements ---
+  const metricsBar = document.getElementById("metrics-bar");
+  const metricsBarItems = document.getElementById("metrics-bar-items");
+  const metricsBarStatus = document.getElementById("metrics-bar-status");
+  const btnMetricsRefresh = document.getElementById("btn-metrics-refresh");
+  const btnMetricsHide = document.getElementById("btn-metrics-hide");
+  const settingMetricsEnabled = document.getElementById("setting-metrics-enabled");
+  const settingMetricsUrl = document.getElementById("setting-metrics-url");
+  const settingMetricsInterval = document.getElementById("setting-metrics-interval");
+  const metricsBarConfig = document.getElementById("metrics-bar-config");
+  const metricsFieldsConfigList = document.getElementById("metrics-fields-config-list");
+  const btnMetricsAddField = document.getElementById("btn-metrics-add-field");
+  const metricsScraperWebview = document.getElementById("metrics-scraper-webview");
+  const metricsPickerOverlay = document.getElementById("metrics-picker-overlay");
+  const metricsPickerWebview = document.getElementById("metrics-picker-webview");
+  const metricsPickerCaptureBar = document.getElementById("metrics-picker-capture-bar");
+  const metricsPickerValuePreview = document.getElementById("metrics-picker-value-preview");
+  const metricsPickerSelectorInput = document.getElementById("metrics-picker-selector-input");
+  const metricsPickerLabelInput = document.getElementById("metrics-picker-label-input");
+  const btnMetricsTestSelectors = document.getElementById("btn-metrics-test-selectors");
+  const btnMetricsPickerSave = document.getElementById("btn-metrics-picker-save");
+  const btnMetricsPickerReselect = document.getElementById("btn-metrics-picker-reselect");
+  const btnMetricsPickerCancel = document.getElementById("btn-metrics-picker-cancel");
+
   const btnDownloads = document.getElementById("btn-downloads");
   const downloadsPanel = document.getElementById("downloads-panel");
   const downloadsList = document.getElementById("downloads-list");
@@ -138,6 +163,10 @@ document.addEventListener("DOMContentLoaded", function () {
     aiApiKey: "",
     dismissedReleaseVersion: "",
     backupStorageWarningMb: 100,
+    metricsBarEnabled: false,
+    metricsBarUrl: "",
+    metricsBarInterval: 15,
+    metricsBarFields: [],
   };
 
   function applySettings(settings) {
@@ -177,6 +206,32 @@ document.addEventListener("DOMContentLoaded", function () {
     if (aiProviderFields) aiProviderFields.style.display = aiEnabled ? "" : "none";
     if (btnAiSuggest) btnAiSuggest.style.display = aiEnabled ? "" : "none";
     if (btnAiSummarize) btnAiSummarize.style.display = aiEnabled ? "" : "none";
+
+    // Metrics Bar
+    if (settingMetricsEnabled) settingMetricsEnabled.checked = !!settings.metricsBarEnabled;
+    if (metricsBarConfig) {
+      if (settings.metricsBarEnabled) {
+        metricsBarConfig.classList.add("visible");
+      } else {
+        metricsBarConfig.classList.remove("visible");
+      }
+    }
+    if (settingMetricsUrl && document.activeElement !== settingMetricsUrl) {
+      settingMetricsUrl.value = settings.metricsBarUrl || "";
+    }
+    if (settingMetricsInterval) {
+      settingMetricsInterval.value = String(settings.metricsBarInterval || 15);
+    }
+    renderMetricsFieldsConfig();
+    const metricsActive = settings.metricsBarEnabled && settings.metricsBarUrl &&
+      (settings.metricsBarFields || []).length > 0;
+    if (metricsActive) {
+      metricsBar.classList.add("visible");
+      startMetricsPoll();
+    } else {
+      metricsBar.classList.remove("visible");
+      stopMetricsPoll();
+    }
 
     btnInsertTemplate.style.display = (settings.noteTemplates && settings.noteTemplates.length > 0) ? "inline-block" : "none";
     renderTemplateList();
@@ -340,6 +395,112 @@ document.addEventListener("DOMContentLoaded", function () {
     settingStorageWarning.value = val;
     appSettings.backupStorageWarningMb = val;
     window.backupAPI.saveSettings(appSettings);
+  });
+
+  // ---- Metrics Bar settings ----
+  settingMetricsEnabled.addEventListener("change", function () {
+    appSettings.metricsBarEnabled = settingMetricsEnabled.checked;
+    if (appSettings.metricsBarEnabled) {
+      metricsBarConfig.classList.add("visible");
+    } else {
+      metricsBarConfig.classList.remove("visible");
+    }
+    window.backupAPI.saveSettings(appSettings);
+    applySettings(appSettings);
+  });
+
+  let metricsUrlTimer = null;
+  settingMetricsUrl.addEventListener("input", function () {
+    clearTimeout(metricsUrlTimer);
+    metricsUrlTimer = setTimeout(function () {
+      appSettings.metricsBarUrl = settingMetricsUrl.value.trim();
+      window.backupAPI.saveSettings(appSettings);
+      applySettings(appSettings);
+    }, 800);
+  });
+
+  settingMetricsInterval.addEventListener("change", function () {
+    const val = parseInt(settingMetricsInterval.value, 10);
+    appSettings.metricsBarInterval = [5, 15, 30, 60].includes(val) ? val : 15;
+    window.backupAPI.saveSettings(appSettings);
+    // Restart the poll on the new interval
+    if (appSettings.metricsBarEnabled && appSettings.metricsBarUrl &&
+        (appSettings.metricsBarFields || []).length > 0) {
+      startMetricsPoll();
+    }
+  });
+
+  btnMetricsRefresh.addEventListener("click", function () {
+    stopMetricsPoll();
+    scrapeMetrics().finally(function () {
+      if (appSettings.metricsBarEnabled && appSettings.metricsBarUrl &&
+          (appSettings.metricsBarFields || []).length > 0) {
+        scheduleNextMetricsPoll();
+      }
+    });
+  });
+
+  btnMetricsHide.addEventListener("click", function () {
+    appSettings.metricsBarEnabled = false;
+    window.backupAPI.saveSettings(appSettings);
+    applySettings(appSettings);
+  });
+
+  if (btnMetricsTestSelectors) {
+    btnMetricsTestSelectors.addEventListener("click", function () {
+      stopMetricsPoll();
+      scrapeMetrics().finally(function () {
+        if (appSettings.metricsBarEnabled && appSettings.metricsBarUrl &&
+            (appSettings.metricsBarFields || []).length > 0) {
+          scheduleNextMetricsPoll();
+        }
+      });
+    });
+  }
+
+  btnMetricsAddField.addEventListener("click", function () {
+    if (!appSettings.metricsBarUrl) {
+      settingMetricsUrl.focus();
+      return;
+    }
+    openMetricsPicker(null);
+  });
+
+  btnMetricsPickerCancel.addEventListener("click", closeMetricsPicker);
+
+  btnMetricsPickerReselect.addEventListener("click", function () {
+    metricsPickerCaptureBar.classList.remove("visible");
+    metricsPickerSelectorInput.value = "";
+    metricsPickerPendingSelector = null;
+  });
+
+  btnMetricsPickerSave.addEventListener("click", function () {
+    const label = metricsPickerLabelInput.value.trim();
+    // Use the (possibly user-edited) selector input value; fall back to the captured one
+    const selector = (metricsPickerSelectorInput.value.trim()) || metricsPickerPendingSelector;
+    if (!label || !selector) return;
+    if (metricsPickerTargetFieldId) {
+      // Re-pick mode: update selector (and optionally label) on an existing field
+      appSettings.metricsBarFields = (appSettings.metricsBarFields || []).map(function (f) {
+        return f.id === metricsPickerTargetFieldId
+          ? Object.assign({}, f, { label, selector })
+          : f;
+      });
+    } else {
+      // Add-new mode
+      appSettings.metricsBarFields = (appSettings.metricsBarFields || []).concat([{
+        id: "mf-" + Date.now(),
+        label,
+        selector,
+      }]);
+    }
+    window.backupAPI.saveSettings(appSettings);
+    closeMetricsPicker();
+    applySettings(appSettings);
+  });
+
+  metricsPickerLabelInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") btnMetricsPickerSave.click();
   });
 
   settingSortField.addEventListener("change", function () {
@@ -3060,12 +3221,6 @@ document.addEventListener("DOMContentLoaded", function () {
         ticketIdInput.value = result.ticket;
         autosaveStatus.textContent = "Grabbed ticket #" + result.ticket;
         autosaveStatus.className = "saved";
-        console.log(
-          "Grab success - source:",
-          result.source,
-          "text:",
-          result.text,
-        );
         refreshTicketList(result.ticket);
         if (!isEditorEmpty()) {
           performAutosave();
@@ -3074,7 +3229,6 @@ document.addEventListener("DOMContentLoaded", function () {
         autosaveStatus.textContent =
           "Could not detect ticket # - open a ticket first";
         autosaveStatus.className = "";
-        console.log("Grab debug:", JSON.stringify(result, null, 2));
       }
     } catch (err) {
       autosaveStatus.textContent = "Error grabbing ticket";
@@ -3642,6 +3796,401 @@ document.addEventListener("DOMContentLoaded", function () {
         }).catch(function () { /* clipboard access denied */ });
       }
     }
+  });
+
+  // ==================== Metrics Bar ====================
+
+  let metricsPollTimer = null;
+  let metricsScraperBusy = false;
+  let metricsRescheduleNeeded = false;
+  let metricsPickerViewOnly = false;
+  let metricsValues = {};
+  let metricsPickerPendingSelector = null;
+  let metricsPickerTargetFieldId = null;
+
+  // Script injected into the picker webview so the user can click-to-select an element.
+  const METRICS_PICKER_INJECT_SCRIPT = `(function() {
+    if (window.__mpInject) return;
+    window.__mpInject = true;
+    var hi = document.createElement('div');
+    hi.style.cssText = 'position:fixed;outline:3px solid #e67e22;background:rgba(230,126,34,0.12);pointer-events:none;border-radius:2px;z-index:999999;display:none;box-sizing:border-box;';
+    document.body.appendChild(hi);
+
+    // For table cells: generate a JS expression that finds the row by a stable text
+    // anchor (first non-numeric cell — skips rank columns) then returns the clicked
+    // column. Searches ALL tables sharing the same class, since BrightGauge reuses
+    // one class across every widget table on the page.
+    function getTableCellExpr(cellEl) {
+      var tr = cellEl.parentElement;
+      while (tr && tr.tagName !== 'TR') tr = tr.parentElement;
+      if (!tr || !tr.cells) return null;
+      var colIdx = Array.from(tr.cells).indexOf(cellEl);
+      if (colIdx < 0) return null;
+      // Find the best anchor: first non-numeric cell that isn't the target column.
+      // Skipping numeric cells avoids anchoring on rank numbers ("1", "2", …).
+      var anchorIdx = -1;
+      var anchorText = '';
+      for (var k = 0; k < tr.cells.length; k++) {
+        if (k === colIdx) continue;
+        var ct = tr.cells[k] ? tr.cells[k].textContent.trim() : '';
+        if (ct && isNaN(parseFloat(ct))) { anchorIdx = k; anchorText = ct; break; }
+      }
+      if (anchorIdx < 0) return null;
+      var tbl = tr.closest ? tr.closest('table') : null;
+      if (!tbl) return null;
+      var tblClasses = tbl.classList ? Array.from(tbl.classList).slice(0, 2) : [];
+      var tblSel = tblClasses.length > 0 ? ('table.' + tblClasses.join('.')) : 'table';
+      // Record which table the user clicked so the scraper targets the same widget.
+      // All BrightGauge gauge tables share one class, so tblIdx is the only way to
+      // distinguish "Closed Tickets table" from "Hours Worked table".
+      var tblIdx = Array.from(document.querySelectorAll(tblSel)).indexOf(tbl);
+      if (tblIdx < 0) tblIdx = 0;
+      return '(function(){' +
+        'var tbls=Array.from(document.querySelectorAll(' + JSON.stringify(tblSel) + '));' +
+        'var tbl=tbls[' + tblIdx + ']||null;' +
+        'if(!tbl)return null;' +
+        'var rows=Array.from(tbl.querySelectorAll("tbody tr"));' +
+        'var row=rows.find(function(r){return r.cells&&r.cells[' + anchorIdx + ']&&r.cells[' + anchorIdx + '].textContent.trim()===' + JSON.stringify(anchorText) + ';});' +
+        'return row&&row.cells[' + colIdx + ']?row.cells[' + colIdx + '].textContent.trim():null;' +
+        '})()';
+    }
+
+    // Returns the shortest CSS selector that uniquely identifies el.
+    // Prefers class-based anchors over positional nth-child so that
+    // elements that reorder between page loads (e.g. async gauge render)
+    // can still be found by their component class name.
+    function getPath(el) {
+      function qsaLen(sel) {
+        try { return document.querySelectorAll(sel).length; } catch(err) { return -1; }
+      }
+      function buildPart(node) {
+        var elId = node.getAttribute('id');
+        if (elId) return '#' + elId;
+        var tag = node.tagName.toLowerCase();
+        var classes = Array.from(node.classList || []);
+        if (classes.length > 0) {
+          var cls = '.' + classes.slice(0, 2).join('.');
+          var sameCls = Array.from(node.parentNode ? node.parentNode.children : []).filter(function(s) {
+            return s.tagName === node.tagName && s.className === node.className;
+          });
+          if (sameCls.length > 1) {
+            var idx = Array.from(node.parentNode.children).indexOf(node) + 1;
+            return tag + cls + ':nth-child(' + idx + ')';
+          }
+          return tag + cls;
+        }
+        var tagSiblings = Array.from(node.parentNode ? node.parentNode.children : []).filter(function(s) {
+          return s.tagName === node.tagName;
+        });
+        if (tagSiblings.length > 1) {
+          var idx = Array.from(node.parentNode.children).indexOf(node) + 1;
+          return tag + ':nth-child(' + idx + ')';
+        }
+        return tag;
+      }
+      if (el.id) return '#' + el.id;
+      var parts = [];
+      var cur = el;
+      while (cur && cur !== document.body) {
+        var part = buildPart(cur);
+        if (part.startsWith('#')) { parts.unshift(part); break; }
+        parts.unshift(part);
+        cur = cur.parentElement;
+        if (parts.length >= 2 && qsaLen(parts.join(' > ')) === 1) break;
+      }
+      return parts.join(' > ');
+    }
+
+    document.addEventListener('mouseover', function(e) {
+      var r = e.target.getBoundingClientRect();
+      hi.style.display = 'block';
+      hi.style.top = r.top + 'px';
+      hi.style.left = r.left + 'px';
+      hi.style.width = r.width + 'px';
+      hi.style.height = r.height + 'px';
+    }, true);
+    document.addEventListener('mouseout', function() { hi.style.display = 'none'; }, true);
+    document.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      var target = e.target;
+      // Walk up from the click target to find a table cell
+      var cellEl = target;
+      while (cellEl && cellEl !== document.body && cellEl.tagName !== 'TD' && cellEl.tagName !== 'TH') {
+        cellEl = cellEl.parentElement;
+      }
+      if (cellEl && (cellEl.tagName === 'TD' || cellEl.tagName === 'TH')) {
+        var expr = getTableCellExpr(cellEl);
+        if (expr) {
+          var cellText = (cellEl.innerText || cellEl.textContent || '').trim().replace(/\\s+/g, ' ').substring(0, 100);
+          console.log('[METRICS-PICK] ' + JSON.stringify({selector: expr, text: cellText}));
+          return;
+        }
+      }
+      var sel = getPath(target);
+      var text = (target.innerText || target.textContent || '').trim().replace(/\\s+/g, ' ').substring(0, 100);
+      console.log('[METRICS-PICK] ' + JSON.stringify({selector: sel, text: text}));
+    }, true);
+  })()`;
+
+  function buildMetricsScrapeScript(fields) {
+    const parts = fields.map(function (f) {
+      const idJ = JSON.stringify(f.id);
+      const sel = f.selector.trim();
+      if (sel.startsWith('(')) {
+        // JS expression mode: selector is a self-invoking function from getTableCellExpr
+        return "try{var _v=" + sel + ";r[" + idJ + "]=_v!=null?String(_v).trim():null;}catch(ex){r[" + idJ + "]=null;}";
+      }
+      const selJ = JSON.stringify(sel);
+      return "try{var _el=document.querySelector(" + selJ + ");r[" + idJ + "]=_el?(_el.innerText||_el.textContent||'').trim().split('\\n')[0].trim():null;}catch(ex){r[" + idJ + "]=null;}";
+    });
+    return "(function(){var r={};"+parts.join("")+"return r;})()";
+  }
+
+  function renderMetricsBar() {
+    const fields = appSettings.metricsBarFields || [];
+    metricsBarItems.innerHTML = "";
+    fields.forEach(function (f) {
+      const card = document.createElement("div");
+      card.className = "metrics-card";
+      card.title = "Click to view dashboard";
+      card.style.cursor = "pointer";
+      card.addEventListener("click", openMetricsDashboardView);
+      const valEl = document.createElement("span");
+      valEl.className = "metrics-card-value";
+      const val = metricsValues[f.id];
+      valEl.textContent = (val !== null && val !== undefined) ? String(val) : "—";
+      const lblEl = document.createElement("span");
+      lblEl.className = "metrics-card-label";
+      lblEl.textContent = f.label;
+      card.appendChild(valEl);
+      card.appendChild(lblEl);
+      metricsBarItems.appendChild(card);
+    });
+  }
+
+  function renderMetricsFieldsConfig() {
+    metricsFieldsConfigList.innerHTML = "";
+    const fields = appSettings.metricsBarFields || [];
+    if (fields.length === 0) {
+      const p = document.createElement("p");
+      p.className = "metrics-fields-empty";
+      p.textContent = "No fields configured. Click \"+ Add Field\" to pick values from the dashboard.";
+      metricsFieldsConfigList.appendChild(p);
+      return;
+    }
+    fields.forEach(function (f) {
+      const wrap = document.createElement("div");
+      wrap.className = "metrics-field-config-wrap";
+
+      // Top row: label, found value badge, buttons
+      const row = document.createElement("div");
+      row.className = "metrics-field-config-row";
+
+      const info = document.createElement("div");
+      info.className = "metrics-field-config-info";
+      const lbl = document.createElement("span");
+      lbl.className = "metrics-field-config-label";
+      lbl.textContent = f.label;
+      const found = metricsValues[f.id];
+      const badge = document.createElement("span");
+      badge.className = "metrics-field-config-found";
+      badge.textContent = found !== undefined ? (found !== null ? "→ " + found : "(not found — check selector)") : "(not yet scraped)";
+      info.appendChild(lbl);
+      info.appendChild(badge);
+
+      const btns = document.createElement("div");
+      btns.className = "metrics-field-config-btns";
+
+      const repick = document.createElement("button");
+      repick.className = "btn btn-small btn-secondary";
+      repick.textContent = "Re-pick";
+      repick.title = "Re-open dashboard and click a new element for this field";
+      repick.addEventListener("click", function () {
+        if (!appSettings.metricsBarUrl) return;
+        openMetricsPicker(f.id);
+      });
+
+      const del = document.createElement("button");
+      del.className = "btn btn-small";
+      del.style.color = "var(--warning, #e74c3c)";
+      del.textContent = "Remove";
+      del.addEventListener("click", function () {
+        appSettings.metricsBarFields = (appSettings.metricsBarFields || []).filter(function (x) { return x.id !== f.id; });
+        window.backupAPI.saveSettings(appSettings);
+        renderMetricsFieldsConfig();
+        applySettings(appSettings);
+      });
+
+      btns.appendChild(repick);
+      btns.appendChild(del);
+      row.appendChild(info);
+      row.appendChild(btns);
+
+      // Selector row: editable CSS selector
+      const selRow = document.createElement("div");
+      selRow.className = "metrics-field-selector-row";
+      const selLabel = document.createElement("span");
+      selLabel.className = "metrics-field-selector-label";
+      selLabel.textContent = "Selector:";
+      const selInput = document.createElement("input");
+      selInput.type = "text";
+      selInput.className = "settings-text-input metrics-field-selector-input";
+      selInput.value = f.selector;
+      selInput.spellcheck = false;
+      selInput.title = "CSS selector used to find this value. Edit manually if needed.";
+      selInput.addEventListener("change", function () {
+        const updated = selInput.value.trim();
+        if (!updated) return;
+        appSettings.metricsBarFields = appSettings.metricsBarFields.map(function (x) {
+          return x.id === f.id ? Object.assign({}, x, { selector: updated }) : x;
+        });
+        window.backupAPI.saveSettings(appSettings);
+      });
+      selRow.appendChild(selLabel);
+      selRow.appendChild(selInput);
+
+      wrap.appendChild(row);
+      wrap.appendChild(selRow);
+      metricsFieldsConfigList.appendChild(wrap);
+    });
+  }
+
+  async function scrapeMetrics() {
+    if (metricsScraperBusy) return;
+    const url = appSettings.metricsBarUrl;
+    if (!url || !(appSettings.metricsBarFields || []).length) return;
+
+    metricsScraperBusy = true;
+    metricsBarStatus.textContent = "Refreshing…";
+
+    try {
+      await new Promise(function (resolve, reject) {
+        const loadTimer = setTimeout(function () { reject(new Error("load timeout")); }, 30000);
+        function handler() {
+          metricsScraperWebview.removeEventListener("did-finish-load", handler);
+          clearTimeout(loadTimer);
+          resolve();
+        }
+        metricsScraperWebview.addEventListener("did-finish-load", handler);
+        const sep = url.includes("?") ? "&" : "?";
+        metricsScraperWebview.src = url + sep + "_ms=" + Date.now();
+      });
+
+      // Give the JS framework time to render
+      await new Promise(function (resolve) { setTimeout(resolve, 5000); });
+
+      // Read fields fresh — the user may have added fields while the page was loading
+      const currentFields = appSettings.metricsBarFields || [];
+      const results = await metricsScraperWebview.executeJavaScript(
+        buildMetricsScrapeScript(currentFields)
+      );
+      metricsValues = results || {};
+      const now = new Date();
+      metricsBarStatus.textContent = "Updated " + now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      renderMetricsBar();
+      renderMetricsFieldsConfig(); // refresh found-value badges if settings is open
+    } catch {
+      metricsBarStatus.textContent = "Refresh failed";
+    }
+
+    metricsScraperBusy = false;
+  }
+
+  function scheduleNextMetricsPoll() {
+    clearTimeout(metricsPollTimer);
+    const intervalMs = (appSettings.metricsBarInterval || 15) * 60 * 1000;
+    metricsPollTimer = setTimeout(function () {
+      if (appSettings.metricsBarEnabled && appSettings.metricsBarUrl &&
+          (appSettings.metricsBarFields || []).length > 0) {
+        scrapeMetrics().finally(scheduleNextMetricsPoll);
+      }
+    }, intervalMs);
+  }
+
+  function startMetricsPoll() {
+    stopMetricsPoll();
+    if (metricsScraperBusy) {
+      // A scrape is already running; flag it to re-run when done so new fields are picked up
+      metricsRescheduleNeeded = true;
+      return;
+    }
+    metricsRescheduleNeeded = false;
+    scrapeMetrics().finally(function () {
+      if (metricsRescheduleNeeded) {
+        metricsRescheduleNeeded = false;
+        startMetricsPoll();
+      } else {
+        scheduleNextMetricsPoll();
+      }
+    });
+  }
+
+  function stopMetricsPoll() {
+    clearTimeout(metricsPollTimer);
+    metricsPollTimer = null;
+  }
+
+  function openMetricsPicker(targetFieldId) {
+    metricsPickerViewOnly = false;
+    const instr = metricsPickerOverlay.querySelector(".metrics-picker-instruction");
+    if (instr) instr.textContent = "Hover and click any value on the dashboard to track it";
+    btnMetricsPickerCancel.textContent = "Cancel";
+    metricsPickerPendingSelector = null;
+    metricsPickerTargetFieldId = targetFieldId || null;
+    if (targetFieldId) {
+      const target = (appSettings.metricsBarFields || []).find(function (f) { return f.id === targetFieldId; });
+      metricsPickerLabelInput.value = target ? target.label : "";
+    } else {
+      metricsPickerLabelInput.value = "";
+    }
+    metricsPickerCaptureBar.classList.remove("visible");
+    metricsPickerOverlay.classList.add("visible");
+    metricsPickerWebview.src = appSettings.metricsBarUrl;
+  }
+
+  function openMetricsDashboardView() {
+    if (!appSettings.metricsBarUrl) return;
+    metricsPickerViewOnly = true;
+    const instr = metricsPickerOverlay.querySelector(".metrics-picker-instruction");
+    if (instr) instr.textContent = "Dashboard view — close when done";
+    btnMetricsPickerCancel.textContent = "Close";
+    metricsPickerCaptureBar.classList.remove("visible");
+    metricsPickerOverlay.classList.add("visible");
+    const sep = appSettings.metricsBarUrl.includes("?") ? "&" : "?";
+    metricsPickerWebview.src = appSettings.metricsBarUrl + sep + "_mv=" + Date.now();
+  }
+
+  function closeMetricsPicker() {
+    metricsPickerViewOnly = false;
+    metricsPickerOverlay.classList.remove("visible");
+    metricsPickerWebview.src = "about:blank";
+    metricsPickerPendingSelector = null;
+    metricsPickerTargetFieldId = null;
+  }
+
+  metricsPickerWebview.addEventListener("did-finish-load", function () {
+    if (metricsPickerViewOnly) return;
+    // Inject picker script after a short delay for JS frameworks to settle
+    setTimeout(function () {
+      if (!metricsPickerViewOnly) {
+        metricsPickerWebview.executeJavaScript(METRICS_PICKER_INJECT_SCRIPT).catch(function () { /* ignore */ });
+      }
+    }, 2000);
+  });
+
+  metricsPickerWebview.addEventListener("console-message", function (e) {
+    const msg = (e.message || "");
+    const PREFIX = "[METRICS-PICK] ";
+    if (!msg.startsWith(PREFIX)) return;
+    try {
+      const data = JSON.parse(msg.slice(PREFIX.length));
+      metricsPickerPendingSelector = data.selector;
+      metricsPickerValuePreview.textContent = data.text || "(no text)";
+      metricsPickerSelectorInput.value = data.selector;
+      metricsPickerCaptureBar.classList.add("visible");
+      metricsPickerLabelInput.focus();
+    } catch { /* ignore malformed messages */ }
   });
 
   window.addEventListener("beforeunload", function () {

@@ -17,6 +17,9 @@ let EDITOR_STATE_FILE;
 const downloads = [];
 let nextDownloadId = 1;
 
+// Pending save paths for "Save Image As" — keyed by URL, consumed in will-download
+const pendingSavePaths = new Map();
+
 // Serializes all reads+writes to autosave.json so concurrent IPC calls
 // (autosave, live-sync snapshot, ticket-swap snapshot) can't interleave and
 // overwrite each other with stale data.
@@ -369,6 +372,17 @@ function createWindow() {
         // Invalid URL — fall through to tab redirect
       }
 
+      // Image URLs: download instead of opening in a new tab
+      try {
+        const imgPath = new URL(url).pathname;
+        if (/\.(jpe?g|png|gif|webp|bmp|svg|ico|tiff?)$/i.test(imgPath)) {
+          webviewContents.downloadURL(url);
+          return { action: "deny" };
+        }
+      } catch {
+        // Ignore malformed URLs
+      }
+
       // Normal links: open in a new tab instead
       mainWindow.webContents.send("open-in-new-tab", url);
       return { action: "deny" };
@@ -454,6 +468,33 @@ function createWindow() {
       // Image actions
       if (params.mediaType === "image" && params.srcURL) {
         if (menuItems.length > 0) menuItems.push({ type: "separator" });
+        menuItems.push({
+          label: "Copy Image",
+          click: () => webviewContents.copyImageAt(params.x, params.y),
+        });
+        menuItems.push({
+          label: "Save Image As…",
+          click: async () => {
+            let defaultFilename = "image";
+            try {
+              const urlPathname = new URL(params.srcURL).pathname;
+              const base = urlPathname.split("/").pop();
+              if (base) defaultFilename = base.split("?")[0];
+            } catch {
+              // Ignore malformed URLs
+            }
+            const { filePath } = await electron.dialog.showSaveDialog(mainWindow, {
+              defaultPath: defaultFilename,
+              filters: [
+                { name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"] },
+                { name: "All Files", extensions: ["*"] },
+              ],
+            });
+            if (!filePath) return;
+            pendingSavePaths.set(params.srcURL, filePath);
+            webviewContents.downloadURL(params.srcURL);
+          },
+        });
         menuItems.push({
           label: "Open Image in New Tab",
           click: () =>
@@ -957,7 +998,6 @@ function registerIpcHandlers() {
         return { error: err };
       }
       const json = await resp.json();
-      console.log("[ai-get-models] raw response:", JSON.stringify(json).substring(0, 500));
       // Handle both OpenAI-compatible { data: [{id}, ...] } and plain array shapes
       const raw = Array.isArray(json) ? json : (json.data || json.models || []);
       // Hatz API uses "name" as the model identifier; fall back to "id" for OpenAI-compatible providers
@@ -969,7 +1009,6 @@ function registerIpcHandlers() {
           return value ? { value, label } : null;
         })
         .filter(Boolean);
-      console.log("[ai-get-models] parsed models:", models);
       return { models };
     } catch (err) {
       console.error("[ai-get-models] fetch failed:", err);
@@ -1099,6 +1138,11 @@ electron.app.whenReady().then(() => {
   );
 
   electron.session.defaultSession.on("will-download", (_event, item) => {
+    const itemUrl = item.getURL();
+    if (pendingSavePaths.has(itemUrl)) {
+      item.setSavePath(pendingSavePaths.get(itemUrl));
+      pendingSavePaths.delete(itemUrl);
+    }
     const id = nextDownloadId++;
     const record = {
       id,

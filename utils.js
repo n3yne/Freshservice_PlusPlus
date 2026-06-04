@@ -20,6 +20,10 @@ const DEFAULT_SETTINGS = {
   aiApiKey: "",
   dismissedReleaseVersion: "",
   backupStorageWarningMb: 100,
+  metricsBarEnabled: false,
+  metricsBarUrl: "",
+  metricsBarInterval: 15,
+  metricsBarFields: [],
 };
 
 function sanitizeTicketId(raw) {
@@ -57,6 +61,19 @@ function validateSettings(s) {
   if (s.aiApiKey !== undefined && (typeof s.aiApiKey !== "string" || s.aiApiKey.length > 500)) return false;
   if (s.dismissedReleaseVersion !== undefined && (typeof s.dismissedReleaseVersion !== "string" || s.dismissedReleaseVersion.length > 20)) return false;
   if (s.backupStorageWarningMb !== undefined && (typeof s.backupStorageWarningMb !== "number" || s.backupStorageWarningMb < 0 || s.backupStorageWarningMb > 100000)) return false;
+  if (s.metricsBarEnabled !== undefined && typeof s.metricsBarEnabled !== "boolean") return false;
+  if (s.metricsBarUrl !== undefined && (typeof s.metricsBarUrl !== "string" || s.metricsBarUrl.length > 500)) return false;
+  if (s.metricsBarInterval !== undefined && (typeof s.metricsBarInterval !== "number" || ![5, 15, 30, 60].includes(s.metricsBarInterval))) return false;
+  if (s.metricsBarFields !== undefined) {
+    if (!Array.isArray(s.metricsBarFields)) return false;
+    if (s.metricsBarFields.length > 20) return false;
+    for (const f of s.metricsBarFields) {
+      if (typeof f !== "object" || f === null || Array.isArray(f)) return false;
+      if (typeof f.id !== "string" || f.id.length === 0 || f.id.length > 50) return false;
+      if (typeof f.label !== "string" || f.label.length === 0 || f.label.length > 50) return false;
+      if (typeof f.selector !== "string" || f.selector.length === 0 || f.selector.length > 2000) return false;
+    }
+  }
   if (!Array.isArray(s.noteTemplates)) return false;
   if (s.noteTemplates.length > 50) return false;
   for (const tmpl of s.noteTemplates) {
