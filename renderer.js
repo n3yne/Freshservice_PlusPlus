@@ -975,6 +975,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (pendingNotifications.some((n) => n.type === notif.type)) return;
     pendingNotifications.push(notif);
     updateNotificationsBadge();
+    if (notif.type === "update") openNotificationsPanel();
   }
 
   function updateNotificationsBadge() {
