@@ -2,7 +2,7 @@
 
 An Electron-based wrapper for ConnectWise Manage that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
 
-**Current version:** 0.1.2
+**Current version:** 0.2.0
 
 ---
 
