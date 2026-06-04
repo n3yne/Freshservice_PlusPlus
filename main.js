@@ -537,6 +537,112 @@ function createWindow() {
   });
 }
 
+// Calls the chat completions endpoint for the configured AI provider and returns
+// the reply text, or throws on HTTP/network error.
+async function callAiChat(prompt, aiSettings) {
+  const { aiProvider, aiApiKey, aiModelName } = aiSettings;
+
+  if (aiProvider === "anthropic") {
+    const model = aiModelName || "claude-opus-4-6";
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": aiApiKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model, max_tokens: 4096, messages: [{ role: "user", content: prompt }] }),
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(`Anthropic API error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
+    }
+    const json = await resp.json();
+    return json.content?.[0]?.text ?? "";
+  }
+
+  if (aiProvider === "openai") {
+    const model = aiModelName || "gpt-4o";
+    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${aiApiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }] }),
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(`OpenAI API error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
+    }
+    const json = await resp.json();
+    return json.choices?.[0]?.message?.content ?? "";
+  }
+
+  // Hatz AI (OpenAI-compatible)
+  const model = aiModelName || "gpt-4o";
+  const resp = await fetch("https://ai.hatz.ai/v1/chat/completions", {
+    method: "POST",
+    headers: { "X-API-Key": aiApiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ messages: [{ role: "user", content: prompt }], model }),
+  });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => "");
+    throw new Error(`Hatz AI error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
+  }
+  const json = await resp.json();
+  return json.choices?.[0]?.message?.content ?? "";
+}
+
+// Fetches available model IDs from the configured provider.
+async function fetchAiModels(aiProvider, aiApiKey) {
+  if (aiProvider === "openai") {
+    const resp = await fetch("https://api.openai.com/v1/models", {
+      headers: { "Authorization": `Bearer ${aiApiKey}` },
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(`OpenAI API error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
+    }
+    const json = await resp.json();
+    return (json.data || [])
+      .filter((m) => /^(gpt-|o\d|chatgpt-)/.test(m.id || ""))
+      .sort((a, b) => (b.created || 0) - (a.created || 0))
+      .map((m) => ({ value: m.id, label: m.id }));
+  }
+
+  if (aiProvider === "anthropic") {
+    const resp = await fetch("https://api.anthropic.com/v1/models", {
+      headers: { "x-api-key": aiApiKey, "anthropic-version": "2023-06-01" },
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(`Anthropic API error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
+    }
+    const json = await resp.json();
+    return (json.data || []).map((m) => ({
+      value: m.id,
+      label: m.display_name ? `${m.display_name} (${m.id})` : m.id,
+    }));
+  }
+
+  // Hatz AI
+  const resp = await fetch("https://ai.hatz.ai/v1/chat/models", {
+    headers: { "X-API-Key": aiApiKey },
+  });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => "");
+    throw new Error(`API error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
+  }
+  const json = await resp.json();
+  const raw = Array.isArray(json) ? json : (json.data || json.models || []);
+  return raw
+    .map((m) => {
+      if (typeof m === "string") return { value: m, label: m };
+      const value = m?.name || m?.id;
+      const label = m?.display_name ? `${m.display_name} (${value})` : value;
+      return value ? { value, label } : null;
+    })
+    .filter(Boolean);
+}
+
 function registerIpcHandlers() {
   // Save a single note entry (autosave or manual)
   electron.ipcMain.handle(
@@ -920,12 +1026,12 @@ function registerIpcHandlers() {
     return results;
   });
 
-  // AI: send panel notes to Hatz AI for wording/clarity suggestions
+  // AI: send panel notes to the configured AI provider for wording/clarity suggestions
   electron.ipcMain.handle("ai-suggest", async (_event, { text, ticketContext, settings: aiSettings }) => {
-    if (!aiSettings || aiSettings.aiProvider !== "hatz" || !aiSettings.aiApiKey) {
+    const provider = aiSettings?.aiProvider;
+    if (!aiSettings || !["hatz", "openai", "anthropic"].includes(provider) || !aiSettings.aiApiKey) {
       return { error: "No AI provider configured. Add your API key in Settings → AI Assistant." };
     }
-    const model = aiSettings.aiModelName || "gpt-4o";
     const contextSection =
       ticketContext && ticketContext.trim().length > 20
         ? "\n\nFor background, here are the existing ticket notes for context (do not repeat or summarize these — they are reference only):\n\n" +
@@ -938,77 +1044,38 @@ function registerIpcHandlers() {
       contextSection +
       "\n\nNotes to improve:\n\n" + text;
     try {
-      const resp = await fetch("https://ai.hatz.ai/v1/chat/completions", {
-        method: "POST",
-        headers: { "X-API-Key": aiSettings.aiApiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [{ role: "user", content: prompt }], model }),
-      });
-      if (!resp.ok) {
-        const body = await resp.text().catch(() => "");
-        return { error: `Hatz AI error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}` };
-      }
-      const json = await resp.json();
-      return { result: json.choices?.[0]?.message?.content ?? "" };
+      return { result: await callAiChat(prompt, aiSettings) };
     } catch (err) {
-      return { error: "Request failed: " + (err.message || String(err)) };
+      return { error: err.message || String(err) };
     }
   });
 
   // AI: summarize all scraped note text from the active CW ticket page
   electron.ipcMain.handle("ai-summarize", async (_event, { text, settings: aiSettings }) => {
-    if (!aiSettings || aiSettings.aiProvider !== "hatz" || !aiSettings.aiApiKey) {
+    const provider = aiSettings?.aiProvider;
+    if (!aiSettings || !["hatz", "openai", "anthropic"].includes(provider) || !aiSettings.aiApiKey) {
       return { error: "No AI provider configured. Add your API key in Settings → AI Assistant." };
     }
-    const model = aiSettings.aiModelName || "gpt-4o";
     const prompt =
       "Summarize the following ConnectWise ticket notes into a concise bullet-point summary. " +
       "Capture the key issue, actions taken, and current status. " +
       "Do not use em-dashes or en-dashes in your response — use commas, periods, or hyphens instead. " +
       "Reply with only the summary, no preamble:\n\n" + text;
     try {
-      const resp = await fetch("https://ai.hatz.ai/v1/chat/completions", {
-        method: "POST",
-        headers: { "X-API-Key": aiSettings.aiApiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [{ role: "user", content: prompt }], model }),
-      });
-      if (!resp.ok) {
-        const body = await resp.text().catch(() => "");
-        return { error: `Hatz AI error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}` };
-      }
-      const json = await resp.json();
-      return { result: json.choices?.[0]?.message?.content ?? "" };
+      return { result: await callAiChat(prompt, aiSettings) };
     } catch (err) {
-      return { error: "Request failed: " + (err.message || String(err)) };
+      return { error: err.message || String(err) };
     }
   });
 
   // AI: fetch available model IDs from the configured provider
   electron.ipcMain.handle("ai-get-models", async (_event, { aiProvider, aiApiKey }) => {
-    if (aiProvider !== "hatz" || !aiApiKey) {
+    if (!["hatz", "openai", "anthropic"].includes(aiProvider) || !aiApiKey) {
       return { error: "No provider configured" };
     }
     try {
-      const resp = await fetch("https://ai.hatz.ai/v1/chat/models", {
-        headers: { "X-API-Key": aiApiKey },
-      });
-      if (!resp.ok) {
-        const body = await resp.text().catch(() => "");
-        const err = `API error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`;
-        console.error("[ai-get-models]", err);
-        return { error: err };
-      }
-      const json = await resp.json();
-      // Handle both OpenAI-compatible { data: [{id}, ...] } and plain array shapes
-      const raw = Array.isArray(json) ? json : (json.data || json.models || []);
-      // Hatz API uses "name" as the model identifier; fall back to "id" for OpenAI-compatible providers
-      const models = raw
-        .map((m) => {
-          if (typeof m === "string") return { value: m, label: m };
-          const value = m?.name || m?.id;
-          const label = m?.display_name ? `${m.display_name} (${value})` : value;
-          return value ? { value, label } : null;
-        })
-        .filter(Boolean);
+      const models = await fetchAiModels(aiProvider, aiApiKey);
+      if (!models.length) return { error: "Empty model list returned" };
       return { models };
     } catch (err) {
       console.error("[ai-get-models] fetch failed:", err);
