@@ -1,6 +1,6 @@
 # ConnectWise Manage++
 
-An Electron-based wrapper for ConnectWise Manage that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, and quality-of-life browser improvements on top of the standard web interface.
+An Electron-based wrapper for ConnectWise Manage that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
 
 **Current version:** 0.1.2
 
@@ -13,6 +13,7 @@ An Electron-based wrapper for ConnectWise Manage that adds a persistent note edi
 - **Tab management** – Pin tabs, duplicate, close others, reopen closed tabs, copy URL, open in default browser (right-click any tab)
 - **Find in page** – `Ctrl+F` to search text on the current page
 - **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions and an active-download badge
+- **Image context menu** – Right-click any image for **Copy Image** (copies pixel data to clipboard) and **Save Image As…** (native save dialog); image links open as downloads instead of new tabs
 
 ### Note Editor
 - **Rich text side panel** – Draft and edit notes with a full formatting toolbar (bold, italic, underline, lists, clear formatting)
@@ -29,6 +30,17 @@ An Electron-based wrapper for ConnectWise Manage that adds a persistent note edi
 - **Live two-way sync** – With "Live Sync" enabled, the panel and the active CW notes field (Draft.js time-entry editor or stopwatch textarea) stay in sync as you type — no manual copy-paste needed
 - **Pull from CW / Push to CW** – Manual sync buttons for when live sync is off or you want an explicit transfer
 - **Auto ticket detection** – Switching tabs automatically loads the correct ticket content into the panel
+
+### Metrics Bar
+
+A configurable stats bar displayed above the tab strip that periodically scrapes live numbers from a BrightGauge public dashboard.
+
+- **Auto-poll** – Refreshes on a configurable interval (5 / 15 / 30 / 60 minutes); a manual refresh button is also available
+- **Visual field picker** – Click **+ Add Field**, navigate the dashboard inside the built-in picker overlay, then click any value to capture it; the app auto-generates a stable selector anchored to the person/row name rather than a fragile DOM position
+- **Per-field labels** – Each metric displays a custom label beneath the value
+- **View dashboard** – Click any metric card to open the live dashboard in an overlay for a quick visual check
+- **Editable selectors** – Each field's captured selector is shown in Settings and can be manually corrected; a **Test selectors** button re-scrapes immediately and updates the "→ found value" badges
+- **Re-pick** – Individual fields can be re-picked at any time without losing the others
 
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes
@@ -114,6 +126,23 @@ Output is placed in the `dist/` folder.
 
 ---
 
+## Metrics Bar Setup
+
+1. Open **Settings** and go to the **Metrics Bar** section
+2. Enable the toggle and paste the URL of your BrightGauge public dashboard
+3. Choose a **Poll interval** (how often the bar refreshes automatically)
+4. Click **+ Add Field** — the dashboard opens in a picker overlay
+5. Wait for the page to fully load, then click the value you want to track
+6. Give the field a label and click **Add Metric**
+7. Repeat for each value; the bar appears above the tabs once at least one field is saved
+
+**Tips:**
+- For leaderboard tables, click the value column cell in the row for your name — the picker anchors the selector to your name automatically, so it stays correct if your rank changes
+- If a field shows `(not found — check selector)`, click **Test selectors** after re-opening the dashboard view to verify live values
+- The **Re-pick** button on any field lets you re-capture its selector without deleting and re-adding it
+
+---
+
 ## AI Assistant Setup
 
 1. Open **Settings** and go to the **AI Assistant** section
@@ -130,4 +159,5 @@ The ✨ Suggest and 📋 Summarize buttons will appear in the note panel once a 
 - **ConnectWise doesn't load** – The app sets a Chrome user-agent for `*.myconnectwise.net`. Ensure you have network access to your CW instance.
 - **Login issues** – The embedded browser keeps its own session cookies. Log in once and the session will persist across launches.
 - **Live sync not working** – Check that you're on a ticket page with a visible notes field. The sync status pill at the bottom of the panel shows the current state (`⇅ Synced`, `⇅ Pushing…`, `⇅ No CW field`).
+- **Metrics bar shows `—` or `(not found)`** – Open Settings → Metrics Bar, click **Test selectors** to trigger an immediate scrape and see per-field results. If a field still shows `(not found — check selector)`, click the metric card to open the dashboard view, wait for the page to fully load, then use **Re-pick** to recapture the selector.
 - **Blank screen or errors** – Press `Ctrl+Shift+I` to open DevTools and check the console.
