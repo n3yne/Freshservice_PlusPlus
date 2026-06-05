@@ -22,8 +22,26 @@
       <!-- Right content panels -->
       <div class="settings-content">
 
-        <!-- General panel: Features + Navigation -->
+        <!-- General panel: Navigation + Features -->
         <div class="settings-panel active" id="panel-general">
+
+          <div class="settings-section">
+            <h3 class="settings-section-title">Navigation</h3>
+            <div class="settings-field settings-field-column">
+              <label class="settings-field-label" for="setting-default-url">Home URL</label>
+              <input
+                type="url"
+                id="setting-default-url"
+                class="settings-text-input"
+                placeholder="https://na.myconnectwise.net/"
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </div>
+            <p class="settings-description settings-description-field">
+              The page loaded when opening a new tab or when the app starts for the first time.
+            </p>
+          </div>
 
           <div class="settings-section">
             <h3 class="settings-section-title">Appearance &amp; Features</h3>
@@ -54,24 +72,6 @@
             <p class="settings-description">
               Automatically load ticket notes when switching tabs and keep the panel in sync
               with the active CW notes field as you type.
-            </p>
-          </div>
-
-          <div class="settings-section">
-            <h3 class="settings-section-title">Navigation</h3>
-            <div class="settings-field settings-field-column">
-              <label class="settings-field-label" for="setting-default-url">Home URL</label>
-              <input
-                type="url"
-                id="setting-default-url"
-                class="settings-text-input"
-                placeholder="https://na.myconnectwise.net/"
-                spellcheck="false"
-                autocomplete="off"
-              />
-            </div>
-            <p class="settings-description settings-description-field">
-              The page loaded when opening a new tab or when the app starts for the first time.
             </p>
           </div>
 

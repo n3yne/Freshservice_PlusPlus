@@ -1,6 +1,6 @@
 {
   "name": "connectwise-manage-pp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "ConnectWise Manage++ wrapper with automatic ticket note backup",
   "main": "main.js",
   "scripts": {

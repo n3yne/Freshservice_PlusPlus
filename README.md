@@ -2,7 +2,7 @@
 
 An Electron-based wrapper for ConnectWise Manage that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
 
-**Current version:** 0.2.0
+**Current version:** 0.2.1
 
 ---
 
@@ -33,19 +33,20 @@ An Electron-based wrapper for ConnectWise Manage that adds a persistent note edi
 
 ### Metrics Bar
 
-A configurable stats bar displayed above the tab strip that periodically scrapes live numbers from a BrightGauge public dashboard.
+A configurable stats bar displayed above the tab strip that periodically scrapes live numbers from one or more BrightGauge public dashboards.
 
+- **Multiple dashboards** – Add as many dashboard sources as you need; fields from all dashboards are shown together in the bar
 - **Auto-poll** – Refreshes on a configurable interval (5 / 15 / 30 / 60 minutes); a manual refresh button is also available
 - **Visual field picker** – Click **+ Add Field**, navigate the dashboard inside the built-in picker overlay, then click any value to capture it; the app auto-generates a stable selector anchored to the person/row name rather than a fragile DOM position
 - **Per-field labels** – Each metric displays a custom label beneath the value
-- **View dashboard** – Click any metric card to open the live dashboard in an overlay for a quick visual check
-- **Editable selectors** – Each field's captured selector is shown in Settings and can be manually corrected; a **Test selectors** button re-scrapes immediately and updates the "→ found value" badges
+- **View dashboard** – Click any metric card to open that card's source dashboard in a new tab
+- **Editable selectors** – Each field's captured selector is shown in Settings and can be manually corrected; a **Test selectors** button per dashboard re-scrapes immediately and updates the "→ found value" badges
 - **Re-pick** – Individual fields can be re-picked at any time without losing the others
 
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes
 - **📋 Summarize** – Scrapes all visible note content from the active CW ticket page and asks the AI to produce a concise bullet-point summary
-- Supports **Hatz AI** as the provider; model is selected from a live dropdown populated from the API
+- Supports **Hatz AI**, **OpenAI**, and **Anthropic** as providers; the model dropdown is populated automatically from the provider's API once an API key is entered
 
 ### Notifications
 A bell icon in the tab bar shows a badge when there are unread notifications. Current notification types:
@@ -58,7 +59,9 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 - **Dark / Light theme**
 - **Collapsible panel** – Hide the side panel entirely; a slim toggle button brings it back
 - **Resizable panel** – Drag the divider to adjust the panel width
-- All settings are persisted to disk and applied immediately
+- **Native settings window** – Settings open in a separate OS window (`Ctrl+,` or **Edit → Settings**); the main window stays fully usable while settings are open. Re-invoking the shortcut focuses the existing window rather than opening a second one
+- **Category sidebar** – Settings are organised into sections (General, Data, AI Assistant, Metrics Bar, Templates, Signature) accessible from a left-hand nav
+- All settings are persisted to disk and applied to the main window immediately
 
 ---
 
@@ -128,27 +131,32 @@ Output is placed in the `dist/` folder.
 
 ## Metrics Bar Setup
 
-1. Open **Settings** and go to the **Metrics Bar** section
-2. Enable the toggle and paste the URL of your BrightGauge public dashboard
-3. Choose a **Poll interval** (how often the bar refreshes automatically)
+1. Open **Settings** (`Ctrl+,`) and go to the **Metrics Bar** section
+2. Enable the toggle and choose a **Refresh interval**
+3. Click **+ Add Dashboard** and paste the URL of your BrightGauge public dashboard
 4. Click **+ Add Field** — the dashboard opens in a picker overlay
 5. Wait for the page to fully load, then click the value you want to track
 6. Give the field a label and click **Add Metric**
 7. Repeat for each value; the bar appears above the tabs once at least one field is saved
+8. To pull stats from a second dashboard, click **+ Add Dashboard** again and repeat the process — all fields appear together in the bar
 
 **Tips:**
 - For leaderboard tables, click the value column cell in the row for your name — the picker anchors the selector to your name automatically, so it stays correct if your rank changes
-- If a field shows `(not found — check selector)`, click **Test selectors** after re-opening the dashboard view to verify live values
+- If a field shows `(not found — check selector)`, click **Test selectors** next to that dashboard to trigger an immediate scrape and see per-field results
 - The **Re-pick** button on any field lets you re-capture its selector without deleting and re-adding it
+- Clicking a metric card in the bar opens that card's source dashboard in a new tab
 
 ---
 
 ## AI Assistant Setup
 
-1. Open **Settings** and go to the **AI Assistant** section
-2. Set **Provider** to **Hatz AI**
-3. Paste your API key from the [Hatz Admin Dashboard](https://ai.hatz.ai)
-4. Select a model from the dropdown (populated automatically from the API)
+1. Open **Settings** (`Ctrl+,`) and go to the **AI Assistant** section
+2. Choose a **Provider**:
+   - **Hatz AI** – paste your API key from the [Hatz Admin Dashboard](https://ai.hatz.ai)
+   - **OpenAI** – paste a key from [platform.openai.com](https://platform.openai.com/api-keys)
+   - **Anthropic** – paste a key from [console.anthropic.com](https://console.anthropic.com/settings/keys)
+3. The **Model** dropdown populates automatically once a valid key is saved
+4. Select the model you want to use
 
 The ✨ Suggest and 📋 Summarize buttons will appear in the note panel once a provider is configured.
 
@@ -159,5 +167,5 @@ The ✨ Suggest and 📋 Summarize buttons will appear in the note panel once a 
 - **ConnectWise doesn't load** – The app sets a Chrome user-agent for `*.myconnectwise.net`. Ensure you have network access to your CW instance.
 - **Login issues** – The embedded browser keeps its own session cookies. Log in once and the session will persist across launches.
 - **Live sync not working** – Check that you're on a ticket page with a visible notes field. The sync status pill at the bottom of the panel shows the current state (`⇅ Synced`, `⇅ Pushing…`, `⇅ No CW field`).
-- **Metrics bar shows `—` or `(not found)`** – Open Settings → Metrics Bar, click **Test selectors** to trigger an immediate scrape and see per-field results. If a field still shows `(not found — check selector)`, click the metric card to open the dashboard view, wait for the page to fully load, then use **Re-pick** to recapture the selector.
+- **Metrics bar shows `—` or `(not found)`** – Open Settings → Metrics Bar, click **Test selectors** next to the relevant dashboard to trigger an immediate scrape and see per-field results. If a field still shows `(not found — check selector)`, use **Re-pick** on that field, wait for the dashboard to fully load in the picker, then click the correct value to recapture the selector.
 - **Blank screen or errors** – Press `Ctrl+Shift+I` to open DevTools and check the console.
