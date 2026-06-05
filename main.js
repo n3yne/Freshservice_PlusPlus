@@ -53,7 +53,16 @@ const CW_AUTH_PATH_PATTERN =
 async function loadSettings() {
   try {
     const raw = await fsp.readFile(SETTINGS_FILE, "utf-8");
-    return Object.assign({}, DEFAULT_SETTINGS, JSON.parse(raw));
+    const parsed = JSON.parse(raw);
+    // Migrate old single-dashboard format to metricsBarDashboards array
+    if (!parsed.metricsBarDashboards && (parsed.metricsBarUrl || parsed.metricsBarFields)) {
+      parsed.metricsBarDashboards = parsed.metricsBarUrl ? [{
+        id: "db-migrated",
+        url: parsed.metricsBarUrl,
+        fields: parsed.metricsBarFields || [],
+      }] : [];
+    }
+    return Object.assign({}, DEFAULT_SETTINGS, parsed);
   } catch (e) {
     if (e.code !== "ENOENT") console.error("[Settings] Error loading settings:", e);
     return Object.assign({}, DEFAULT_SETTINGS);
@@ -223,11 +232,7 @@ function createWindow() {
         {
           label: "Settings",
           accelerator: "CmdOrCtrl+,",
-          click: () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send("open-settings");
-            }
-          },
+          click: () => { createSettingsWindow(); },
         },
       ],
     },
@@ -327,7 +332,7 @@ function createWindow() {
       if (input.type !== "keyDown") return;
       // Ctrl+, → Settings
       if (input.control && !input.shift && !input.alt && input.key === ",") {
-        mainWindow.webContents.send("open-settings");
+        createSettingsWindow();
       }
     });
   });
@@ -643,6 +648,33 @@ async function fetchAiModels(aiProvider, aiApiKey) {
     .filter(Boolean);
 }
 
+let settingsWindow = null;
+
+function createSettingsWindow() {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.focus();
+    return;
+  }
+  settingsWindow = new electron.BrowserWindow({
+    width: 720,
+    height: 780,
+    minWidth: 600,
+    minHeight: 500,
+    title: "Settings",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webviewTag: true,
+      spellcheck: true,
+      webSecurity: true,
+      sandbox: true,
+    },
+  });
+  settingsWindow.loadFile("settings.html");
+  settingsWindow.on("closed", () => { settingsWindow = null; });
+}
+
 function registerIpcHandlers() {
   // Save a single note entry (autosave or manual)
   electron.ipcMain.handle(
@@ -905,6 +937,11 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
+  // Open (or focus) the settings window
+  electron.ipcMain.handle("open-settings-window", () => {
+    createSettingsWindow();
+  });
+
   // Load settings from disk
   electron.ipcMain.handle("load-settings", async () => {
     return loadSettings();
@@ -918,9 +955,12 @@ function registerIpcHandlers() {
       return { success: false };
     }
     await saveSettings(merged);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("settings-changed", merged);
-    }
+    const sender = electron.BrowserWindow.fromWebContents(event.sender);
+    electron.BrowserWindow.getAllWindows().forEach((win) => {
+      if (win !== sender && !win.isDestroyed()) {
+        win.webContents.send("settings-changed", merged);
+      }
+    });
     return { success: true };
   });
 

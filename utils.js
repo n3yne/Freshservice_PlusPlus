@@ -21,9 +21,8 @@ const DEFAULT_SETTINGS = {
   dismissedReleaseVersion: "",
   backupStorageWarningMb: 100,
   metricsBarEnabled: false,
-  metricsBarUrl: "",
   metricsBarInterval: 15,
-  metricsBarFields: [],
+  metricsBarDashboards: [],
 };
 
 function sanitizeTicketId(raw) {
@@ -62,16 +61,22 @@ function validateSettings(s) {
   if (s.dismissedReleaseVersion !== undefined && (typeof s.dismissedReleaseVersion !== "string" || s.dismissedReleaseVersion.length > 20)) return false;
   if (s.backupStorageWarningMb !== undefined && (typeof s.backupStorageWarningMb !== "number" || s.backupStorageWarningMb < 0 || s.backupStorageWarningMb > 100000)) return false;
   if (s.metricsBarEnabled !== undefined && typeof s.metricsBarEnabled !== "boolean") return false;
-  if (s.metricsBarUrl !== undefined && (typeof s.metricsBarUrl !== "string" || s.metricsBarUrl.length > 500)) return false;
   if (s.metricsBarInterval !== undefined && (typeof s.metricsBarInterval !== "number" || ![5, 15, 30, 60].includes(s.metricsBarInterval))) return false;
-  if (s.metricsBarFields !== undefined) {
-    if (!Array.isArray(s.metricsBarFields)) return false;
-    if (s.metricsBarFields.length > 20) return false;
-    for (const f of s.metricsBarFields) {
-      if (typeof f !== "object" || f === null || Array.isArray(f)) return false;
-      if (typeof f.id !== "string" || f.id.length === 0 || f.id.length > 50) return false;
-      if (typeof f.label !== "string" || f.label.length === 0 || f.label.length > 50) return false;
-      if (typeof f.selector !== "string" || f.selector.length === 0 || f.selector.length > 2000) return false;
+  if (s.metricsBarDashboards !== undefined) {
+    if (!Array.isArray(s.metricsBarDashboards)) return false;
+    if (s.metricsBarDashboards.length > 10) return false;
+    for (const db of s.metricsBarDashboards) {
+      if (typeof db !== "object" || db === null || Array.isArray(db)) return false;
+      if (typeof db.id !== "string" || db.id.length === 0 || db.id.length > 50) return false;
+      if (typeof db.url !== "string" || db.url.length > 500) return false;
+      if (!Array.isArray(db.fields)) return false;
+      if (db.fields.length > 20) return false;
+      for (const f of db.fields) {
+        if (typeof f !== "object" || f === null || Array.isArray(f)) return false;
+        if (typeof f.id !== "string" || f.id.length === 0 || f.id.length > 50) return false;
+        if (typeof f.label !== "string" || f.label.length === 0 || f.label.length > 50) return false;
+        if (typeof f.selector !== "string" || f.selector.length === 0 || f.selector.length > 2000) return false;
+      }
     }
   }
   if (!Array.isArray(s.noteTemplates)) return false;

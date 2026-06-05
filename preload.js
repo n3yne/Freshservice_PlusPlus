@@ -45,4 +45,5 @@ contextBridge.exposeInMainWorld("backupAPI", {
   onFindInPage: (callback) => onIpc("find-in-page", () => callback()),
   onSettingsChanged: (callback) =>
     onIpc("settings-changed", (event, settings) => callback(settings)),
+  openSettingsWindow: () => ipcRenderer.invoke("open-settings-window"),
 });

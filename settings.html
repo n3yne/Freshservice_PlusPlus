@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings — ConnectWise Manage++</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="settings-page">
+    <div class="settings-layout">
+
+      <!-- Left category nav -->
+      <nav class="settings-nav" aria-label="Settings categories">
+        <button type="button" class="settings-nav-item active" data-panel="general">General</button>
+        <button type="button" class="settings-nav-item" data-panel="data">Data</button>
+        <button type="button" class="settings-nav-item" data-panel="ai">AI Assistant</button>
+        <button type="button" class="settings-nav-item" data-panel="metrics">Metrics Bar</button>
+        <button type="button" class="settings-nav-item" data-panel="templates">Templates</button>
+        <button type="button" class="settings-nav-item" data-panel="signature">Signature</button>
+      </nav>
+
+      <!-- Right content panels -->
+      <div class="settings-content">
+
+        <!-- General panel: Features + Navigation -->
+        <div class="settings-panel active" id="panel-general">
+
+          <div class="settings-section">
+            <h3 class="settings-section-title">Appearance &amp; Features</h3>
+
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-theme" />
+              <span class="settings-toggle-slider"></span>
+              <span class="settings-toggle-label">Light Mode</span>
+            </label>
+            <p class="settings-description">
+              Switch between the default dark color scheme and a light color scheme.
+            </p>
+
+            <label class="settings-toggle settings-toggle-spaced">
+              <input type="checkbox" id="setting-note-panel" />
+              <span class="settings-toggle-slider"></span>
+              <span class="settings-toggle-label">Note Backup Side Panel</span>
+            </label>
+            <p class="settings-description">
+              Show the note drafting and backup panel on the right side of the window.
+            </p>
+
+            <label class="settings-toggle settings-toggle-spaced">
+              <input type="checkbox" id="setting-live-sync" />
+              <span class="settings-toggle-slider"></span>
+              <span class="settings-toggle-label">Live Sync with Active Tab</span>
+            </label>
+            <p class="settings-description">
+              Automatically load ticket notes when switching tabs and keep the panel in sync
+              with the active CW notes field as you type.
+            </p>
+          </div>
+
+          <div class="settings-section">
+            <h3 class="settings-section-title">Navigation</h3>
+            <div class="settings-field settings-field-column">
+              <label class="settings-field-label" for="setting-default-url">Home URL</label>
+              <input
+                type="url"
+                id="setting-default-url"
+                class="settings-text-input"
+                placeholder="https://na.myconnectwise.net/"
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </div>
+            <p class="settings-description settings-description-field">
+              The page loaded when opening a new tab or when the app starts for the first time.
+            </p>
+          </div>
+
+        </div><!-- #panel-general -->
+
+        <!-- Data panel -->
+        <div class="settings-panel" id="panel-data">
+
+          <div class="settings-section">
+            <h3 class="settings-section-title">Data</h3>
+
+            <div class="settings-field">
+              <label class="settings-field-label" for="setting-retention-days">Backup Retention</label>
+              <div class="settings-field-row">
+                <input type="number" id="setting-retention-days" class="settings-number-input"
+                  min="0" max="365" step="1" value="7" />
+                <span class="settings-field-suffix">days</span>
+              </div>
+            </div>
+            <p class="settings-description settings-description-field settings-description-field-spaced">
+              How long to keep saved note snapshots before automatic cleanup.
+              Set to <strong>0</strong> to keep notes forever.
+            </p>
+
+            <div class="settings-field">
+              <label class="settings-field-label" for="setting-snapshot-threshold">Snapshot Threshold</label>
+              <div class="settings-field-row">
+                <input type="number" id="setting-snapshot-threshold" class="settings-number-input"
+                  min="1" max="9999" step="1" value="5" />
+                <span class="settings-field-suffix">chars</span>
+              </div>
+            </div>
+            <p class="settings-description settings-description-field settings-description-field-spaced">
+              Minimum character difference between panel content and the last snapshot before a new
+              snapshot is auto-saved on tab switch or sync pull.
+            </p>
+
+            <div class="settings-field">
+              <label class="settings-field-label" for="setting-storage-warning">Storage Warning</label>
+              <div class="settings-field-row">
+                <input type="number" id="setting-storage-warning" class="settings-number-input"
+                  min="0" max="100000" step="1" value="100" />
+                <span class="settings-field-suffix">MB</span>
+              </div>
+            </div>
+            <p class="settings-description settings-description-field settings-description-field-spaced">
+              Show a notification when the backup folder exceeds this size.
+              Set to <strong>0</strong> to disable.
+            </p>
+
+            <div class="settings-field">
+              <label class="settings-field-label" for="setting-sort-field">Ticket Sort Order</label>
+              <div class="settings-field-row">
+                <select id="setting-sort-field" class="settings-select-input" title="Sort saved tickets by">
+                  <option value="lastUpdated">Last Updated</option>
+                  <option value="ticketNumber">Ticket Number</option>
+                </select>
+                <select id="setting-sort-direction" class="settings-select-input" title="Sort direction">
+                  <option value="desc">Descending</option>
+                  <option value="asc">Ascending</option>
+                </select>
+              </div>
+            </div>
+            <p class="settings-description settings-description-field">
+              How the saved tickets dropdown is sorted.
+            </p>
+          </div>
+
+        </div><!-- #panel-data -->
+
+        <!-- AI Assistant panel -->
+        <div class="settings-panel" id="panel-ai">
+
+          <div class="settings-section">
+            <h3 class="settings-section-title">AI Assistant</h3>
+            <div class="settings-field">
+              <label class="settings-field-label" for="setting-ai-provider">Provider</label>
+              <div class="settings-field-row">
+                <select id="setting-ai-provider" class="settings-select-input" title="AI provider">
+                  <option value="none">None</option>
+                  <option value="hatz">Hatz AI</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                </select>
+              </div>
+            </div>
+            <p class="settings-description settings-description-field">
+              Choose an AI provider to enable note suggestions and ticket summarization.
+            </p>
+            <div id="ai-provider-fields" class="ai-provider-fields">
+              <div class="settings-field settings-field-column">
+                <label class="settings-field-label" for="setting-ai-model">Model</label>
+                <select id="setting-ai-model" class="settings-select-input">
+                  <option value="" disabled selected>Enter API key first</option>
+                </select>
+              </div>
+              <div class="settings-field settings-field-column">
+                <label class="settings-field-label" for="setting-ai-key">API Key</label>
+                <input
+                  type="password"
+                  id="setting-ai-key"
+                  class="settings-text-input"
+                  placeholder="Paste your API key here"
+                  maxlength="500"
+                  autocomplete="off"
+                />
+              </div>
+              <p class="settings-description settings-description-field">
+                For Hatz AI, generate your API key from the Hatz Admin Dashboard.
+              </p>
+            </div>
+          </div>
+
+        </div><!-- #panel-ai -->
+
+        <!-- Metrics Bar panel -->
+        <div class="settings-panel" id="panel-metrics">
+
+          <div class="settings-section">
+            <h3 class="settings-section-title">Metrics Bar</h3>
+            <p class="settings-description settings-description-field">
+              Show live stats from one or more dashboards (e.g. BrightGauge) above the tab bar.
+            </p>
+            <label class="settings-toggle">
+              <span class="settings-toggle-label">Enable Metrics Bar</span>
+              <input type="checkbox" id="setting-metrics-enabled" />
+              <span class="settings-toggle-track"></span>
+            </label>
+            <div id="metrics-bar-config" class="metrics-bar-config">
+              <div class="settings-field">
+                <label class="settings-field-label" for="setting-metrics-interval">Refresh interval</label>
+                <div class="settings-field-row">
+                  <select id="setting-metrics-interval" class="settings-select-input">
+                    <option value="5">Every 5 minutes</option>
+                    <option value="15">Every 15 minutes</option>
+                    <option value="30">Every 30 minutes</option>
+                    <option value="60">Every hour</option>
+                  </select>
+                </div>
+              </div>
+              <div id="metrics-dashboards-list"></div>
+              <button type="button" id="btn-metrics-add-dashboard" class="btn btn-small btn-secondary metrics-add-dashboard-btn">+ Add Dashboard</button>
+            </div>
+          </div>
+
+        </div><!-- #panel-metrics -->
+
+        <!-- Templates panel -->
+        <div class="settings-panel" id="panel-templates">
+
+          <div class="settings-section">
+            <h3 class="settings-section-title">Note Templates</h3>
+            <p class="settings-description settings-description-field settings-description-field-spaced">
+              Predefined text snippets to insert into notes via the <strong>Tmpl</strong> toolbar button.
+            </p>
+            <div id="template-list" class="template-list"></div>
+            <button type="button" id="btn-add-template" class="btn btn-small template-add-btn">+ Add Template</button>
+            <div id="template-add-form" class="template-form">
+              <input type="text" id="template-name-input" class="settings-text-input"
+                placeholder="Template name…" maxlength="100" />
+              <textarea id="template-content-input" class="template-content-textarea"
+                placeholder="Template content…" maxlength="10000" rows="4"></textarea>
+              <div class="template-form-buttons">
+                <button type="button" id="btn-save-template" class="btn btn-primary btn-small">Save</button>
+                <button type="button" id="btn-cancel-template" class="btn btn-secondary btn-small">Cancel</button>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- #panel-templates -->
+
+        <!-- Signature panel -->
+        <div class="settings-panel" id="panel-signature">
+
+          <div class="settings-section">
+            <h3 class="settings-section-title">Signature</h3>
+            <p class="settings-description settings-description-field settings-description-field-spaced">
+              Customize the signature block inserted into notes via the <strong>Sig</strong> toolbar button.
+              Supports rich text formatting.
+            </p>
+            <div id="signature-toolbar" class="signature-toolbar">
+              <button type="button" class="toolbar-btn" data-sig-command="bold" title="Bold"><b>B</b></button>
+              <button type="button" class="toolbar-btn" data-sig-command="italic" title="Italic"><i>I</i></button>
+              <button type="button" class="toolbar-btn" data-sig-command="underline" title="Underline"><u>U</u></button>
+              <span class="toolbar-sep"></span>
+              <button type="button" class="toolbar-btn" data-sig-command="insertUnorderedList" title="Bullet List">&#8226; List</button>
+            </div>
+            <div id="setting-signature" class="signature-editor" contenteditable="true"
+              data-placeholder="e.g. Thanks, John Smith | IT Support | ext. 1234"></div>
+          </div>
+
+        </div><!-- #panel-signature -->
+
+      </div><!-- .settings-content -->
+    </div><!-- .settings-layout -->
+
+    <!-- Metrics Field Picker Overlay -->
+    <div id="metrics-picker-overlay" class="metrics-picker-overlay">
+      <div class="metrics-picker-header">
+        <span class="metrics-picker-instruction">Hover and click any value on the dashboard to track it</span>
+        <button type="button" id="btn-metrics-picker-cancel" class="btn btn-secondary">Cancel</button>
+      </div>
+      <webview id="metrics-picker-webview" class="metrics-picker-webview" src="about:blank"></webview>
+      <div id="metrics-picker-capture-bar" class="metrics-picker-capture-bar">
+        <div class="metrics-picker-capture-row">
+          <span class="metrics-picker-capture-label">Value:</span>
+          <code id="metrics-picker-value-preview" class="metrics-picker-value-preview"></code>
+          <input type="text" id="metrics-picker-label-input" class="settings-text-input metrics-picker-label-input"
+            placeholder="Label (e.g. Closed Tickets)" maxlength="50" />
+          <button type="button" id="btn-metrics-picker-save" class="btn btn-primary">Add Metric</button>
+          <button type="button" id="btn-metrics-picker-reselect" class="btn btn-secondary">Re-select</button>
+        </div>
+        <div class="metrics-picker-selector-row">
+          <span class="metrics-picker-capture-label">CSS selector:</span>
+          <input type="text" id="metrics-picker-selector-input" class="settings-text-input metrics-picker-selector-input"
+            spellcheck="false" placeholder="auto-generated — edit if needed" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Off-screen scraper webview used by "Test selectors" in this settings window -->
+    <webview id="metrics-scraper-webview" class="metrics-scraper-webview" src="about:blank"></webview>
+
+    <script src="settings_renderer.js"></script>
+  </body>
+</html>

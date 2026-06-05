@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -296,16 +296,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Settings Modal -->
-    <div id="settings-overlay" class="settings-overlay">
-      <div class="settings-modal">
-        <div class="settings-header">
-          <h2>Settings</h2>
-          <button id="btn-close-settings" class="settings-close" title="Close">
-            &times;
-          </button>
-        </div>
         <div class="settings-body">
           <!-- Features Section -->
           <div class="settings-section">
@@ -701,13 +691,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Metrics Field Picker Overlay -->
-    <div id="metrics-picker-overlay" class="metrics-picker-overlay">
-      <div class="metrics-picker-header">
-        <span class="metrics-picker-instruction">Hover and click any value on the dashboard to track it</span>
-        <button type="button" id="btn-metrics-picker-cancel" class="btn btn-secondary">Cancel</button>
-      </div>
       <webview id="metrics-picker-webview" class="metrics-picker-webview" src="about:blank"></webview>
       <div id="metrics-picker-capture-bar" class="metrics-picker-capture-bar">
         <div class="metrics-picker-capture-row">
@@ -726,7 +709,7 @@
       </div>
     </div>
 
-    <!-- Metrics scraper webview (positioned off-screen; loads dashboard for background polling) -->
+    <!-- Metrics background polling scraper (off-screen; loads dashboard for background polling) -->
     <webview id="metrics-scraper-webview" class="metrics-scraper-webview" src="about:blank"></webview>
 
     <!-- Tab Context Menu -->

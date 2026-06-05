@@ -1,4 +1,4 @@
-// ===================================================
+﻿// ===================================================
 // ConnectWise Backup - Renderer (UI Logic)
 // ===================================================
 
@@ -23,18 +23,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnGrabTicket = document.getElementById("btn-grab-ticket");
   const btnDeleteTicket = document.getElementById("btn-delete-ticket");
 
-  // --- Settings Elements ---
-  const settingsOverlay = document.getElementById("settings-overlay");
-  const btnCloseSettings = document.getElementById("btn-close-settings");
-  const settingNotePanel = document.getElementById("setting-note-panel");
-  const settingLiveSync = document.getElementById("setting-live-sync");
+  // --- Sync Status (main window) ---
   const syncStatus = document.getElementById("sync-status");
 
-  // --- AI Elements ---
-  const settingAiProvider = document.getElementById("setting-ai-provider");
-  const settingAiModel = document.getElementById("setting-ai-model");
-  const settingAiKey = document.getElementById("setting-ai-key");
-  const aiProviderFields = document.getElementById("ai-provider-fields");
+  // --- AI Buttons (main window panel) ---
   const btnAiSuggest = document.getElementById("btn-ai-suggest");
   const btnAiSummarize = document.getElementById("btn-ai-summarize");
   const aiOverlay = document.getElementById("ai-overlay");
@@ -45,29 +37,13 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnAiCancel = document.getElementById("btn-ai-cancel");
   const btnAiClose = document.getElementById("btn-ai-close");
 
-  // --- Metrics Bar Elements ---
+  // --- Metrics Bar (main window display) ---
   const metricsBar = document.getElementById("metrics-bar");
   const metricsBarItems = document.getElementById("metrics-bar-items");
   const metricsBarStatus = document.getElementById("metrics-bar-status");
   const btnMetricsRefresh = document.getElementById("btn-metrics-refresh");
   const btnMetricsHide = document.getElementById("btn-metrics-hide");
-  const settingMetricsEnabled = document.getElementById("setting-metrics-enabled");
-  const settingMetricsUrl = document.getElementById("setting-metrics-url");
-  const settingMetricsInterval = document.getElementById("setting-metrics-interval");
-  const metricsBarConfig = document.getElementById("metrics-bar-config");
-  const metricsFieldsConfigList = document.getElementById("metrics-fields-config-list");
-  const btnMetricsAddField = document.getElementById("btn-metrics-add-field");
   const metricsScraperWebview = document.getElementById("metrics-scraper-webview");
-  const metricsPickerOverlay = document.getElementById("metrics-picker-overlay");
-  const metricsPickerWebview = document.getElementById("metrics-picker-webview");
-  const metricsPickerCaptureBar = document.getElementById("metrics-picker-capture-bar");
-  const metricsPickerValuePreview = document.getElementById("metrics-picker-value-preview");
-  const metricsPickerSelectorInput = document.getElementById("metrics-picker-selector-input");
-  const metricsPickerLabelInput = document.getElementById("metrics-picker-label-input");
-  const btnMetricsTestSelectors = document.getElementById("btn-metrics-test-selectors");
-  const btnMetricsPickerSave = document.getElementById("btn-metrics-picker-save");
-  const btnMetricsPickerReselect = document.getElementById("btn-metrics-picker-reselect");
-  const btnMetricsPickerCancel = document.getElementById("btn-metrics-picker-cancel");
 
   const btnDownloads = document.getElementById("btn-downloads");
   const downloadsPanel = document.getElementById("downloads-panel");
@@ -78,24 +54,11 @@ document.addEventListener("DOMContentLoaded", function () {
   const notificationsPanel = document.getElementById("notifications-panel");
   const notificationsList = document.getElementById("notifications-list");
   const btnCloseNotifications = document.getElementById("btn-close-notifications");
-  const settingRetentionDays = document.getElementById("setting-retention-days");
-  const settingSnapshotThreshold = document.getElementById("setting-snapshot-threshold");
-  const settingStorageWarning = document.getElementById("setting-storage-warning");
-  const settingSortField = document.getElementById("setting-sort-field");
-  const settingSortDirection = document.getElementById("setting-sort-direction");
-  const settingSignature = document.getElementById("setting-signature");
   const btnInsertSignature = document.getElementById("btn-insert-signature");
 
   // --- Template Elements ---
   const btnInsertTemplate = document.getElementById("btn-insert-template");
   const templateDropdown = document.getElementById("template-dropdown");
-  const templateList = document.getElementById("template-list");
-  const btnAddTemplate = document.getElementById("btn-add-template");
-  const templateAddForm = document.getElementById("template-add-form");
-  const templateNameInput = document.getElementById("template-name-input");
-  const templateContentInput = document.getElementById("template-content-input");
-  const btnSaveTemplate = document.getElementById("btn-save-template");
-  const btnCancelTemplate = document.getElementById("btn-cancel-template");
 
   // --- Note Search Elements ---
   const noteSearchInput = document.getElementById("note-search-input");
@@ -117,10 +80,6 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnFindNext = document.getElementById("find-next");
   const btnFindClose = document.getElementById("find-close");
 
-  // --- Settings — Navigation ---
-  const settingDefaultUrl = document.getElementById("setting-default-url");
-  const settingTheme = document.getElementById("setting-theme");
-
   // --- Confirm Dialog Elements (declared early — referenced by Escape handler) ---
   const confirmOverlay = document.getElementById("confirm-overlay");
   const confirmMessage = document.getElementById("confirm-message");
@@ -137,7 +96,6 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnDiffCancel = document.getElementById("btn-diff-cancel");
 
   // ==================== Constants ====================
-  const SIG_SAVE_DEBOUNCE = 800; // ms — signature editor save delay
   const MENU_EDGE_PADDING = 4; // px — context menu window-edge padding
   const PREVIEW_MAX_LENGTH = 100; // chars — history preview truncation
   const TAB_HISTORY_MAX = 50; // max entries in tab history stack
@@ -164,67 +122,23 @@ document.addEventListener("DOMContentLoaded", function () {
     dismissedReleaseVersion: "",
     backupStorageWarningMb: 100,
     metricsBarEnabled: false,
-    metricsBarUrl: "",
     metricsBarInterval: 15,
-    metricsBarFields: [],
+    metricsBarDashboards: [],
   };
 
   function applySettings(settings) {
     appSettings = settings;
     panelCollapsed = settings.panelCollapsed || false;
 
-    settingNotePanel.checked = settings.notePanelEnabled;
-    settingRetentionDays.value = settings.backupRetentionDays;
-    settingSnapshotThreshold.value = settings.snapshotThreshold ?? 5;
-    settingStorageWarning.value = settings.backupStorageWarningMb ?? 100;
-    settingSortField.value = settings.ticketSortField || "lastUpdated";
-    settingSortDirection.value = settings.ticketSortDirection || "desc";
-
-    // Skip updating the contenteditable if it has focus — avoids clobbering the cursor mid-edit.
-    if (document.activeElement !== settingSignature) {
-      settingSignature.innerHTML = settings.signatureHtml || "";
-    }
-
-    const theme = settings.theme || "dark";
-    document.body.setAttribute("data-theme", theme);
-    settingTheme.checked = theme === "light";
-
-    if (document.activeElement !== settingDefaultUrl) {
-      settingDefaultUrl.value = settings.defaultUrl || "https://na.myconnectwise.net/";
-    }
-
+    document.body.setAttribute("data-theme", settings.theme || "dark");
     btnInsertSignature.style.display = settings.signatureHtml ? "" : "none";
-    if (settingLiveSync) settingLiveSync.checked = settings.liveSyncEnabled !== false;
 
     const aiEnabled = settings.aiProvider && settings.aiProvider !== "none";
-    if (settingAiProvider) settingAiProvider.value = settings.aiProvider || "none";
-    if (settingAiKey) {
-      settingAiKey.value = "";
-      // Never restore the raw key — show a masked placeholder so it's not visible in the DOM.
-      settingAiKey.placeholder = settings.aiApiKey ? "••••••••  (saved)" : "Paste your API key here";
-    }
-    if (aiProviderFields) aiProviderFields.style.display = aiEnabled ? "" : "none";
     if (btnAiSuggest) btnAiSuggest.style.display = aiEnabled ? "" : "none";
     if (btnAiSummarize) btnAiSummarize.style.display = aiEnabled ? "" : "none";
 
-    // Metrics Bar
-    if (settingMetricsEnabled) settingMetricsEnabled.checked = !!settings.metricsBarEnabled;
-    if (metricsBarConfig) {
-      if (settings.metricsBarEnabled) {
-        metricsBarConfig.classList.add("visible");
-      } else {
-        metricsBarConfig.classList.remove("visible");
-      }
-    }
-    if (settingMetricsUrl && document.activeElement !== settingMetricsUrl) {
-      settingMetricsUrl.value = settings.metricsBarUrl || "";
-    }
-    if (settingMetricsInterval) {
-      settingMetricsInterval.value = String(settings.metricsBarInterval || 15);
-    }
-    renderMetricsFieldsConfig();
-    const metricsActive = settings.metricsBarEnabled && settings.metricsBarUrl &&
-      (settings.metricsBarFields || []).length > 0;
+    const metricsActive = settings.metricsBarEnabled &&
+      (settings.metricsBarDashboards || []).some(function (db) { return db.url && (db.fields || []).length > 0; });
     if (metricsActive) {
       metricsBar.classList.add("visible");
       startMetricsPoll();
@@ -234,7 +148,8 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     btnInsertTemplate.style.display = (settings.noteTemplates && settings.noteTemplates.length > 0) ? "inline-block" : "none";
-    renderTemplateList();
+    refreshTicketList();
+    updateSyncPill();
 
     if (settings.notePanelEnabled) {
       sidePanel.style.display = "";
@@ -256,185 +171,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  function openSettings() {
-    if (settingsOverlay.classList.contains("visible")) return;
-
-    settingNotePanel.checked = appSettings.notePanelEnabled;
-    settingRetentionDays.value = appSettings.backupRetentionDays;
-    settingSnapshotThreshold.value = appSettings.snapshotThreshold ?? 5;
-    settingStorageWarning.value = appSettings.backupStorageWarningMb ?? 100;
-    settingSortField.value = appSettings.ticketSortField || "lastUpdated";
-    settingSortDirection.value = appSettings.ticketSortDirection || "desc";
-    settingSignature.innerHTML = appSettings.signatureHtml || "";
-    settingDefaultUrl.value = appSettings.defaultUrl || "https://na.myconnectwise.net/";
-    renderTemplateList();
-    settingsOverlay.classList.add("visible");
-    if (appSettings.aiProvider === "hatz") populateAiModelDropdown();
-  }
-
-  function closeSettings() {
-    settingsOverlay.classList.remove("visible");
-  }
-
-  btnCloseSettings.addEventListener("click", closeSettings);
-  settingsOverlay.addEventListener("click", function (e) {
-    if (e.target === settingsOverlay) closeSettings();
-  });
-
-  settingNotePanel.addEventListener("change", function () {
-    appSettings.notePanelEnabled = settingNotePanel.checked;
-    window.backupAPI.saveSettings(appSettings);
-    applySettings(appSettings);
-  });
-
-  if (settingLiveSync) {
-    settingLiveSync.addEventListener("change", function () {
-      appSettings.liveSyncEnabled = settingLiveSync.checked;
-      window.backupAPI.saveSettings(appSettings);
-      updateSyncPill();
-    });
-  }
-
-  async function populateAiModelDropdown() {
-    if (!settingAiModel) return;
-    if (!appSettings.aiApiKey) {
-      settingAiModel.innerHTML = '<option value="" disabled selected>Enter API key first</option>';
-      settingAiModel.disabled = true;
-      return;
-    }
-    settingAiModel.innerHTML = '<option value="" disabled selected>Loading models…</option>';
-    settingAiModel.disabled = true;
-    const result = await window.backupAPI.aiGetModels({
-      aiProvider: appSettings.aiProvider,
-      aiApiKey: appSettings.aiApiKey,
-    });
-    if (result.error || !result.models || result.models.length === 0) {
-      const detail = result.error || "Empty model list returned";
-      console.error("[AI models]", detail, result);
-      settingAiModel.innerHTML = `<option value="" disabled selected>Error: ${detail.substring(0, 80)}</option>`;
-      settingAiModel.disabled = false;
-      return;
-    }
-    settingAiModel.innerHTML = "";
-    for (const { value, label } of result.models) {
-      const opt = document.createElement("option");
-      opt.value = value;
-      opt.textContent = label;
-      settingAiModel.appendChild(opt);
-    }
-    // If the saved model isn't in the list, add it so the user's saved choice is preserved
-    const saved = appSettings.aiModelName;
-    const values = result.models.map((m) => m.value);
-    if (saved && !values.includes(saved)) {
-      const opt = document.createElement("option");
-      opt.value = saved;
-      opt.textContent = saved;
-      settingAiModel.insertBefore(opt, settingAiModel.firstChild);
-    }
-    settingAiModel.value = saved || values[0] || "";
-    settingAiModel.disabled = false;
-    // Persist if the first-load selection differs from what was saved
-    if (settingAiModel.value !== saved) {
-      appSettings.aiModelName = settingAiModel.value;
-      window.backupAPI.saveSettings(appSettings);
-    }
-  }
-
-  if (settingAiProvider) {
-    settingAiProvider.addEventListener("change", function () {
-      appSettings.aiProvider = settingAiProvider.value;
-      window.backupAPI.saveSettings(appSettings);
-      applySettings(appSettings);
-      if (appSettings.aiProvider === "hatz") populateAiModelDropdown();
-    });
-  }
-
-  if (settingAiModel) {
-    settingAiModel.addEventListener("change", function () {
-      appSettings.aiModelName = settingAiModel.value;
-      window.backupAPI.saveSettings(appSettings);
-    });
-  }
-
-  if (settingAiKey) {
-    settingAiKey.addEventListener("change", function () {
-      const val = settingAiKey.value.trim();
-      if (val) {
-        appSettings.aiApiKey = val;
-        window.backupAPI.saveSettings(appSettings);
-        settingAiKey.value = "";
-        settingAiKey.placeholder = "••••••••  (saved)";
-        populateAiModelDropdown();
-      }
-    });
-  }
-
-  settingRetentionDays.addEventListener("change", function () {
-    let val = parseInt(settingRetentionDays.value, 10);
-    // Clamp to valid range
-    if (isNaN(val) || val < 0) val = 0;
-    if (val > 365) val = 365;
-    settingRetentionDays.value = val;
-    appSettings.backupRetentionDays = val;
-    window.backupAPI.saveSettings(appSettings);
-  });
-
-  settingSnapshotThreshold.addEventListener("change", function () {
-    let val = parseInt(settingSnapshotThreshold.value, 10);
-    if (isNaN(val) || val < 1) val = 1;
-    if (val > 9999) val = 9999;
-    settingSnapshotThreshold.value = val;
-    appSettings.snapshotThreshold = val;
-    window.backupAPI.saveSettings(appSettings);
-  });
-
-  settingStorageWarning.addEventListener("change", function () {
-    let val = parseInt(settingStorageWarning.value, 10);
-    if (isNaN(val) || val < 0) val = 0;
-    if (val > 100000) val = 100000;
-    settingStorageWarning.value = val;
-    appSettings.backupStorageWarningMb = val;
-    window.backupAPI.saveSettings(appSettings);
-  });
-
-  // ---- Metrics Bar settings ----
-  settingMetricsEnabled.addEventListener("change", function () {
-    appSettings.metricsBarEnabled = settingMetricsEnabled.checked;
-    if (appSettings.metricsBarEnabled) {
-      metricsBarConfig.classList.add("visible");
-    } else {
-      metricsBarConfig.classList.remove("visible");
-    }
-    window.backupAPI.saveSettings(appSettings);
-    applySettings(appSettings);
-  });
-
-  let metricsUrlTimer = null;
-  settingMetricsUrl.addEventListener("input", function () {
-    clearTimeout(metricsUrlTimer);
-    metricsUrlTimer = setTimeout(function () {
-      appSettings.metricsBarUrl = settingMetricsUrl.value.trim();
-      window.backupAPI.saveSettings(appSettings);
-      applySettings(appSettings);
-    }, 800);
-  });
-
-  settingMetricsInterval.addEventListener("change", function () {
-    const val = parseInt(settingMetricsInterval.value, 10);
-    appSettings.metricsBarInterval = [5, 15, 30, 60].includes(val) ? val : 15;
-    window.backupAPI.saveSettings(appSettings);
-    // Restart the poll on the new interval
-    if (appSettings.metricsBarEnabled && appSettings.metricsBarUrl &&
-        (appSettings.metricsBarFields || []).length > 0) {
-      startMetricsPoll();
-    }
-  });
-
   btnMetricsRefresh.addEventListener("click", function () {
     stopMetricsPoll();
     scrapeMetrics().finally(function () {
-      if (appSettings.metricsBarEnabled && appSettings.metricsBarUrl &&
-          (appSettings.metricsBarFields || []).length > 0) {
+      if (appSettings.metricsBarEnabled &&
+          (appSettings.metricsBarDashboards || []).some(function (db) { return db.url && (db.fields || []).length > 0; })) {
         scheduleNextMetricsPoll();
       }
     });
@@ -444,116 +185,6 @@ document.addEventListener("DOMContentLoaded", function () {
     appSettings.metricsBarEnabled = false;
     window.backupAPI.saveSettings(appSettings);
     applySettings(appSettings);
-  });
-
-  if (btnMetricsTestSelectors) {
-    btnMetricsTestSelectors.addEventListener("click", function () {
-      stopMetricsPoll();
-      scrapeMetrics().finally(function () {
-        if (appSettings.metricsBarEnabled && appSettings.metricsBarUrl &&
-            (appSettings.metricsBarFields || []).length > 0) {
-          scheduleNextMetricsPoll();
-        }
-      });
-    });
-  }
-
-  btnMetricsAddField.addEventListener("click", function () {
-    if (!appSettings.metricsBarUrl) {
-      settingMetricsUrl.focus();
-      return;
-    }
-    openMetricsPicker(null);
-  });
-
-  btnMetricsPickerCancel.addEventListener("click", closeMetricsPicker);
-
-  btnMetricsPickerReselect.addEventListener("click", function () {
-    metricsPickerCaptureBar.classList.remove("visible");
-    metricsPickerSelectorInput.value = "";
-    metricsPickerPendingSelector = null;
-  });
-
-  btnMetricsPickerSave.addEventListener("click", function () {
-    const label = metricsPickerLabelInput.value.trim();
-    // Use the (possibly user-edited) selector input value; fall back to the captured one
-    const selector = (metricsPickerSelectorInput.value.trim()) || metricsPickerPendingSelector;
-    if (!label || !selector) return;
-    if (metricsPickerTargetFieldId) {
-      // Re-pick mode: update selector (and optionally label) on an existing field
-      appSettings.metricsBarFields = (appSettings.metricsBarFields || []).map(function (f) {
-        return f.id === metricsPickerTargetFieldId
-          ? Object.assign({}, f, { label, selector })
-          : f;
-      });
-    } else {
-      // Add-new mode
-      appSettings.metricsBarFields = (appSettings.metricsBarFields || []).concat([{
-        id: "mf-" + Date.now(),
-        label,
-        selector,
-      }]);
-    }
-    window.backupAPI.saveSettings(appSettings);
-    closeMetricsPicker();
-    applySettings(appSettings);
-  });
-
-  metricsPickerLabelInput.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") btnMetricsPickerSave.click();
-  });
-
-  settingSortField.addEventListener("change", function () {
-    appSettings.ticketSortField = settingSortField.value;
-    window.backupAPI.saveSettings(appSettings);
-    refreshTicketList();
-  });
-
-  settingSortDirection.addEventListener("change", function () {
-    appSettings.ticketSortDirection = settingSortDirection.value;
-    window.backupAPI.saveSettings(appSettings);
-    refreshTicketList();
-  });
-
-  document
-    .getElementById("signature-toolbar")
-    .addEventListener("click", function (e) {
-      const btn = e.target.closest("[data-sig-command]");
-      if (!btn) return;
-      settingSignature.focus();
-      document.execCommand(btn.dataset.sigCommand, false, null);
-    });
-
-  let sigSaveTimer = null;
-  settingSignature.addEventListener("input", function () {
-    clearTimeout(sigSaveTimer);
-    sigSaveTimer = setTimeout(function () {
-      appSettings.signatureHtml = settingSignature.innerHTML;
-      window.backupAPI.saveSettings(appSettings);
-    }, SIG_SAVE_DEBOUNCE);
-  });
-
-  settingTheme.addEventListener("change", function () {
-    appSettings.theme = settingTheme.checked ? "light" : "dark";
-    document.body.setAttribute("data-theme", appSettings.theme);
-    window.backupAPI.saveSettings(appSettings);
-  });
-
-  let defaultUrlSaveTimer = null;
-  settingDefaultUrl.addEventListener("input", function () {
-    clearTimeout(defaultUrlSaveTimer);
-    defaultUrlSaveTimer = setTimeout(function () {
-      const val = settingDefaultUrl.value.trim();
-      try {
-        const parsed = new URL(val);
-        if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-          appSettings.defaultUrl = val;
-          window.backupAPI.saveSettings(appSettings);
-        }
-      } catch {
-        // Invalid URL — don't save
-      }
-    }, 800);
   });
 
   btnInsertSignature.addEventListener("click", function () {
@@ -1811,100 +1442,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // ==================== Note Templates ====================
-
-  let editingTemplateIndex = null;
-
-  function renderTemplateList() {
-    if (!templateList) return;
-    templateList.innerHTML = "";
-    const templates = (appSettings.noteTemplates || []);
-    if (templates.length === 0) {
-      templateList.innerHTML = '<p style="font-size:11px;color:var(--text-muted);padding:4px 0;">No templates yet.</p>';
-      return;
-    }
-    templates.forEach(function (tmpl, idx) {
-      const item = document.createElement("div");
-      item.className = "template-list-item";
-
-      const nameSpan = document.createElement("span");
-      nameSpan.className = "template-item-name";
-      nameSpan.textContent = tmpl.name;
-      nameSpan.title = tmpl.content;
-
-      const editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "btn btn-small";
-      editBtn.textContent = "Edit";
-      editBtn.addEventListener("click", function () {
-        editingTemplateIndex = idx;
-        templateNameInput.value = tmpl.name;
-        templateContentInput.value = tmpl.content;
-        templateAddForm.classList.add("visible");
-        btnAddTemplate.style.display = "none";
-        templateNameInput.focus();
-      });
-
-      const delBtn = document.createElement("button");
-      delBtn.type = "button";
-      delBtn.className = "btn btn-small btn-delete";
-      delBtn.textContent = "✕";
-      delBtn.title = "Delete template";
-      delBtn.addEventListener("click", function () {
-        appSettings.noteTemplates.splice(idx, 1);
-        window.backupAPI.saveSettings(appSettings);
-        renderTemplateList();
-        btnInsertTemplate.style.display = appSettings.noteTemplates.length > 0 ? "inline-block" : "none";
-      });
-
-      const btnGroup = document.createElement("div");
-      btnGroup.className = "template-item-buttons";
-      btnGroup.appendChild(editBtn);
-      btnGroup.appendChild(delBtn);
-
-      item.appendChild(nameSpan);
-      item.appendChild(btnGroup);
-      templateList.appendChild(item);
-    });
-  }
-
-  btnAddTemplate.addEventListener("click", function () {
-    editingTemplateIndex = null;
-    templateNameInput.value = "";
-    templateContentInput.value = "";
-    templateAddForm.classList.add("visible");
-    btnAddTemplate.style.display = "none";
-    templateNameInput.focus();
-  });
-
-  btnCancelTemplate.addEventListener("click", function () {
-    templateAddForm.classList.remove("visible");
-    btnAddTemplate.style.display = "";
-    editingTemplateIndex = null;
-  });
-
-  btnSaveTemplate.addEventListener("click", function () {
-    const name = templateNameInput.value.trim();
-    const content = templateContentInput.value;
-    if (!name) {
-      templateNameInput.focus();
-      return;
-    }
-    if (!appSettings.noteTemplates) appSettings.noteTemplates = [];
-
-    if (editingTemplateIndex !== null) {
-      appSettings.noteTemplates[editingTemplateIndex] = { name, content };
-    } else {
-      appSettings.noteTemplates.push({ name, content });
-    }
-
-    window.backupAPI.saveSettings(appSettings);
-    templateAddForm.classList.remove("visible");
-    btnAddTemplate.style.display = "";
-    editingTemplateIndex = null;
-    renderTemplateList();
-    btnInsertTemplate.style.display = appSettings.noteTemplates.length > 0 ? "inline-block" : "none";
-  });
+  // ==================== Note Templates (insert into panel) ====================
 
   function insertTemplate(content) {
     noteContent.focus();
@@ -2040,9 +1578,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // Listen for menu bar "Edit > Settings"
+  // Open settings window from menu bar
   window.backupAPI.onOpenSettings(function () {
-    openSettings();
+    window.backupAPI.openSettingsWindow();
   });
 
   // Listen for menu bar "Edit > Find..."
@@ -2609,7 +2147,6 @@ document.addEventListener("DOMContentLoaded", function () {
       closeDownloadsPanel();
       closeNotificationsPanel();
       if (findActive) hideFindBar();
-      closeSettings();
       if (confirmOverlay.classList.contains("visible")) closeConfirm(false);
       if (aiOverlay.classList.contains("visible")) closeAiOverlay();
       if (diffOverlay.classList.contains("visible")) closeDiffOverlay();
@@ -3728,7 +3265,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     if (e.ctrlKey && !e.shiftKey && e.key === ",") {
       e.preventDefault();
-      openSettings();
+      window.backupAPI.openSettingsWindow();
     }
     if (e.ctrlKey && !e.shiftKey && (e.key === "f" || e.key === "F")) {
       e.preventDefault();
@@ -3804,135 +3341,9 @@ document.addEventListener("DOMContentLoaded", function () {
   let metricsPollTimer = null;
   let metricsScraperBusy = false;
   let metricsRescheduleNeeded = false;
-  let metricsPickerViewOnly = false;
-  let metricsValues = {};
-  let metricsPickerPendingSelector = null;
-  let metricsPickerTargetFieldId = null;
+  const metricsValues = {};
 
   // Script injected into the picker webview so the user can click-to-select an element.
-  const METRICS_PICKER_INJECT_SCRIPT = `(function() {
-    if (window.__mpInject) return;
-    window.__mpInject = true;
-    var hi = document.createElement('div');
-    hi.style.cssText = 'position:fixed;outline:3px solid #e67e22;background:rgba(230,126,34,0.12);pointer-events:none;border-radius:2px;z-index:999999;display:none;box-sizing:border-box;';
-    document.body.appendChild(hi);
-
-    // For table cells: generate a JS expression that finds the row by a stable text
-    // anchor (first non-numeric cell — skips rank columns) then returns the clicked
-    // column. Searches ALL tables sharing the same class, since BrightGauge reuses
-    // one class across every widget table on the page.
-    function getTableCellExpr(cellEl) {
-      var tr = cellEl.parentElement;
-      while (tr && tr.tagName !== 'TR') tr = tr.parentElement;
-      if (!tr || !tr.cells) return null;
-      var colIdx = Array.from(tr.cells).indexOf(cellEl);
-      if (colIdx < 0) return null;
-      // Find the best anchor: first non-numeric cell that isn't the target column.
-      // Skipping numeric cells avoids anchoring on rank numbers ("1", "2", …).
-      var anchorIdx = -1;
-      var anchorText = '';
-      for (var k = 0; k < tr.cells.length; k++) {
-        if (k === colIdx) continue;
-        var ct = tr.cells[k] ? tr.cells[k].textContent.trim() : '';
-        if (ct && isNaN(parseFloat(ct))) { anchorIdx = k; anchorText = ct; break; }
-      }
-      if (anchorIdx < 0) return null;
-      var tbl = tr.closest ? tr.closest('table') : null;
-      if (!tbl) return null;
-      var tblClasses = tbl.classList ? Array.from(tbl.classList).slice(0, 2) : [];
-      var tblSel = tblClasses.length > 0 ? ('table.' + tblClasses.join('.')) : 'table';
-      // Record which table the user clicked so the scraper targets the same widget.
-      // All BrightGauge gauge tables share one class, so tblIdx is the only way to
-      // distinguish "Closed Tickets table" from "Hours Worked table".
-      var tblIdx = Array.from(document.querySelectorAll(tblSel)).indexOf(tbl);
-      if (tblIdx < 0) tblIdx = 0;
-      return '(function(){' +
-        'var tbls=Array.from(document.querySelectorAll(' + JSON.stringify(tblSel) + '));' +
-        'var tbl=tbls[' + tblIdx + ']||null;' +
-        'if(!tbl)return null;' +
-        'var rows=Array.from(tbl.querySelectorAll("tbody tr"));' +
-        'var row=rows.find(function(r){return r.cells&&r.cells[' + anchorIdx + ']&&r.cells[' + anchorIdx + '].textContent.trim()===' + JSON.stringify(anchorText) + ';});' +
-        'return row&&row.cells[' + colIdx + ']?row.cells[' + colIdx + '].textContent.trim():null;' +
-        '})()';
-    }
-
-    // Returns the shortest CSS selector that uniquely identifies el.
-    // Prefers class-based anchors over positional nth-child so that
-    // elements that reorder between page loads (e.g. async gauge render)
-    // can still be found by their component class name.
-    function getPath(el) {
-      function qsaLen(sel) {
-        try { return document.querySelectorAll(sel).length; } catch(err) { return -1; }
-      }
-      function buildPart(node) {
-        var elId = node.getAttribute('id');
-        if (elId) return '#' + elId;
-        var tag = node.tagName.toLowerCase();
-        var classes = Array.from(node.classList || []);
-        if (classes.length > 0) {
-          var cls = '.' + classes.slice(0, 2).join('.');
-          var sameCls = Array.from(node.parentNode ? node.parentNode.children : []).filter(function(s) {
-            return s.tagName === node.tagName && s.className === node.className;
-          });
-          if (sameCls.length > 1) {
-            var idx = Array.from(node.parentNode.children).indexOf(node) + 1;
-            return tag + cls + ':nth-child(' + idx + ')';
-          }
-          return tag + cls;
-        }
-        var tagSiblings = Array.from(node.parentNode ? node.parentNode.children : []).filter(function(s) {
-          return s.tagName === node.tagName;
-        });
-        if (tagSiblings.length > 1) {
-          var idx = Array.from(node.parentNode.children).indexOf(node) + 1;
-          return tag + ':nth-child(' + idx + ')';
-        }
-        return tag;
-      }
-      if (el.id) return '#' + el.id;
-      var parts = [];
-      var cur = el;
-      while (cur && cur !== document.body) {
-        var part = buildPart(cur);
-        if (part.startsWith('#')) { parts.unshift(part); break; }
-        parts.unshift(part);
-        cur = cur.parentElement;
-        if (parts.length >= 2 && qsaLen(parts.join(' > ')) === 1) break;
-      }
-      return parts.join(' > ');
-    }
-
-    document.addEventListener('mouseover', function(e) {
-      var r = e.target.getBoundingClientRect();
-      hi.style.display = 'block';
-      hi.style.top = r.top + 'px';
-      hi.style.left = r.left + 'px';
-      hi.style.width = r.width + 'px';
-      hi.style.height = r.height + 'px';
-    }, true);
-    document.addEventListener('mouseout', function() { hi.style.display = 'none'; }, true);
-    document.addEventListener('click', function(e) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      var target = e.target;
-      // Walk up from the click target to find a table cell
-      var cellEl = target;
-      while (cellEl && cellEl !== document.body && cellEl.tagName !== 'TD' && cellEl.tagName !== 'TH') {
-        cellEl = cellEl.parentElement;
-      }
-      if (cellEl && (cellEl.tagName === 'TD' || cellEl.tagName === 'TH')) {
-        var expr = getTableCellExpr(cellEl);
-        if (expr) {
-          var cellText = (cellEl.innerText || cellEl.textContent || '').trim().replace(/\\s+/g, ' ').substring(0, 100);
-          console.log('[METRICS-PICK] ' + JSON.stringify({selector: expr, text: cellText}));
-          return;
-        }
-      }
-      var sel = getPath(target);
-      var text = (target.innerText || target.textContent || '').trim().replace(/\\s+/g, ' ').substring(0, 100);
-      console.log('[METRICS-PICK] ' + JSON.stringify({selector: sel, text: text}));
-    }, true);
-  })()`;
 
   function buildMetricsScrapeScript(fields) {
     const parts = fields.map(function (f) {
@@ -3949,148 +3360,72 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function renderMetricsBar() {
-    const fields = appSettings.metricsBarFields || [];
     metricsBarItems.innerHTML = "";
-    fields.forEach(function (f) {
-      const card = document.createElement("div");
-      card.className = "metrics-card";
-      card.title = "Click to view dashboard";
-      card.style.cursor = "pointer";
-      card.addEventListener("click", openMetricsDashboardView);
-      const valEl = document.createElement("span");
-      valEl.className = "metrics-card-value";
-      const val = metricsValues[f.id];
-      valEl.textContent = (val !== null && val !== undefined) ? String(val) : "—";
-      const lblEl = document.createElement("span");
-      lblEl.className = "metrics-card-label";
-      lblEl.textContent = f.label;
-      card.appendChild(valEl);
-      card.appendChild(lblEl);
-      metricsBarItems.appendChild(card);
-    });
-  }
-
-  function renderMetricsFieldsConfig() {
-    metricsFieldsConfigList.innerHTML = "";
-    const fields = appSettings.metricsBarFields || [];
-    if (fields.length === 0) {
-      const p = document.createElement("p");
-      p.className = "metrics-fields-empty";
-      p.textContent = "No fields configured. Click \"+ Add Field\" to pick values from the dashboard.";
-      metricsFieldsConfigList.appendChild(p);
-      return;
-    }
-    fields.forEach(function (f) {
-      const wrap = document.createElement("div");
-      wrap.className = "metrics-field-config-wrap";
-
-      // Top row: label, found value badge, buttons
-      const row = document.createElement("div");
-      row.className = "metrics-field-config-row";
-
-      const info = document.createElement("div");
-      info.className = "metrics-field-config-info";
-      const lbl = document.createElement("span");
-      lbl.className = "metrics-field-config-label";
-      lbl.textContent = f.label;
-      const found = metricsValues[f.id];
-      const badge = document.createElement("span");
-      badge.className = "metrics-field-config-found";
-      badge.textContent = found !== undefined ? (found !== null ? "→ " + found : "(not found — check selector)") : "(not yet scraped)";
-      info.appendChild(lbl);
-      info.appendChild(badge);
-
-      const btns = document.createElement("div");
-      btns.className = "metrics-field-config-btns";
-
-      const repick = document.createElement("button");
-      repick.className = "btn btn-small btn-secondary";
-      repick.textContent = "Re-pick";
-      repick.title = "Re-open dashboard and click a new element for this field";
-      repick.addEventListener("click", function () {
-        if (!appSettings.metricsBarUrl) return;
-        openMetricsPicker(f.id);
+    const dashboards = appSettings.metricsBarDashboards || [];
+    dashboards.forEach(function (db) {
+      (db.fields || []).forEach(function (f) {
+        const card = document.createElement("div");
+        card.className = "metrics-card";
+        const valEl = document.createElement("span");
+        valEl.className = "metrics-card-value";
+        const val = metricsValues[f.id];
+        valEl.textContent = (val !== null && val !== undefined) ? String(val) : "—";
+        const lblEl = document.createElement("span");
+        lblEl.className = "metrics-card-label";
+        lblEl.textContent = f.label;
+        card.appendChild(valEl);
+        card.appendChild(lblEl);
+        if (db.url) {
+          card.style.cursor = "pointer";
+          card.title = "Open dashboard";
+          card.addEventListener("click", function () {
+            createTab(db.url, { activate: true });
+          });
+        }
+        metricsBarItems.appendChild(card);
       });
-
-      const del = document.createElement("button");
-      del.className = "btn btn-small";
-      del.style.color = "var(--warning, #e74c3c)";
-      del.textContent = "Remove";
-      del.addEventListener("click", function () {
-        appSettings.metricsBarFields = (appSettings.metricsBarFields || []).filter(function (x) { return x.id !== f.id; });
-        window.backupAPI.saveSettings(appSettings);
-        renderMetricsFieldsConfig();
-        applySettings(appSettings);
-      });
-
-      btns.appendChild(repick);
-      btns.appendChild(del);
-      row.appendChild(info);
-      row.appendChild(btns);
-
-      // Selector row: editable CSS selector
-      const selRow = document.createElement("div");
-      selRow.className = "metrics-field-selector-row";
-      const selLabel = document.createElement("span");
-      selLabel.className = "metrics-field-selector-label";
-      selLabel.textContent = "Selector:";
-      const selInput = document.createElement("input");
-      selInput.type = "text";
-      selInput.className = "settings-text-input metrics-field-selector-input";
-      selInput.value = f.selector;
-      selInput.spellcheck = false;
-      selInput.title = "CSS selector used to find this value. Edit manually if needed.";
-      selInput.addEventListener("change", function () {
-        const updated = selInput.value.trim();
-        if (!updated) return;
-        appSettings.metricsBarFields = appSettings.metricsBarFields.map(function (x) {
-          return x.id === f.id ? Object.assign({}, x, { selector: updated }) : x;
-        });
-        window.backupAPI.saveSettings(appSettings);
-      });
-      selRow.appendChild(selLabel);
-      selRow.appendChild(selInput);
-
-      wrap.appendChild(row);
-      wrap.appendChild(selRow);
-      metricsFieldsConfigList.appendChild(wrap);
     });
   }
 
   async function scrapeMetrics() {
     if (metricsScraperBusy) return;
-    const url = appSettings.metricsBarUrl;
-    if (!url || !(appSettings.metricsBarFields || []).length) return;
+    const dashboards = (appSettings.metricsBarDashboards || []).filter(function (db) {
+      return db.url && (db.fields || []).length > 0;
+    });
+    if (!dashboards.length) return;
 
     metricsScraperBusy = true;
     metricsBarStatus.textContent = "Refreshing…";
 
     try {
-      await new Promise(function (resolve, reject) {
-        const loadTimer = setTimeout(function () { reject(new Error("load timeout")); }, 30000);
-        function handler() {
-          metricsScraperWebview.removeEventListener("did-finish-load", handler);
-          clearTimeout(loadTimer);
-          resolve();
-        }
-        metricsScraperWebview.addEventListener("did-finish-load", handler);
-        const sep = url.includes("?") ? "&" : "?";
-        metricsScraperWebview.src = url + sep + "_ms=" + Date.now();
-      });
+      for (let i = 0; i < dashboards.length; i++) {
+        const db = dashboards[i];
+        await new Promise(function (resolve, reject) {
+          const loadTimer = setTimeout(function () { reject(new Error("load timeout")); }, 30000);
+          function handler() {
+            metricsScraperWebview.removeEventListener("did-finish-load", handler);
+            clearTimeout(loadTimer);
+            resolve();
+          }
+          metricsScraperWebview.addEventListener("did-finish-load", handler);
+          const sep = db.url.includes("?") ? "&" : "?";
+          metricsScraperWebview.src = db.url + sep + "_ms=" + Date.now();
+        });
 
-      // Give the JS framework time to render
-      await new Promise(function (resolve) { setTimeout(resolve, 5000); });
+        // Give the JS framework time to render
+        await new Promise(function (resolve) { setTimeout(resolve, 5000); });
 
-      // Read fields fresh — the user may have added fields while the page was loading
-      const currentFields = appSettings.metricsBarFields || [];
-      const results = await metricsScraperWebview.executeJavaScript(
-        buildMetricsScrapeScript(currentFields)
-      );
-      metricsValues = results || {};
+        // Re-read from appSettings so any field additions while loading are picked up
+        const live = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === db.id; });
+        const currentFields = live ? (live.fields || []) : db.fields;
+        const results = await metricsScraperWebview.executeJavaScript(
+          buildMetricsScrapeScript(currentFields)
+        );
+        Object.assign(metricsValues, results || {});
+      }
       const now = new Date();
       metricsBarStatus.textContent = "Updated " + now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       renderMetricsBar();
-      renderMetricsFieldsConfig(); // refresh found-value badges if settings is open
     } catch {
       metricsBarStatus.textContent = "Refresh failed";
     }
@@ -4102,8 +3437,8 @@ document.addEventListener("DOMContentLoaded", function () {
     clearTimeout(metricsPollTimer);
     const intervalMs = (appSettings.metricsBarInterval || 15) * 60 * 1000;
     metricsPollTimer = setTimeout(function () {
-      if (appSettings.metricsBarEnabled && appSettings.metricsBarUrl &&
-          (appSettings.metricsBarFields || []).length > 0) {
+      if (appSettings.metricsBarEnabled &&
+          (appSettings.metricsBarDashboards || []).some(function (db) { return db.url && (db.fields || []).length > 0; })) {
         scrapeMetrics().finally(scheduleNextMetricsPoll);
       }
     }, intervalMs);
@@ -4131,68 +3466,6 @@ document.addEventListener("DOMContentLoaded", function () {
     clearTimeout(metricsPollTimer);
     metricsPollTimer = null;
   }
-
-  function openMetricsPicker(targetFieldId) {
-    metricsPickerViewOnly = false;
-    const instr = metricsPickerOverlay.querySelector(".metrics-picker-instruction");
-    if (instr) instr.textContent = "Hover and click any value on the dashboard to track it";
-    btnMetricsPickerCancel.textContent = "Cancel";
-    metricsPickerPendingSelector = null;
-    metricsPickerTargetFieldId = targetFieldId || null;
-    if (targetFieldId) {
-      const target = (appSettings.metricsBarFields || []).find(function (f) { return f.id === targetFieldId; });
-      metricsPickerLabelInput.value = target ? target.label : "";
-    } else {
-      metricsPickerLabelInput.value = "";
-    }
-    metricsPickerCaptureBar.classList.remove("visible");
-    metricsPickerOverlay.classList.add("visible");
-    metricsPickerWebview.src = appSettings.metricsBarUrl;
-  }
-
-  function openMetricsDashboardView() {
-    if (!appSettings.metricsBarUrl) return;
-    metricsPickerViewOnly = true;
-    const instr = metricsPickerOverlay.querySelector(".metrics-picker-instruction");
-    if (instr) instr.textContent = "Dashboard view — close when done";
-    btnMetricsPickerCancel.textContent = "Close";
-    metricsPickerCaptureBar.classList.remove("visible");
-    metricsPickerOverlay.classList.add("visible");
-    const sep = appSettings.metricsBarUrl.includes("?") ? "&" : "?";
-    metricsPickerWebview.src = appSettings.metricsBarUrl + sep + "_mv=" + Date.now();
-  }
-
-  function closeMetricsPicker() {
-    metricsPickerViewOnly = false;
-    metricsPickerOverlay.classList.remove("visible");
-    metricsPickerWebview.src = "about:blank";
-    metricsPickerPendingSelector = null;
-    metricsPickerTargetFieldId = null;
-  }
-
-  metricsPickerWebview.addEventListener("did-finish-load", function () {
-    if (metricsPickerViewOnly) return;
-    // Inject picker script after a short delay for JS frameworks to settle
-    setTimeout(function () {
-      if (!metricsPickerViewOnly) {
-        metricsPickerWebview.executeJavaScript(METRICS_PICKER_INJECT_SCRIPT).catch(function () { /* ignore */ });
-      }
-    }, 2000);
-  });
-
-  metricsPickerWebview.addEventListener("console-message", function (e) {
-    const msg = (e.message || "");
-    const PREFIX = "[METRICS-PICK] ";
-    if (!msg.startsWith(PREFIX)) return;
-    try {
-      const data = JSON.parse(msg.slice(PREFIX.length));
-      metricsPickerPendingSelector = data.selector;
-      metricsPickerValuePreview.textContent = data.text || "(no text)";
-      metricsPickerSelectorInput.value = data.selector;
-      metricsPickerCaptureBar.classList.add("visible");
-      metricsPickerLabelInput.focus();
-    } catch { /* ignore malformed messages */ }
-  });
 
   window.addEventListener("beforeunload", function () {
     const tabData = [];

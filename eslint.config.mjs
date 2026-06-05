@@ -19,9 +19,9 @@ export default [
     },
   },
 
-  // Renderer (browser script — no import/export, no Node globals)
+  // Renderer scripts (browser — no import/export, no Node globals)
   {
-    files: ["renderer.js"],
+    files: ["renderer.js", "settings_renderer.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script",
