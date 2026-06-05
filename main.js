@@ -12,6 +12,7 @@ let AUTOSAVE_FILE;
 let TABS_FILE;
 let SETTINGS_FILE;
 let EDITOR_STATE_FILE;
+let MAIN_WINDOW_STATE_FILE;
 
 // In-memory download history (cleared on app restart)
 const downloads = [];
@@ -184,9 +185,19 @@ function createWindow() {
   // individually, so this is just a best-effort warm-up.
   ensureBackupDir().catch((e) => console.error("[App] Error creating backup dir:", e));
 
+  const defaultWidth = 1600;
+  const defaultHeight = 1000;
+  const saved = loadMainWindowState();
+  const usesSaved = saved && isWindowOnScreen(saved);
+  const winWidth = usesSaved ? saved.width : defaultWidth;
+  const winHeight = usesSaved ? saved.height : defaultHeight;
+  const winX = usesSaved ? saved.x : undefined;
+  const winY = usesSaved ? saved.y : undefined;
+
   mainWindow = new electron.BrowserWindow({
-    width: 1600,
-    height: 1000,
+    width: winWidth,
+    height: winHeight,
+    ...(winX !== undefined && winY !== undefined ? { x: winX, y: winY } : {}),
     title: "ConnectWise Manage++",
     icon: path.join(__dirname, "icon.png"),
     webPreferences: {
@@ -198,6 +209,12 @@ function createWindow() {
       webSecurity: true,
       sandbox: true,
     },
+  });
+
+  mainWindow.on("close", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      saveMainWindowState(mainWindow.getBounds());
+    }
   });
 
   mainWindow.loadFile("index.html");
@@ -650,17 +667,59 @@ async function fetchAiModels(aiProvider, aiApiKey) {
 
 let settingsWindow = null;
 
+function loadMainWindowState() {
+  try {
+    if (!MAIN_WINDOW_STATE_FILE) return null;
+    const raw = fs.readFileSync(MAIN_WINDOW_STATE_FILE, "utf-8");
+    const s = JSON.parse(raw);
+    if (typeof s.x === "number" && typeof s.y === "number" &&
+        typeof s.width === "number" && typeof s.height === "number") {
+      return s;
+    }
+  } catch { /* no saved state */ }
+  return null;
+}
+
+function isWindowOnScreen(bounds) {
+  return electron.screen.getAllDisplays().some(function (d) {
+    const wa = d.workArea;
+    return bounds.x < wa.x + wa.width &&
+           bounds.x + bounds.width > wa.x &&
+           bounds.y < wa.y + wa.height &&
+           bounds.y + bounds.height > wa.y;
+  });
+}
+
+function saveMainWindowState(bounds) {
+  if (!MAIN_WINDOW_STATE_FILE) return;
+  fsp.writeFile(MAIN_WINDOW_STATE_FILE, JSON.stringify(bounds), "utf-8")
+    .catch((e) => console.error("[Main window] Error saving window state:", e));
+}
+
 function createSettingsWindow() {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.focus();
     return;
   }
+
+  const width = 720;
+  const height = 780;
+  let winX, winY;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const mb = mainWindow.getBounds();
+    winX = Math.round(mb.x + (mb.width - width) / 2);
+    winY = Math.round(mb.y + (mb.height - height) / 2);
+  }
+
   settingsWindow = new electron.BrowserWindow({
-    width: 720,
-    height: 780,
+    width,
+    height,
+    x: winX,
+    y: winY,
     minWidth: 600,
     minHeight: 500,
     title: "Settings",
+    icon: path.join(__dirname, "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -1231,6 +1290,7 @@ electron.app.whenReady().then(() => {
   TABS_FILE = path.join(BACKUP_DIR, "open-tabs.json");
   SETTINGS_FILE = path.join(BACKUP_DIR, "settings.json");
   EDITOR_STATE_FILE = path.join(BACKUP_DIR, "editor-state.json");
+  MAIN_WINDOW_STATE_FILE = path.join(BACKUP_DIR, "main-window-state.json");
 
   // Set a realistic user agent for ConnectWise requests only
   // (scoped to myconnectwise.net to avoid affecting other services)
