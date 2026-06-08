@@ -49,6 +49,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const downloadsPanel = document.getElementById("downloads-panel");
   const downloadsList = document.getElementById("downloads-list");
   const btnCloseDownloads = document.getElementById("btn-close-downloads");
+  let newCompletedCount = 0;
+  const downloadSeenStates = new Map();
   const btnClearDownloads = document.getElementById("btn-clear-downloads");
   const btnNotifications = document.getElementById("btn-notifications");
   const notificationsPanel = document.getElementById("notifications-panel");
@@ -535,16 +537,16 @@ document.addEventListener("DOMContentLoaded", function () {
     downloadsPanel.style.right = (window.innerWidth - btnRect.right) + "px";
 
     downloadsPanel.classList.add("visible");
-    updateDownloadBadge(items);
+    newCompletedCount = 0;
+    updateDownloadBadge();
   }
 
   function closeDownloadsPanel() {
     downloadsPanel.classList.remove("visible");
   }
 
-  function updateDownloadBadge(items) {
-    const active = items.filter((d) => d.state === "progressing").length;
-    btnDownloads.setAttribute("data-badge", active > 0 ? String(active) : "");
+  function updateDownloadBadge() {
+    btnDownloads.setAttribute("data-badge", newCompletedCount > 0 ? String(newCompletedCount) : "");
   }
 
   btnDownloads.addEventListener("click", () => {
@@ -560,7 +562,9 @@ document.addEventListener("DOMContentLoaded", function () {
   btnClearDownloads.addEventListener("click", async () => {
     await window.backupAPI.clearDownloads();
     downloadsList.innerHTML = '<div class="downloads-empty">No downloads yet</div>';
-    btnDownloads.setAttribute("data-badge", "");
+    newCompletedCount = 0;
+    downloadSeenStates.clear();
+    updateDownloadBadge();
   });
 
   downloadsList.addEventListener("click", function (e) {
@@ -571,7 +575,13 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   window.backupAPI.onDownloadUpdate(function (dl) {
-    window.backupAPI.getDownloads().then(updateDownloadBadge);
+    const prev = downloadSeenStates.get(dl.id);
+    downloadSeenStates.set(dl.id, dl.state);
+
+    if (dl.state === "completed" && prev !== "completed" && !downloadsPanel.classList.contains("visible")) {
+      newCompletedCount++;
+      updateDownloadBadge();
+    }
 
     if (!downloadsPanel.classList.contains("visible")) return;
     const existing = downloadsList.querySelector(`[data-dl-id="${dl.id}"]`);
