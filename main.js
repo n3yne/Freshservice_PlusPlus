@@ -1032,11 +1032,43 @@ function registerIpcHandlers() {
     return pluginManager.getRendererScripts();
   });
 
+  // Plugin system: return settings-window script paths for injection
+  electron.ipcMain.handle("plugin-get-settings-scripts", () => {
+    return pluginManager.getSettingsScripts();
+  });
+
   // Plugin system: forward renderer-originated events to main-process plugin listeners
   electron.ipcMain.on("plugin-event-from-renderer", (_event, payload) => {
     if (payload && typeof payload.name === "string") {
       pluginManager.fireEvent(payload.name, payload.data);
     }
+  });
+
+  // Plugin system: return metadata for all discovered plugins
+  electron.ipcMain.handle("plugin-get-info", () => {
+    return pluginManager.getPluginInfo();
+  });
+
+  // Plugin system: enable or disable a plugin (persisted; takes effect after restart)
+  electron.ipcMain.handle("plugin-set-enabled", async (_event, { id, enabled }) => {
+    if (typeof id !== "string" || typeof enabled !== "boolean") {
+      return { success: false, error: "Invalid arguments" };
+    }
+    await pluginManager.setPluginEnabled(id, enabled);
+    return { success: true };
+  });
+
+  // Plugin system: open a folder picker and import the selected directory as a plugin
+  electron.ipcMain.handle("plugin-import", async () => {
+    const result = await electron.dialog.showOpenDialog({
+      title: "Select Plugin Folder",
+      properties: ["openDirectory"],
+      buttonLabel: "Import Plugin",
+    });
+    if (result.canceled || !result.filePaths.length) {
+      return { cancelled: true };
+    }
+    return pluginManager.importPlugin(result.filePaths[0]);
   });
 
   // Search through saved note content (autosave drafts + snapshot files)

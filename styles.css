@@ -2064,6 +2064,10 @@ body[data-theme="light"] .diff-overlay {
   color: #e74c3c;
 }
 
+.metrics-progress-goal-met .metrics-card-value {
+  color: #2ecc71;
+}
+
 .metrics-bar-end {
   display: flex;
   align-items: center;
@@ -2405,4 +2409,129 @@ body[data-theme="light"] .diff-overlay {
 
 body[data-theme="light"] .metrics-picker-value-preview {
   background: rgba(0, 0, 0, 0.08);
+}
+
+/* ===================================================
+   Plugin Manager Panel
+   =================================================== */
+
+.plugin-restart-notice {
+  display: none;
+  background: rgba(243, 156, 18, 0.15);
+  border: 1px solid rgba(243, 156, 18, 0.5);
+  color: #f39c12;
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 6px 10px;
+  margin-bottom: 12px;
+}
+
+.plugin-restart-notice.visible {
+  display: block;
+}
+
+.plugin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.plugin-list-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.plugin-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.plugin-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.plugin-item-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 3px;
+}
+
+.plugin-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.plugin-item-version {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.plugin-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.plugin-badge-bundled {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+}
+
+.plugin-badge-user {
+  background: rgba(46, 204, 113, 0.2);
+  color: #2ecc71;
+}
+
+.plugin-badge-error {
+  background: rgba(231, 76, 60, 0.2);
+  color: #e74c3c;
+}
+
+.plugin-badge-disabled {
+  background: rgba(127, 140, 141, 0.2);
+  color: var(--text-muted);
+}
+
+.plugin-item-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plugin-import-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.plugin-import-status {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.plugin-import-status.success {
+  color: #2ecc71;
+}
+
+.plugin-import-status.error {
+  color: #e74c3c;
 }

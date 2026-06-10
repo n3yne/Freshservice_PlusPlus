@@ -38,13 +38,6 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!enabled && aiNavItem.classList.contains("active")) redirectToGeneral();
   }
 
-  function updateMetricsNavVisibility() {
-    if (!metricsNavItem) return;
-    const enabled = appSettings.metricsBarEnabled;
-    metricsNavItem.style.display = enabled ? "" : "none";
-    if (!enabled && metricsNavItem.classList.contains("active")) redirectToGeneral();
-  }
-
   // ==================== Constants ====================
   const SIG_SAVE_DEBOUNCE = 800;
 
@@ -93,27 +86,6 @@ document.addEventListener("DOMContentLoaded", function () {
   const settingAiProvider     = document.getElementById("setting-ai-provider");
   const settingAiModel        = document.getElementById("setting-ai-model");
   const settingAiKey          = document.getElementById("setting-ai-key");
-  const settingMetricsEnabled        = document.getElementById("setting-metrics-enabled");
-  const metricsNavItem               = document.querySelector('[data-panel="metrics"]');
-  const settingMetricsInterval       = document.getElementById("setting-metrics-interval");
-  const metricsDashboardsList        = document.getElementById("metrics-dashboards-list");
-  const btnMetricsAddDashboard       = document.getElementById("btn-metrics-add-dashboard");
-  const metricsScraperWebview        = document.getElementById("metrics-scraper-webview");
-  const settingMetricsProgressEnabled = document.getElementById("setting-metrics-progress-enabled");
-  const metricsProgressConfig        = document.getElementById("metrics-progress-config");
-  const metricsWorkDayCheckboxes     = document.querySelectorAll(".metrics-work-day");
-  const settingMetricsWeekEndDay     = document.getElementById("setting-metrics-week-end-day");
-  const settingMetricsWorkStart      = document.getElementById("setting-metrics-work-start");
-  const settingMetricsWorkEnd        = document.getElementById("setting-metrics-work-end");
-  const metricsPickerOverlay  = document.getElementById("metrics-picker-overlay");
-  const metricsPickerWebview  = document.getElementById("metrics-picker-webview");
-  const metricsPickerCaptureBar = document.getElementById("metrics-picker-capture-bar");
-  const metricsPickerValuePreview = document.getElementById("metrics-picker-value-preview");
-  const metricsPickerSelectorInput = document.getElementById("metrics-picker-selector-input");
-  const metricsPickerLabelInput = document.getElementById("metrics-picker-label-input");
-  const btnMetricsPickerSave  = document.getElementById("btn-metrics-picker-save");
-  const btnMetricsPickerReselect = document.getElementById("btn-metrics-picker-reselect");
-  const btnMetricsPickerCancel = document.getElementById("btn-metrics-picker-cancel");
   const templateList          = document.getElementById("template-list");
   const btnAddTemplate        = document.getElementById("btn-add-template");
   const templateAddForm       = document.getElementById("template-add-form");
@@ -121,6 +93,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const templateContentInput  = document.getElementById("template-content-input");
   const btnSaveTemplate       = document.getElementById("btn-save-template");
   const btnCancelTemplate     = document.getElementById("btn-cancel-template");
+  const pluginList            = document.getElementById("plugin-list");
+  const pluginRestartNotice   = document.getElementById("plugin-restart-notice");
+  const btnImportPlugin       = document.getElementById("btn-import-plugin");
+  const pluginImportStatus    = document.getElementById("plugin-import-status");
 
   // ==================== Utilities ====================
   function debounce(fn, ms) {
@@ -165,25 +141,6 @@ document.addEventListener("DOMContentLoaded", function () {
       settingAiKey.placeholder = settings.aiApiKey ? "••••••••  (saved)" : "Paste your API key here";
     }
 
-    if (settingMetricsEnabled) settingMetricsEnabled.checked = !!settings.metricsBarEnabled;
-    updateMetricsNavVisibility();
-    if (settingMetricsInterval) {
-      settingMetricsInterval.value = String(settings.metricsBarInterval || 15);
-    }
-    if (settingMetricsProgressEnabled) settingMetricsProgressEnabled.checked = !!settings.metricsProgressEnabled;
-    if (metricsProgressConfig) {
-      if (settings.metricsProgressEnabled) metricsProgressConfig.classList.add("visible");
-      else metricsProgressConfig.classList.remove("visible");
-    }
-    const workDays = settings.metricsWorkDays || [1, 2, 3, 4, 5];
-    metricsWorkDayCheckboxes.forEach(function (cb) {
-      cb.checked = workDays.includes(parseInt(cb.value, 10));
-    });
-    if (settingMetricsWeekEndDay) settingMetricsWeekEndDay.value = String(settings.metricsWorkWeekEndDay !== undefined ? settings.metricsWorkWeekEndDay : 5);
-    if (settingMetricsWorkStart) settingMetricsWorkStart.value = settings.metricsWorkHoursStart || "08:00";
-    if (settingMetricsWorkEnd) settingMetricsWorkEnd.value = settings.metricsWorkHoursEnd || "17:00";
-
-    renderDashboardList();
     renderTemplateList();
   }
 
@@ -352,558 +309,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }, SIG_SAVE_DEBOUNCE);
   settingSignature.addEventListener("input", sigSave);
 
-  // ==================== Metrics Bar Settings ====================
 
-  settingMetricsEnabled.addEventListener("change", function () {
-    appSettings.metricsBarEnabled = settingMetricsEnabled.checked;
-    updateMetricsNavVisibility();
-    saveSettings();
-  });
-
-  settingMetricsInterval.addEventListener("change", function () {
-    const val = parseInt(settingMetricsInterval.value, 10);
-    appSettings.metricsBarInterval = [5, 15, 30, 60].includes(val) ? val : 15;
-    saveSettings();
-  });
-
-  settingMetricsProgressEnabled.addEventListener("change", function () {
-    appSettings.metricsProgressEnabled = settingMetricsProgressEnabled.checked;
-    if (appSettings.metricsProgressEnabled) metricsProgressConfig.classList.add("visible");
-    else metricsProgressConfig.classList.remove("visible");
-    saveSettings();
-    renderDashboardList();
-  });
-
-  metricsWorkDayCheckboxes.forEach(function (cb) {
-    cb.addEventListener("change", function () {
-      appSettings.metricsWorkDays = Array.from(metricsWorkDayCheckboxes)
-        .filter(function (c) { return c.checked; })
-        .map(function (c) { return parseInt(c.value, 10); });
-      saveSettings();
-    });
-  });
-
-  settingMetricsWeekEndDay.addEventListener("change", function () {
-    appSettings.metricsWorkWeekEndDay = parseInt(settingMetricsWeekEndDay.value, 10);
-    saveSettings();
-  });
-
-  settingMetricsWorkStart.addEventListener("change", function () {
-    appSettings.metricsWorkHoursStart = settingMetricsWorkStart.value;
-    saveSettings();
-  });
-
-  settingMetricsWorkEnd.addEventListener("change", function () {
-    appSettings.metricsWorkHoursEnd = settingMetricsWorkEnd.value;
-    saveSettings();
-  });
-
-  btnMetricsAddDashboard.addEventListener("click", function () {
-    if (!appSettings.metricsBarDashboards) appSettings.metricsBarDashboards = [];
-    appSettings.metricsBarDashboards.push({ id: "db-" + Date.now(), url: "", fields: [] });
-    saveSettings();
-    renderDashboardList();
-  });
-
-  btnMetricsPickerCancel.addEventListener("click", closeMetricsPicker);
-
-  btnMetricsPickerReselect.addEventListener("click", function () {
-    metricsPickerCaptureBar.classList.remove("visible");
-    metricsPickerSelectorInput.value = "";
-    metricsPickerPendingSelector = null;
-  });
-
-  btnMetricsPickerSave.addEventListener("click", function () {
-    const label = metricsPickerLabelInput.value.trim();
-    const selector = metricsPickerSelectorInput.value.trim() || metricsPickerPendingSelector;
-    if (!label || !selector) return;
-    const db = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === metricsPickerDashboardId; });
-    if (!db) return;
-    if (metricsPickerTargetFieldId) {
-      db.fields = (db.fields || []).map(function (f) {
-        return f.id === metricsPickerTargetFieldId ? Object.assign({}, f, { label, selector }) : f;
-      });
-    } else {
-      db.fields = (db.fields || []).concat([{ id: "mf-" + Date.now(), label, selector }]);
-    }
-    saveSettings();
-    closeMetricsPicker();
-    renderDashboardList();
-  });
-
-  metricsPickerLabelInput.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") btnMetricsPickerSave.click();
-  });
-
-  // ==================== Metrics Bar — Scraper & Picker ====================
-
-  let metricsScraperBusy = false;
-  let metricsPickerViewOnly = false;
-  const metricsValues = {};
-  const metricsTestStatuses = {};
-  let metricsPickerPendingSelector = null;
-  let metricsPickerDashboardId = null;
-  let metricsPickerTargetFieldId = null;
-
-  // Script injected into the picker webview so the user can click-to-select an element.
-  const METRICS_PICKER_INJECT_SCRIPT = `(function() {
-    if (window.__mpInject) return;
-    window.__mpInject = true;
-    var hi = document.createElement('div');
-    hi.style.cssText = 'position:fixed;outline:3px solid #e67e22;background:rgba(230,126,34,0.12);pointer-events:none;border-radius:2px;z-index:999999;display:none;box-sizing:border-box;';
-    document.body.appendChild(hi);
-
-    // For table cells: generate a JS expression that finds the row by a stable text
-    // anchor (first non-numeric cell — skips rank columns) then returns the clicked
-    // column. Searches ALL tables sharing the same class, since BrightGauge reuses
-    // one class across every widget table on the page.
-    function getTableCellExpr(cellEl) {
-      var tr = cellEl.parentElement;
-      while (tr && tr.tagName !== 'TR') tr = tr.parentElement;
-      if (!tr || !tr.cells) return null;
-      var colIdx = Array.from(tr.cells).indexOf(cellEl);
-      if (colIdx < 0) return null;
-      // Find the best anchor: first non-numeric cell that isn't the target column.
-      // Skipping numeric cells avoids anchoring on rank numbers ("1", "2", …).
-      var anchorIdx = -1;
-      var anchorText = '';
-      for (var k = 0; k < tr.cells.length; k++) {
-        if (k === colIdx) continue;
-        var ct = tr.cells[k] ? tr.cells[k].textContent.trim() : '';
-        if (ct && isNaN(parseFloat(ct))) { anchorIdx = k; anchorText = ct; break; }
-      }
-      if (anchorIdx < 0) return null;
-      var tbl = tr.closest ? tr.closest('table') : null;
-      if (!tbl) return null;
-      var tblClasses = tbl.classList ? Array.from(tbl.classList).slice(0, 2) : [];
-      var tblSel = tblClasses.length > 0 ? ('table.' + tblClasses.join('.')) : 'table';
-      // Record which table the user clicked so the scraper targets the same widget.
-      // All BrightGauge gauge tables share one class, so tblIdx is the only way to
-      // distinguish "Closed Tickets table" from "Hours Worked table".
-      var tblIdx = Array.from(document.querySelectorAll(tblSel)).indexOf(tbl);
-      if (tblIdx < 0) tblIdx = 0;
-      return '(function(){' +
-        'var tbls=Array.from(document.querySelectorAll(' + JSON.stringify(tblSel) + '));' +
-        'var tbl=tbls[' + tblIdx + ']||null;' +
-        'if(!tbl)return null;' +
-        'var rows=Array.from(tbl.querySelectorAll("tbody tr"));' +
-        'var row=rows.find(function(r){return r.cells&&r.cells[' + anchorIdx + ']&&r.cells[' + anchorIdx + '].textContent.trim()===' + JSON.stringify(anchorText) + ';});' +
-        'return row&&row.cells[' + colIdx + ']?row.cells[' + colIdx + '].textContent.trim():null;' +
-        '})()';
-    }
-
-    // Returns the shortest CSS selector that uniquely identifies el.
-    // Prefers class-based anchors over positional nth-child so that
-    // elements that reorder between page loads (e.g. async gauge render)
-    // can still be found by their component class name.
-    function getPath(el) {
-      function qsaLen(sel) {
-        try { return document.querySelectorAll(sel).length; } catch(err) { return -1; }
-      }
-      function buildPart(node) {
-        var elId = node.getAttribute('id');
-        if (elId) return '#' + elId;
-        var tag = node.tagName.toLowerCase();
-        var classes = Array.from(node.classList || []);
-        if (classes.length > 0) {
-          var cls = '.' + classes.slice(0, 2).join('.');
-          var sameCls = Array.from(node.parentNode ? node.parentNode.children : []).filter(function(s) {
-            return s.tagName === node.tagName && s.className === node.className;
-          });
-          if (sameCls.length > 1) {
-            var idx = Array.from(node.parentNode.children).indexOf(node) + 1;
-            return tag + cls + ':nth-child(' + idx + ')';
-          }
-          return tag + cls;
-        }
-        var tagSiblings = Array.from(node.parentNode ? node.parentNode.children : []).filter(function(s) {
-          return s.tagName === node.tagName;
-        });
-        if (tagSiblings.length > 1) {
-          var idx = Array.from(node.parentNode.children).indexOf(node) + 1;
-          return tag + ':nth-child(' + idx + ')';
-        }
-        return tag;
-      }
-      if (el.id) return '#' + el.id;
-      var parts = [];
-      var cur = el;
-      while (cur && cur !== document.body) {
-        var part = buildPart(cur);
-        if (part.startsWith('#')) { parts.unshift(part); break; }
-        parts.unshift(part);
-        cur = cur.parentElement;
-        if (parts.length >= 2 && qsaLen(parts.join(' > ')) === 1) break;
-      }
-      return parts.join(' > ');
-    }
-
-    document.addEventListener('mouseover', function(e) {
-      var r = e.target.getBoundingClientRect();
-      hi.style.display = 'block';
-      hi.style.top = r.top + 'px';
-      hi.style.left = r.left + 'px';
-      hi.style.width = r.width + 'px';
-      hi.style.height = r.height + 'px';
-    }, true);
-    document.addEventListener('mouseout', function() { hi.style.display = 'none'; }, true);
-    document.addEventListener('click', function(e) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      var target = e.target;
-      var cellEl = target;
-      while (cellEl && cellEl !== document.body && cellEl.tagName !== 'TD' && cellEl.tagName !== 'TH') {
-        cellEl = cellEl.parentElement;
-      }
-      if (cellEl && (cellEl.tagName === 'TD' || cellEl.tagName === 'TH')) {
-        var expr = getTableCellExpr(cellEl);
-        if (expr) {
-          var cellText = (cellEl.innerText || cellEl.textContent || '').trim().replace(/\\s+/g, ' ').substring(0, 100);
-          console.log('[METRICS-PICK] ' + JSON.stringify({selector: expr, text: cellText}));
-          return;
-        }
-      }
-      var sel = getPath(target);
-      var text = (target.innerText || target.textContent || '').trim().replace(/\\s+/g, ' ').substring(0, 100);
-      console.log('[METRICS-PICK] ' + JSON.stringify({selector: sel, text: text}));
-    }, true);
-  })()`;
-
-  function buildMetricsScrapeScript(fields) {
-    const parts = fields.map(function (f) {
-      const idJ = JSON.stringify(f.id);
-      const sel = f.selector.trim();
-      if (sel.startsWith("(")) {
-        return "try{var _v=" + sel + ";r[" + idJ + "]=_v!=null?String(_v).trim():null;}catch(ex){r[" + idJ + "]=null;}";
-      }
-      const selJ = JSON.stringify(sel);
-      return "try{var _el=document.querySelector(" + selJ + ");r[" + idJ + "]=_el?(_el.innerText||_el.textContent||'').trim().split('\\n')[0].trim():null;}catch(ex){r[" + idJ + "]=null;}";
-    });
-    return "(function(){var r={};" + parts.join("") + "return r;})()";
-  }
-
-  function renderMetricsFieldsConfig(dbId, containerEl) {
-    containerEl.innerHTML = "";
-    const db = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
-    const fields = db ? (db.fields || []) : [];
-    if (fields.length === 0) {
-      const p = document.createElement("p");
-      p.className = "metrics-fields-empty";
-      p.textContent = "No fields configured. Click \"+ Add Field\" to pick values from the dashboard.";
-      containerEl.appendChild(p);
-      return;
-    }
-    fields.forEach(function (f) {
-      const wrap = document.createElement("div");
-      wrap.className = "metrics-field-config-wrap";
-
-      const row = document.createElement("div");
-      row.className = "metrics-field-config-row";
-
-      const info = document.createElement("div");
-      info.className = "metrics-field-config-info";
-      const lbl = document.createElement("span");
-      lbl.className = "metrics-field-config-label";
-      lbl.textContent = f.label;
-      const found = metricsValues[f.id];
-      const badge = document.createElement("span");
-      badge.className = "metrics-field-config-found";
-      badge.textContent = found !== undefined
-        ? (found !== null ? "→ " + found : "(not found — check selector)")
-        : "(not yet scraped)";
-      info.appendChild(lbl);
-      info.appendChild(badge);
-
-      const btns = document.createElement("div");
-      btns.className = "metrics-field-config-btns";
-
-      const repick = document.createElement("button");
-      repick.type = "button";
-      repick.className = "btn btn-small btn-secondary";
-      repick.textContent = "Re-pick";
-      repick.title = "Re-open dashboard and click a new element for this field";
-      repick.addEventListener("click", function () {
-        const db_ = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
-        if (!db_ || !db_.url) return;
-        openMetricsPicker(dbId, f.id);
-      });
-
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "btn btn-small";
-      del.style.color = "var(--warning, #e74c3c)";
-      del.textContent = "Remove";
-      del.addEventListener("click", function () {
-        const db_ = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
-        if (db_) db_.fields = (db_.fields || []).filter(function (x) { return x.id !== f.id; });
-        saveSettings();
-        renderDashboardList();
-      });
-
-      btns.appendChild(repick);
-      btns.appendChild(del);
-      row.appendChild(info);
-      row.appendChild(btns);
-
-      const selRow = document.createElement("div");
-      selRow.className = "metrics-field-selector-row";
-      const selLabel = document.createElement("span");
-      selLabel.className = "metrics-field-selector-label";
-      selLabel.textContent = "Selector:";
-      const selInput = document.createElement("input");
-      selInput.type = "text";
-      selInput.className = "settings-text-input metrics-field-selector-input";
-      selInput.value = f.selector;
-      selInput.spellcheck = false;
-      selInput.title = "CSS selector used to find this value. Edit manually if needed.";
-      selInput.addEventListener("change", function () {
-        const updated = selInput.value.trim();
-        if (!updated) return;
-        const db_ = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
-        if (db_) db_.fields = (db_.fields || []).map(function (x) {
-          return x.id === f.id ? Object.assign({}, x, { selector: updated }) : x;
-        });
-        saveSettings();
-      });
-      selRow.appendChild(selLabel);
-      selRow.appendChild(selInput);
-
-      wrap.appendChild(row);
-      wrap.appendChild(selRow);
-
-      if (appSettings.metricsProgressEnabled) {
-        const targetRow = document.createElement("div");
-        targetRow.className = "metrics-field-target-row";
-        const targetLabel = document.createElement("span");
-        targetLabel.className = "metrics-field-target-label";
-        targetLabel.textContent = "Weekly target:";
-        const targetInput = document.createElement("input");
-        targetInput.type = "text";
-        targetInput.className = "settings-text-input metrics-field-target-input";
-        targetInput.value = f.weeklyTarget !== undefined ? String(f.weeklyTarget) : "";
-        targetInput.placeholder = "e.g. 40";
-        targetInput.title = "Minimum value to reach by end of work week";
-        targetInput.addEventListener("change", function () {
-          const updated = targetInput.value.trim();
-          const db_ = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
-          if (db_) db_.fields = (db_.fields || []).map(function (x) {
-            return x.id === f.id ? Object.assign({}, x, { weeklyTarget: updated }) : x;
-          });
-          saveSettings();
-        });
-        targetRow.appendChild(targetLabel);
-        targetRow.appendChild(targetInput);
-        wrap.appendChild(targetRow);
-      }
-
-      containerEl.appendChild(wrap);
-    });
-  }
-
-  function renderDashboardList() {
-    if (!metricsDashboardsList) return;
-    metricsDashboardsList.innerHTML = "";
-    const dashboards = appSettings.metricsBarDashboards || [];
-    dashboards.forEach(function (db, dbIdx) {
-      const section = document.createElement("div");
-      section.className = "metrics-dashboard-section";
-
-      // Header: "Dashboard N" label + remove button
-      const header = document.createElement("div");
-      header.className = "metrics-dashboard-header";
-      const title = document.createElement("span");
-      title.className = "metrics-dashboard-title";
-      title.textContent = "Dashboard " + (dbIdx + 1);
-      const removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "btn btn-small";
-      removeBtn.style.color = "var(--warning, #e74c3c)";
-      removeBtn.textContent = "Remove";
-      removeBtn.addEventListener("click", function () {
-        (db.fields || []).forEach(function (f) { delete metricsValues[f.id]; });
-        delete metricsTestStatuses[db.id];
-        appSettings.metricsBarDashboards = (appSettings.metricsBarDashboards || []).filter(function (d) { return d.id !== db.id; });
-        saveSettings();
-        renderDashboardList();
-      });
-      header.appendChild(title);
-      header.appendChild(removeBtn);
-
-      // URL input
-      const urlWrap = document.createElement("div");
-      urlWrap.className = "settings-field settings-field-column";
-      const urlLabel = document.createElement("label");
-      urlLabel.className = "settings-field-label";
-      urlLabel.textContent = "Dashboard URL";
-      const urlInput = document.createElement("input");
-      urlInput.type = "text";
-      urlInput.className = "settings-text-input";
-      urlInput.placeholder = "https://contoso.brightgauge.co/public/dashboards/…";
-      urlInput.maxLength = 500;
-      urlInput.spellcheck = false;
-      urlInput.autocomplete = "off";
-      urlInput.value = db.url || "";
-      const urlSave = debounce(function () {
-        const db_ = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === db.id; });
-        if (db_) { db_.url = urlInput.value.trim(); saveSettings(); }
-      }, 800);
-      urlInput.addEventListener("input", urlSave);
-      urlWrap.appendChild(urlLabel);
-      urlWrap.appendChild(urlInput);
-
-      // Fields section
-      const fieldsWrap = document.createElement("div");
-      fieldsWrap.className = "settings-field-column";
-
-      const fieldsHeader = document.createElement("div");
-      fieldsHeader.className = "metrics-fields-header";
-      const fieldsLabel = document.createElement("span");
-      fieldsLabel.className = "settings-field-label";
-      fieldsLabel.textContent = "Tracked Fields";
-
-      const headerBtns = document.createElement("div");
-      headerBtns.className = "metrics-fields-header-btns";
-
-      const testBtn = document.createElement("button");
-      testBtn.type = "button";
-      testBtn.className = "btn btn-small btn-secondary";
-      testBtn.textContent = "Test selectors";
-      testBtn.title = "Reload the dashboard and re-run selectors to verify they find the right values";
-      testBtn.addEventListener("click", function () { scrapeMetrics(db.id); });
-
-      const addFieldBtn = document.createElement("button");
-      addFieldBtn.type = "button";
-      addFieldBtn.className = "btn btn-small btn-secondary";
-      addFieldBtn.textContent = "+ Add Field";
-      addFieldBtn.addEventListener("click", function () {
-        const db_ = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === db.id; });
-        if (!db_ || !db_.url) { urlInput.focus(); return; }
-        openMetricsPicker(db.id, null);
-      });
-
-      headerBtns.appendChild(testBtn);
-      headerBtns.appendChild(addFieldBtn);
-      fieldsHeader.appendChild(fieldsLabel);
-      fieldsHeader.appendChild(headerBtns);
-
-      const testStatus = document.createElement("span");
-      testStatus.className = "metrics-test-status";
-      testStatus.id = "metrics-test-status-" + db.id;
-      testStatus.textContent = metricsTestStatuses[db.id] || "";
-
-      const fieldsList = document.createElement("div");
-      fieldsList.className = "metrics-fields-config-list";
-
-      fieldsWrap.appendChild(fieldsHeader);
-      fieldsWrap.appendChild(testStatus);
-      fieldsWrap.appendChild(fieldsList);
-
-      section.appendChild(header);
-      section.appendChild(urlWrap);
-      section.appendChild(fieldsWrap);
-      metricsDashboardsList.appendChild(section);
-
-      renderMetricsFieldsConfig(db.id, fieldsList);
-    });
-  }
-
-  async function scrapeMetrics(dbId) {
-    if (metricsScraperBusy) return;
-    const db = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
-    if (!db || !db.url || !(db.fields || []).length) return;
-
-    metricsScraperBusy = true;
-    metricsTestStatuses[dbId] = "Testing…";
-    const statusEl = document.getElementById("metrics-test-status-" + dbId);
-    if (statusEl) statusEl.textContent = "Testing…";
-
-    try {
-      await new Promise(function (resolve, reject) {
-        const loadTimer = setTimeout(function () { reject(new Error("load timeout")); }, 30000);
-        function handler() {
-          metricsScraperWebview.removeEventListener("did-finish-load", handler);
-          clearTimeout(loadTimer);
-          resolve();
-        }
-        metricsScraperWebview.addEventListener("did-finish-load", handler);
-        const sep = db.url.includes("?") ? "&" : "?";
-        metricsScraperWebview.src = db.url + sep + "_ms=" + Date.now();
-      });
-
-      await new Promise(function (resolve) { setTimeout(resolve, 5000); });
-
-      const db_ = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
-      const currentFields = db_ ? (db_.fields || []) : [];
-      const results = await metricsScraperWebview.executeJavaScript(
-        buildMetricsScrapeScript(currentFields)
-      );
-      Object.assign(metricsValues, results || {});
-      const now = new Date();
-      metricsTestStatuses[dbId] = "Tested " + now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      const statusEl2 = document.getElementById("metrics-test-status-" + dbId);
-      if (statusEl2) statusEl2.textContent = metricsTestStatuses[dbId];
-      renderDashboardList();
-    } catch {
-      metricsTestStatuses[dbId] = "Test failed";
-      const statusEl3 = document.getElementById("metrics-test-status-" + dbId);
-      if (statusEl3) statusEl3.textContent = "Test failed";
-    }
-
-    metricsScraperBusy = false;
-  }
-
-  function openMetricsPicker(dbId, targetFieldId) {
-    metricsPickerViewOnly = false;
-    metricsPickerDashboardId = dbId;
-    metricsPickerTargetFieldId = targetFieldId || null;
-    const instr = metricsPickerOverlay.querySelector(".metrics-picker-instruction");
-    if (instr) instr.textContent = "Hover and click any value on the dashboard to track it";
-    btnMetricsPickerCancel.textContent = "Cancel";
-    metricsPickerPendingSelector = null;
-    if (targetFieldId) {
-      const db = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
-      const target = db ? (db.fields || []).find(function (f) { return f.id === targetFieldId; }) : null;
-      metricsPickerLabelInput.value = target ? target.label : "";
-    } else {
-      metricsPickerLabelInput.value = "";
-    }
-    metricsPickerCaptureBar.classList.remove("visible");
-    metricsPickerOverlay.classList.add("visible");
-    const db = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
-    metricsPickerWebview.src = db ? db.url : "about:blank";
-  }
-
-  function closeMetricsPicker() {
-    metricsPickerViewOnly = false;
-    metricsPickerOverlay.classList.remove("visible");
-    metricsPickerWebview.src = "about:blank";
-    metricsPickerPendingSelector = null;
-    metricsPickerDashboardId = null;
-    metricsPickerTargetFieldId = null;
-  }
-
-  metricsPickerWebview.addEventListener("did-finish-load", function () {
-    if (metricsPickerViewOnly) return;
-    setTimeout(function () {
-      if (!metricsPickerViewOnly) {
-        metricsPickerWebview.executeJavaScript(METRICS_PICKER_INJECT_SCRIPT).catch(function () { /* ignore */ });
-      }
-    }, 2000);
-  });
-
-  metricsPickerWebview.addEventListener("console-message", function (e) {
-    const msg = e.message || "";
-    const PREFIX = "[METRICS-PICK] ";
-    if (!msg.startsWith(PREFIX)) return;
-    try {
-      const data = JSON.parse(msg.slice(PREFIX.length));
-      metricsPickerPendingSelector = data.selector;
-      metricsPickerValuePreview.textContent = data.text || "(no text)";
-      metricsPickerSelectorInput.value = data.selector;
-      metricsPickerCaptureBar.classList.add("visible");
-      metricsPickerLabelInput.focus();
-    } catch { /* ignore malformed messages */ }
-  });
 
   // ==================== Note Templates ====================
 
@@ -993,6 +399,140 @@ document.addEventListener("DOMContentLoaded", function () {
     renderTemplateList();
   });
 
+  // ==================== Plugins Panel ====================
+
+  let pluginRestartPending = false;
+
+  function renderPluginList(plugins) {
+    if (!pluginList) return;
+    pluginList.innerHTML = "";
+
+    if (!plugins || plugins.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "plugin-list-empty";
+      empty.textContent = "No plugins installed.";
+      pluginList.appendChild(empty);
+      return;
+    }
+
+    plugins.forEach(function (plugin) {
+      const item = document.createElement("div");
+      item.className = "plugin-list-item";
+
+      // Left: info block
+      const info = document.createElement("div");
+      info.className = "plugin-item-info";
+
+      const header = document.createElement("div");
+      header.className = "plugin-item-header";
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "plugin-item-name";
+      nameSpan.textContent = plugin.name || plugin.id;
+      header.appendChild(nameSpan);
+
+      if (plugin.version) {
+        const ver = document.createElement("span");
+        ver.className = "plugin-item-version";
+        ver.textContent = "v" + plugin.version;
+        header.appendChild(ver);
+      }
+
+      const sourceBadge = document.createElement("span");
+      sourceBadge.className = "plugin-badge " +
+        (plugin.source === "bundled" ? "plugin-badge-bundled" : "plugin-badge-user");
+      sourceBadge.textContent = plugin.source === "bundled" ? "Bundled" : "Installed";
+      header.appendChild(sourceBadge);
+
+      if (!plugin.enabled) {
+        const disabledBadge = document.createElement("span");
+        disabledBadge.className = "plugin-badge plugin-badge-disabled";
+        disabledBadge.textContent = "Disabled";
+        header.appendChild(disabledBadge);
+      } else if (plugin.loadError) {
+        const errBadge = document.createElement("span");
+        errBadge.className = "plugin-badge plugin-badge-error";
+        errBadge.title = plugin.loadError;
+        errBadge.textContent = "Error";
+        header.appendChild(errBadge);
+      }
+
+      info.appendChild(header);
+
+      if (plugin.description) {
+        const desc = document.createElement("div");
+        desc.className = "plugin-item-desc";
+        desc.textContent = plugin.description;
+        desc.title = plugin.description;
+        info.appendChild(desc);
+      }
+
+      item.appendChild(info);
+
+      // Right: toggle
+      const toggle = document.createElement("label");
+      toggle.className = "settings-toggle";
+      toggle.title = plugin.enabled ? "Disable plugin" : "Enable plugin";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = plugin.enabled;
+      checkbox.addEventListener("change", function () {
+        window.backupAPI.setPluginEnabled(plugin.id, checkbox.checked).then(function () {
+          pluginRestartPending = true;
+          if (pluginRestartNotice) pluginRestartNotice.classList.add("visible");
+          plugin.enabled = checkbox.checked;
+          // Refresh badges without rebuilding the whole list
+          renderPluginList(window._loadedPlugins || []);
+        });
+      });
+
+      const slider = document.createElement("span");
+      slider.className = "settings-toggle-slider";
+
+      toggle.appendChild(checkbox);
+      toggle.appendChild(slider);
+      item.appendChild(toggle);
+
+      pluginList.appendChild(item);
+    });
+  }
+
+  function loadAndRenderPlugins() {
+    window.backupAPI.getPluginInfo().then(function (plugins) {
+      window._loadedPlugins = plugins;
+      renderPluginList(plugins);
+      if (pluginRestartPending && pluginRestartNotice) {
+        pluginRestartNotice.classList.add("visible");
+      }
+    }).catch(function (err) {
+      console.error("[Settings] Failed to load plugin info:", err);
+    });
+  }
+
+  if (btnImportPlugin) {
+    btnImportPlugin.addEventListener("click", function () {
+      pluginImportStatus.textContent = "";
+      pluginImportStatus.className = "plugin-import-status";
+      window.backupAPI.importPlugin().then(function (result) {
+        if (result.cancelled) return;
+        if (result.success) {
+          pluginImportStatus.textContent = "Imported \"" + (result.name || result.id) + "\". Restart to activate.";
+          pluginImportStatus.className = "plugin-import-status success";
+          pluginRestartPending = true;
+          if (pluginRestartNotice) pluginRestartNotice.classList.add("visible");
+          loadAndRenderPlugins();
+        } else {
+          pluginImportStatus.textContent = result.error || "Import failed.";
+          pluginImportStatus.className = "plugin-import-status error";
+        }
+      }).catch(function (err) {
+        pluginImportStatus.textContent = "Import error: " + (err.message || err);
+        pluginImportStatus.className = "plugin-import-status error";
+      });
+    });
+  }
+
   // ==================== Startup ====================
 
   window.backupAPI.onSettingsChanged(function (settings) {
@@ -1004,8 +544,67 @@ document.addEventListener("DOMContentLoaded", function () {
     if (appSettings.aiProvider && appSettings.aiProvider !== "none") {
       populateAiModelDropdown();
     }
+
+    // Build the pluginSettingsAPI before injecting plugin settings scripts so
+    // plugins can call addPanel() synchronously during their top-level execution.
+    const pluginPanels = [];
+    window.pluginSettingsAPI = Object.freeze({
+      addPanel: function (id, label, setupFn) {
+        // Add a nav item
+        const nav = document.querySelector(".settings-nav");
+        if (nav) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "settings-nav-item";
+          btn.dataset.panel = "plugin-" + id;
+          btn.textContent = label;
+          btn.addEventListener("click", function () {
+            document.querySelectorAll(".settings-nav-item").forEach(function (b) {
+              b.classList.toggle("active", b === btn);
+            });
+            document.querySelectorAll(".settings-panel").forEach(function (p) {
+              p.classList.toggle("active", p.id === "panel-plugin-" + id);
+            });
+          });
+          nav.appendChild(btn);
+        }
+
+        // Add the panel div
+        const content = document.querySelector(".settings-content");
+        const panel = document.createElement("div");
+        panel.className = "settings-panel";
+        panel.id = "panel-plugin-" + id;
+        if (content) content.appendChild(panel);
+
+        pluginPanels.push({ id, panel });
+
+        // Let the plugin populate the panel
+        if (typeof setupFn === "function") setupFn(panel);
+      },
+      getSettings: function () { return Object.assign({}, appSettings); },
+      saveSettings: function (patch) {
+        appSettings = Object.assign({}, appSettings, patch);
+        saveSettings();
+      },
+      onSettingsChanged: function (fn) {
+        window.backupAPI.onSettingsChanged(fn);
+      },
+    });
+
+    // Inject plugin settings scripts
+    window.backupAPI.getPluginSettingsScripts().then(function (scriptPaths) {
+      (scriptPaths || []).forEach(function (src) {
+        const s = document.createElement("script");
+        s.src = src;
+        document.body.appendChild(s);
+      });
+    }).catch(function (err) {
+      console.error("[Settings] Failed to load plugin settings scripts:", err);
+    });
   }).catch(function (err) {
     console.error("[Settings] Error loading settings:", err);
   });
+
+  loadAndRenderPlugins();
 
 });

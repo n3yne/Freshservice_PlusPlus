@@ -21,7 +21,7 @@ export default [
 
   // Renderer scripts (browser — no import/export, no Node globals)
   {
-    files: ["renderer.js", "settings_renderer.js", "plugins/**/renderer.js"],
+    files: ["renderer.js", "settings_renderer.js", "plugins/**/renderer.js", "plugins/**/settings.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script",
