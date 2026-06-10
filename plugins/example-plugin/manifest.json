@@ -1,0 +1,9 @@
+{
+  "id": "example-plugin",
+  "name": "Example Plugin",
+  "version": "1.0.0",
+  "description": "Demonstrates the plugin API. Remove or disable this directory when not needed.",
+  "main": "main.js",
+  "renderer": "renderer.js",
+  "minAppVersion": "0.2.2"
+}

@@ -6,7 +6,7 @@ export default [
 
   // Main process + Node.js files
   {
-    files: ["main.js", "preload.js", "launch.js", "utils.js"],
+    files: ["main.js", "preload.js", "launch.js", "utils.js", "plugin-manager.js", "plugins/**/main.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "commonjs",
@@ -21,7 +21,7 @@ export default [
 
   // Renderer scripts (browser — no import/export, no Node globals)
   {
-    files: ["renderer.js", "settings_renderer.js"],
+    files: ["renderer.js", "settings_renderer.js", "plugins/**/renderer.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script",

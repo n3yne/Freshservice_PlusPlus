@@ -102,6 +102,23 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnDiffRestore = document.getElementById("btn-diff-restore");
   const btnDiffCancel = document.getElementById("btn-diff-cancel");
 
+  // ==================== Plugin Event Bus ====================
+  const _pluginBus = new Map();
+  function _busOn(name, fn) {
+    if (!_pluginBus.has(name)) _pluginBus.set(name, new Set());
+    _pluginBus.get(name).add(fn);
+    return () => _pluginBus.get(name)?.delete(fn);
+  }
+  function _busOff(name, fn) { _pluginBus.get(name)?.delete(fn); }
+  function _busEmit(name, data) {
+    (_pluginBus.get(name) || []).forEach(function (fn) {
+      try { fn(data); } catch (e) { console.error("[PluginBus]", name, e); }
+    });
+  }
+  window.backupAPI.onPluginEvent(function (payload) {
+    if (payload && typeof payload.name === "string") _busEmit(payload.name, payload.data);
+  });
+
   // ==================== Constants ====================
   const MENU_EDGE_PADDING = 4; // px — context menu window-edge padding
   const PREVIEW_MAX_LENGTH = 100; // chars — history preview truncation
@@ -1418,6 +1435,7 @@ document.addEventListener("DOMContentLoaded", function () {
       } catch { /* ignore */ }
     }
 
+    _busEmit("ticket:changed", { ticketId: newTicket, previous: currentPanelTicket });
     ticketIdInput.value = newTicket;
     currentPanelTicket = newTicket;
     userTypedTicket = false;
@@ -1619,6 +1637,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Listen for settings changed from main process
   window.backupAPI.onSettingsChanged(function (settings) {
     applySettings(settings);
+    _busEmit("settings:changed", settings);
   });
 
   // Load settings on startup
@@ -1628,6 +1647,66 @@ document.addEventListener("DOMContentLoaded", function () {
       applySettings(settings);
       checkForUpdates();
       checkBackupSize();
+
+      // Construct the frozen plugin API surface (depends on element refs + helpers
+      // defined above, so it must be built here inside DOMContentLoaded).
+      window.pluginAPI = Object.freeze({
+        events: Object.freeze({ on: _busOn, off: _busOff, emit: _busEmit }),
+
+        invoke: function (pluginId, action, data) {
+          return window.backupAPI.pluginInvoke("plugin:" + pluginId + ":" + action, data);
+        },
+
+        ui: Object.freeze({
+          addToolbarButton: function (opts) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "toolbar-btn plugin-toolbar-btn";
+            btn.id = "plugin-btn-" + (opts.id || Math.random().toString(36).slice(2));
+            btn.textContent = opts.label || "";
+            if (opts.title) btn.title = opts.title;
+            btn.addEventListener("click", function () {
+              try { opts.onClick(); } catch (e) { console.error("[PluginUI]", e); }
+            });
+            const toolbar = document.getElementById("editor-toolbar");
+            if (toolbar) toolbar.appendChild(btn);
+            return btn;
+          },
+        }),
+
+        notes: Object.freeze({
+          getContent:   function () { return getEditorContent(); },
+          setContent:   function (html) {
+            setEditorContent(html);
+            clearTimeout(autosaveTimer);
+            autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+          },
+          getTicketId:  function () { return ticketIdInput.value.trim() || null; },
+          getPlainText: function () { return getEditorPlainText(); },
+        }),
+
+        getSettings: function () { return Object.assign({}, appSettings); },
+      });
+
+      // Notify the plugin bus that the app is ready
+      _busEmit("app:ready", {});
+      window.backupAPI.emitPluginEvent("app:ready", {});
+
+      // Inject renderer scripts from installed plugins
+      window.backupAPI.getPluginScripts().then(function (scriptPaths) {
+        if (!Array.isArray(scriptPaths)) return;
+        scriptPaths.forEach(function (scriptPath) {
+          if (typeof scriptPath !== "string") return;
+          const s = document.createElement("script");
+          s.src = scriptPath;
+          s.onerror = function (e) {
+            console.error("[Plugin loader] Failed to load:", scriptPath, e);
+          };
+          document.body.appendChild(s);
+        });
+      }).catch(function (err) {
+        console.error("[Plugin loader]", err);
+      });
     })
     .catch(function (err) {
       console.error("[Settings] Error loading settings:", err);
@@ -2778,6 +2857,7 @@ document.addEventListener("DOMContentLoaded", function () {
       autosaveStatus.textContent =
         "Auto-saved at " + new Date(result.timestamp).toLocaleTimeString();
       autosaveStatus.className = "saved";
+      _busEmit("note:saved", { ticketId, timestamp: result.timestamp });
     } catch (err) {
       autosaveStatus.textContent = "Auto-save error!";
       autosaveStatus.className = "";
