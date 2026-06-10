@@ -11,16 +11,6 @@
     <div id="app-container">
       <!-- ConnectWise Webview Area -->
       <div id="webview-area">
-        <!-- Metrics Bar -->
-        <div id="metrics-bar" class="metrics-bar">
-          <div id="metrics-bar-items" class="metrics-bar-items"></div>
-          <div class="metrics-bar-end">
-            <span id="metrics-bar-status" class="metrics-bar-status"></span>
-            <button type="button" id="btn-metrics-refresh" class="metrics-bar-btn" title="Refresh metrics now">&#8635;</button>
-            <button type="button" id="btn-metrics-hide" class="metrics-bar-btn" title="Hide metrics bar">&#10005;</button>
-          </div>
-        </div>
-
         <!-- Tab Bar -->
         <div id="tab-bar">
           <button type="button" id="btn-back" class="nav-btn" title="Go back (Alt+Left)" disabled>&#8249;</button>
@@ -725,9 +715,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Metrics background polling scraper (off-screen; loads dashboard for background polling) -->
-    <webview id="metrics-scraper-webview" class="metrics-scraper-webview" src="about:blank"></webview>
 
     <!-- Tab Context Menu -->
     <div id="tab-context-menu" class="context-menu">

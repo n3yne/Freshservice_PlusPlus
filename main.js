@@ -5,6 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const fsp = fs.promises;
 const { DEFAULT_SETTINGS, sanitizeTicketId, validateSettings } = require("./utils");
+const pluginManager = require("./plugin-manager");
 
 let mainWindow;
 let BACKUP_DIR;
@@ -777,6 +778,7 @@ function registerIpcHandlers() {
         );
       }
 
+      pluginManager.fireEvent("note:saved", { ticketId: safeTicketId, timestamp });
       return { success: true, timestamp };
     },
   );
@@ -1014,6 +1016,8 @@ function registerIpcHandlers() {
       return { success: false };
     }
     await saveSettings(merged);
+    pluginManager.fireEvent("settings:changed", merged);
+    pluginManager.updateSettings(merged);
     const sender = electron.BrowserWindow.fromWebContents(event.sender);
     electron.BrowserWindow.getAllWindows().forEach((win) => {
       if (win !== sender && !win.isDestroyed()) {
@@ -1021,6 +1025,50 @@ function registerIpcHandlers() {
       }
     });
     return { success: true };
+  });
+
+  // Plugin system: return renderer script paths for injection
+  electron.ipcMain.handle("plugin-get-scripts", () => {
+    return pluginManager.getRendererScripts();
+  });
+
+  // Plugin system: return settings-window script paths for injection
+  electron.ipcMain.handle("plugin-get-settings-scripts", () => {
+    return pluginManager.getSettingsScripts();
+  });
+
+  // Plugin system: forward renderer-originated events to main-process plugin listeners
+  electron.ipcMain.on("plugin-event-from-renderer", (_event, payload) => {
+    if (payload && typeof payload.name === "string") {
+      pluginManager.fireEvent(payload.name, payload.data);
+    }
+  });
+
+  // Plugin system: return metadata for all discovered plugins
+  electron.ipcMain.handle("plugin-get-info", () => {
+    return pluginManager.getPluginInfo();
+  });
+
+  // Plugin system: enable or disable a plugin (persisted; takes effect after restart)
+  electron.ipcMain.handle("plugin-set-enabled", async (_event, { id, enabled }) => {
+    if (typeof id !== "string" || typeof enabled !== "boolean") {
+      return { success: false, error: "Invalid arguments" };
+    }
+    await pluginManager.setPluginEnabled(id, enabled);
+    return { success: true };
+  });
+
+  // Plugin system: open a folder picker and import the selected directory as a plugin
+  electron.ipcMain.handle("plugin-import", async () => {
+    const result = await electron.dialog.showOpenDialog({
+      title: "Select Plugin Folder",
+      properties: ["openDirectory"],
+      buttonLabel: "Import Plugin",
+    });
+    if (result.canceled || !result.filePaths.length) {
+      return { cancelled: true };
+    }
+    return pluginManager.importPlugin(result.filePaths[0]);
   });
 
   // Search through saved note content (autosave drafts + snapshot files)
@@ -1284,7 +1332,7 @@ if (!gotTheLock) {
   });
 }
 
-electron.app.whenReady().then(() => {
+electron.app.whenReady().then(async () => {
   // Initialize paths now that app is ready
   BACKUP_DIR = path.join(electron.app.getPath("userData"), "note-backups");
   AUTOSAVE_FILE = path.join(BACKUP_DIR, "autosave.json");
@@ -1343,6 +1391,9 @@ electron.app.whenReady().then(() => {
       }
     });
   });
+
+  const initialSettings = await loadSettings();
+  await pluginManager.initPlugins(electron.app.getPath("userData"), initialSettings, electron.ipcMain);
 
   registerIpcHandlers();
   createWindow();

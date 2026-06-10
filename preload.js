@@ -46,4 +46,18 @@ contextBridge.exposeInMainWorld("backupAPI", {
   onSettingsChanged: (callback) =>
     onIpc("settings-changed", (event, settings) => callback(settings)),
   openSettingsWindow: () => ipcRenderer.invoke("open-settings-window"),
+  getPluginScripts: () => ipcRenderer.invoke("plugin-get-scripts"),
+  getPluginSettingsScripts: () => ipcRenderer.invoke("plugin-get-settings-scripts"),
+  pluginInvoke: (channel, data) => {
+    if (typeof channel !== "string" || !channel.startsWith("plugin:"))
+      return Promise.reject(new Error("Invalid plugin channel"));
+    return ipcRenderer.invoke(channel, data);
+  },
+  onPluginEvent: (cb) =>
+    onIpc("plugin-event", (_event, payload) => cb(payload)),
+  emitPluginEvent: (name, data) =>
+    ipcRenderer.send("plugin-event-from-renderer", { name, data }),
+  getPluginInfo: () => ipcRenderer.invoke("plugin-get-info"),
+  setPluginEnabled: (id, enabled) => ipcRenderer.invoke("plugin-set-enabled", { id, enabled }),
+  importPlugin: () => ipcRenderer.invoke("plugin-import"),
 });

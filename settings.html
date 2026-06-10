@@ -14,9 +14,9 @@
         <button type="button" class="settings-nav-item active" data-panel="general">General</button>
         <button type="button" class="settings-nav-item" data-panel="data">Data</button>
         <button type="button" class="settings-nav-item" data-panel="ai">AI Features</button>
-        <button type="button" class="settings-nav-item" data-panel="metrics">Metrics Bar</button>
-        <button type="button" class="settings-nav-item" data-panel="templates">Templates</button>
+<button type="button" class="settings-nav-item" data-panel="templates">Templates</button>
         <button type="button" class="settings-nav-item" data-panel="signature">Signature</button>
+        <button type="button" class="settings-nav-item" data-panel="plugins">Plugins</button>
       </nav>
 
       <!-- Right content panels -->
@@ -83,15 +83,6 @@
               Enable the AI Suggest and Summarize buttons. Configure provider and API key in the <strong>AI Features</strong> tab.
             </p>
 
-            <label class="settings-toggle settings-toggle-spaced">
-              <input type="checkbox" id="setting-metrics-enabled" />
-              <span class="settings-toggle-slider"></span>
-              <span class="settings-toggle-label">Metrics Bar</span>
-            </label>
-            <p class="settings-description">
-              Show live stats from one or more dashboards (e.g. BrightGauge) above the tab bar.
-              Configure sources and targets in the <strong>Metrics Bar</strong> tab.
-            </p>
           </div>
 
         </div><!-- #panel-general -->
@@ -202,70 +193,6 @@
 
         </div><!-- #panel-ai -->
 
-        <!-- Metrics Bar panel -->
-        <div class="settings-panel" id="panel-metrics">
-
-          <div class="settings-section">
-            <h3 class="settings-section-title">Metrics Bar</h3>
-            <div id="metrics-bar-config" class="metrics-bar-config">
-              <div class="settings-field">
-                <label class="settings-field-label" for="setting-metrics-interval">Refresh interval</label>
-                <div class="settings-field-row">
-                  <select id="setting-metrics-interval" class="settings-select-input">
-                    <option value="5">Every 5 minutes</option>
-                    <option value="15">Every 15 minutes</option>
-                    <option value="30">Every 30 minutes</option>
-                    <option value="60">Every hour</option>
-                  </select>
-                </div>
-              </div>
-              <label class="settings-toggle settings-toggle-spaced">
-                <input type="checkbox" id="setting-metrics-progress-enabled" />
-                <span class="settings-toggle-slider"></span>
-                <span class="settings-toggle-label">Progress Tracking</span>
-              </label>
-              <div id="metrics-progress-config" class="metrics-progress-config">
-                <div class="settings-field">
-                  <span class="settings-field-label">Work days</span>
-                  <div class="metrics-work-days">
-                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="1"> Mon</label>
-                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="2"> Tue</label>
-                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="3"> Wed</label>
-                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="4"> Thu</label>
-                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="5"> Fri</label>
-                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="6"> Sat</label>
-                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="0"> Sun</label>
-                  </div>
-                </div>
-                <div class="settings-field">
-                  <label class="settings-field-label" for="setting-metrics-week-end-day">Week ends on</label>
-                  <select id="setting-metrics-week-end-day" class="settings-select-input settings-select-sm">
-                    <option value="0">Sunday</option>
-                    <option value="1">Monday</option>
-                    <option value="2">Tuesday</option>
-                    <option value="3">Wednesday</option>
-                    <option value="4">Thursday</option>
-                    <option value="5">Friday</option>
-                    <option value="6">Saturday</option>
-                  </select>
-                </div>
-                <div class="settings-field">
-                  <span class="settings-field-label">Work hours</span>
-                  <div class="metrics-work-hours-row">
-                    <label class="metrics-work-hours-label" for="setting-metrics-work-start">Start</label>
-                    <input type="time" id="setting-metrics-work-start" class="settings-time-input" />
-                    <label class="metrics-work-hours-label" for="setting-metrics-work-end">End</label>
-                    <input type="time" id="setting-metrics-work-end" class="settings-time-input" />
-                  </div>
-                </div>
-              </div>
-              <div id="metrics-dashboards-list"></div>
-              <button type="button" id="btn-metrics-add-dashboard" class="btn btn-small btn-secondary metrics-add-dashboard-btn">+ Add Dashboard</button>
-            </div>
-          </div>
-
-        </div><!-- #panel-metrics -->
-
         <!-- Templates panel -->
         <div class="settings-panel" id="panel-templates">
 
@@ -312,35 +239,33 @@
 
         </div><!-- #panel-signature -->
 
+        <!-- Plugins panel -->
+        <div class="settings-panel" id="panel-plugins">
+
+          <div class="settings-section">
+            <h3 class="settings-section-title">Plugins</h3>
+            <p class="settings-description settings-description-field settings-description-field-spaced">
+              Manage installed plugins. Toggling a plugin on or off takes effect after restarting the app.
+            </p>
+
+            <div id="plugin-restart-notice" class="plugin-restart-notice">
+              Restart the app to apply plugin changes.
+            </div>
+
+            <div id="plugin-list" class="plugin-list"></div>
+
+            <div class="plugin-import-row">
+              <button type="button" id="btn-import-plugin" class="btn btn-small btn-secondary">
+                + Import Plugin
+              </button>
+              <span id="plugin-import-status" class="plugin-import-status"></span>
+            </div>
+          </div>
+
+        </div><!-- #panel-plugins -->
+
       </div><!-- .settings-content -->
     </div><!-- .settings-layout -->
-
-    <!-- Metrics Field Picker Overlay -->
-    <div id="metrics-picker-overlay" class="metrics-picker-overlay">
-      <div class="metrics-picker-header">
-        <span class="metrics-picker-instruction">Hover and click any value on the dashboard to track it</span>
-        <button type="button" id="btn-metrics-picker-cancel" class="btn btn-secondary">Cancel</button>
-      </div>
-      <webview id="metrics-picker-webview" class="metrics-picker-webview" src="about:blank"></webview>
-      <div id="metrics-picker-capture-bar" class="metrics-picker-capture-bar">
-        <div class="metrics-picker-capture-row">
-          <span class="metrics-picker-capture-label">Value:</span>
-          <code id="metrics-picker-value-preview" class="metrics-picker-value-preview"></code>
-          <input type="text" id="metrics-picker-label-input" class="settings-text-input metrics-picker-label-input"
-            placeholder="Label (e.g. Closed Tickets)" maxlength="50" />
-          <button type="button" id="btn-metrics-picker-save" class="btn btn-primary">Add Metric</button>
-          <button type="button" id="btn-metrics-picker-reselect" class="btn btn-secondary">Re-select</button>
-        </div>
-        <div class="metrics-picker-selector-row">
-          <span class="metrics-picker-capture-label">CSS selector:</span>
-          <input type="text" id="metrics-picker-selector-input" class="settings-text-input metrics-picker-selector-input"
-            spellcheck="false" placeholder="auto-generated — edit if needed" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Off-screen scraper webview used by "Test selectors" in this settings window -->
-    <webview id="metrics-scraper-webview" class="metrics-scraper-webview" src="about:blank"></webview>
 
     <script src="settings_renderer.js"></script>
   </body>

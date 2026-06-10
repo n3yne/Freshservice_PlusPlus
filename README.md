@@ -43,12 +43,24 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 - **View dashboard** – Click any metric card to open that card's source dashboard in a new tab
 - **Editable selectors** – Each field's captured selector is shown in Settings and can be manually corrected; a **Test selectors** button per dashboard re-scrapes immediately and updates the "→ found value" badges
 - **Re-pick** – Individual fields can be re-picked at any time without losing the others
+- **Progress tracking** – Each field can have a configurable weekly target. Values turn green when the goal is reached, yellow when slightly behind pace, and red when significantly behind. Hover any card to see the exact on-track value for the current point in the week.
 - **Cached values** – The last successfully scraped value for each field is persisted across launches; if a refresh fails the bar continues showing the cached value with a `⚠` indicator and a tooltip showing when it was last updated
+- **Delivered as a bundled plugin** — the Metrics Bar is implemented via the plugin system; it can be disabled independently from Settings → Plugins
 
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes
 - **📋 Summarize** – Scrapes all visible note content from the active CW ticket page and asks the AI to produce a concise bullet-point summary
 - Supports **Hatz AI**, **OpenAI**, and **Anthropic** as providers; the model dropdown is populated automatically from the provider's API once an API key is entered
+
+### Plugin System
+
+Extend the app with self-contained plugin directories — no build step required.
+
+- **Bundled plugins** – Ship with the app and are always available (e.g. the Metrics Bar)
+- **User-installed plugins** – Drop a plugin folder into `%APPDATA%\connectwise-manage-pp\plugins\` for plugins that survive app updates
+- **Plugin management** – Enable or disable individual plugins from Settings → Plugins; restart to apply
+- Plugins can add toolbar buttons, Settings panels, backend IPC handlers, DOM elements, and application menu items
+- See [`docs/plugins.md`](docs/plugins.md) for the full development guide and [`docs/example-plugin/`](docs/example-plugin/) for a reference skeleton
 
 ### Notifications
 A bell icon in the tab bar shows a badge when there are unread notifications. Current notification types:
@@ -63,7 +75,7 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 - **Resizable panel** – Drag the divider to adjust the panel width
 - **Window state persistence** – The main window restores its last size and position on launch; validated against connected displays so it never opens off-screen
 - **Native settings window** – Settings open in a separate OS window (`Ctrl+,` or **Edit → Settings**); the main window stays fully usable while settings are open. Re-invoking the shortcut focuses the existing window rather than opening a second one
-- **Category sidebar** – Settings are organised into sections (General, Data, AI Features, Metrics Bar, Templates, Signature) accessible from a left-hand nav
+- **Category sidebar** – Settings are organised into sections (General, Data, AI Features, Templates, Signature, Plugins) accessible from a left-hand nav; enabled plugins that provide a settings panel add their own entries automatically
 - All settings are persisted to disk and applied to the main window immediately
 
 ---
@@ -162,6 +174,23 @@ Output is placed in the `dist/` folder.
 4. Select the model you want to use
 
 The ✨ Suggest and 📋 Summarize buttons will appear in the note panel once a provider is configured.
+
+---
+
+## Plugins
+
+The Metrics Bar is delivered as a bundled plugin and is always available. To install additional plugins, drop a plugin directory into the app's user data folder:
+
+```
+%APPDATA%\connectwise-manage-pp\plugins\
+  my-plugin\
+    manifest.json
+    renderer.js
+```
+
+Restart the app to activate newly installed plugins. Use **Settings → Plugins** to enable or disable any installed plugin.
+
+For plugin development documentation — including the full API reference and a step-by-step walkthrough — see [`docs/plugins.md`](docs/plugins.md). A reference skeleton with annotated examples lives in [`docs/example-plugin/`](docs/example-plugin/).
 
 ---
 
