@@ -1139,6 +1139,7 @@ function registerIpcHandlers() {
     const prompt =
       "Review the following technical support notes and provide an improved version with better clarity, grammar, and professionalism. " +
       "Do not use em-dashes or en-dashes in your response — use commas, periods, or hyphens instead. " +
+      "Do not add, include, or preserve any signature, sign-off, closing line, or contact information at the end. " +
       "Reply with only the improved notes text, no preamble, no labels, no explanation:" +
       contextSection +
       "\n\nNotes to improve:\n\n" + text;

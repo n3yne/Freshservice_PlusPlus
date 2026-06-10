@@ -170,6 +170,15 @@
               >
                 Tmpl &#9662;
               </button>
+              <span class="toolbar-sep"></span>
+              <button
+                type="button"
+                class="toolbar-btn toolbar-btn-html"
+                id="btn-html-toggle"
+                title="Toggle HTML source view"
+              >
+                HTML
+              </button>
             </div>
             <!-- Rich Text Editor -->
             <div
@@ -177,6 +186,14 @@
               contenteditable="true"
               data-placeholder="Type or paste your ticket notes here. You can use formatting and paste images..."
             ></div>
+            <!-- HTML Source Editor (shown when HTML toggle is active) -->
+            <textarea
+              id="note-html-source"
+              class="note-html-source"
+              spellcheck="false"
+              autocomplete="off"
+              aria-label="HTML source"
+            ></textarea>
           </div>
 
           <!-- Status Bar -->

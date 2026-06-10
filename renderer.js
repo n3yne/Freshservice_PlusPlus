@@ -62,6 +62,11 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnInsertTemplate = document.getElementById("btn-insert-template");
   const templateDropdown = document.getElementById("template-dropdown");
 
+  // --- HTML Source Toggle ---
+  const btnHtmlToggle = document.getElementById("btn-html-toggle");
+  const noteHtmlSource = document.getElementById("note-html-source");
+  let htmlEditMode = false;
+
   // --- Note Search Elements ---
   const noteSearchInput = document.getElementById("note-search-input");
   const noteSearchResults = document.getElementById("note-search-results");
@@ -381,12 +386,19 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    const escaped = response.result
+    // Strip the signature from the AI result if the model included it despite instructions.
+    let resultText = response.result;
+    if (sigPlain) {
+      const trimmedResult = resultText.trimEnd();
+      if (trimmedResult.endsWith(sigPlain)) {
+        resultText = trimmedResult.slice(0, -sigPlain.length).trimEnd();
+      }
+    }
+
+    const escaped = resultText
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       .replace(/\n/g, "<br>");
     aiDialogBody.innerHTML = `<div class="ai-result">${escaped}</div>`;
-
-    const resultText = response.result;
     aiApplyCallback = async function () {
       await snapshotBeforeBulkImport(resultText);
       const finalHtml = sigHtml ? escaped + "<br>" + sigHtml : escaped;
@@ -2382,21 +2394,70 @@ document.addEventListener("DOMContentLoaded", function () {
   // ==================== Rich Text Editor Helpers ====================
 
   function getEditorContent() {
+    if (htmlEditMode) return noteHtmlSource.value;
     return noteContent.innerHTML;
   }
 
   function setEditorContent(html) {
+    if (htmlEditMode) exitHtmlMode(false);
     noteContent.innerHTML = html;
   }
 
   function isEditorEmpty() {
-    const text = noteContent.innerText.trim();
-    return text.length === 0 && !noteContent.querySelector("img");
+    let text, hasImg;
+    if (htmlEditMode) {
+      const tmp = document.createElement("div");
+      tmp.innerHTML = noteHtmlSource.value;
+      text = tmp.innerText.trim();
+      hasImg = !!tmp.querySelector("img");
+    } else {
+      text = noteContent.innerText.trim();
+      hasImg = !!noteContent.querySelector("img");
+    }
+    return text.length === 0 && !hasImg;
   }
 
   function getEditorPlainText() {
-    return noteContent.innerText.trim();
+    let el;
+    if (htmlEditMode) {
+      el = document.createElement("div");
+      el.innerHTML = noteHtmlSource.value;
+    } else {
+      el = noteContent;
+    }
+    return el.innerText.trim().replace(/\n{3,}/g, "\n\n");
   }
+
+  function enterHtmlMode() {
+    noteHtmlSource.value = noteContent.innerHTML;
+    noteContent.style.display = "none";
+    noteHtmlSource.style.display = "block";
+    btnHtmlToggle.classList.add("active");
+    htmlEditMode = true;
+    document.querySelectorAll("#editor-toolbar .toolbar-btn:not(#btn-html-toggle)").forEach(function (b) { b.disabled = true; });
+  }
+
+  function exitHtmlMode(saveContent) {
+    if (!htmlEditMode) return;
+    if (saveContent !== false) noteContent.innerHTML = noteHtmlSource.value;
+    noteHtmlSource.style.display = "none";
+    noteContent.style.display = "";
+    btnHtmlToggle.classList.remove("active");
+    htmlEditMode = false;
+    document.querySelectorAll("#editor-toolbar .toolbar-btn:not(#btn-html-toggle)").forEach(function (b) { b.disabled = false; });
+    if (saveContent !== false) {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+    }
+  }
+
+  btnHtmlToggle.addEventListener("click", function () {
+    if (htmlEditMode) {
+      exitHtmlMode();
+    } else {
+      enterHtmlMode();
+    }
+  });
 
   // ==================== Formatting Toolbar ====================
 
@@ -3352,6 +3413,17 @@ document.addEventListener("DOMContentLoaded", function () {
   let metricsScraperBusy = false;
   let metricsRescheduleNeeded = false;
   const metricsValues = {};
+  const metricsCache = {}; // { [fieldId]: { value: string, ts: number } }
+  const metricsStale = new Set(); // field IDs whose displayed value is from cache (last scrape failed)
+
+  // Restore cached values from the previous session so the bar isn't blank on startup
+  try {
+    const _c = JSON.parse(localStorage.getItem("cwpp-metrics-cache") || "{}");
+    Object.keys(_c).forEach(function (id) {
+      metricsCache[id] = _c[id];
+      metricsValues[id] = _c[id].value;
+    });
+  } catch { /* no cached metrics — start fresh */ }
 
   // Script injected into the picker webview so the user can click-to-select an element.
 
@@ -3385,6 +3457,13 @@ document.addEventListener("DOMContentLoaded", function () {
         lblEl.textContent = f.label;
         card.appendChild(valEl);
         card.appendChild(lblEl);
+        if (metricsStale.has(f.id) && metricsCache[f.id]) {
+          const staleEl = document.createElement("span");
+          staleEl.className = "metrics-card-stale";
+          const ts = new Date(metricsCache[f.id].ts);
+          staleEl.title = "Could not refresh — last updated " + ts.toLocaleString();
+          card.appendChild(staleEl);
+        }
         if (db.url) {
           card.style.cursor = "pointer";
           card.title = "Open dashboard";
@@ -3406,41 +3485,60 @@ document.addEventListener("DOMContentLoaded", function () {
 
     metricsScraperBusy = true;
     metricsBarStatus.textContent = "Refreshing…";
+    let anySuccess = false;
 
     try {
       for (let i = 0; i < dashboards.length; i++) {
         const db = dashboards[i];
-        await new Promise(function (resolve, reject) {
-          const loadTimer = setTimeout(function () { reject(new Error("load timeout")); }, 30000);
-          function handler() {
-            metricsScraperWebview.removeEventListener("did-finish-load", handler);
-            clearTimeout(loadTimer);
-            resolve();
+        const dbFieldIds = (db.fields || []).map(function (f) { return f.id; });
+        try {
+          await new Promise(function (resolve, reject) {
+            const loadTimer = setTimeout(function () { reject(new Error("load timeout")); }, 30000);
+            function handler() {
+              metricsScraperWebview.removeEventListener("did-finish-load", handler);
+              clearTimeout(loadTimer);
+              resolve();
+            }
+            metricsScraperWebview.addEventListener("did-finish-load", handler);
+            const sep = db.url.includes("?") ? "&" : "?";
+            metricsScraperWebview.src = db.url + sep + "_ms=" + Date.now();
+          });
+
+          // Give the JS framework time to render
+          await new Promise(function (resolve) { setTimeout(resolve, 5000); });
+
+          // Re-read from appSettings so any field additions while loading are picked up
+          const live = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === db.id; });
+          const currentFields = live ? (live.fields || []) : db.fields;
+          const results = await metricsScraperWebview.executeJavaScript(
+            buildMetricsScrapeScript(currentFields)
+          );
+
+          if (results) {
+            const now = Date.now();
+            Object.keys(results).forEach(function (id) {
+              metricsValues[id] = results[id];
+              metricsCache[id] = { value: results[id], ts: now };
+              metricsStale.delete(id);
+            });
+            try { localStorage.setItem("cwpp-metrics-cache", JSON.stringify(metricsCache)); } catch { /* storage unavailable */ }
+            anySuccess = true;
+          } else {
+            dbFieldIds.forEach(function (id) { metricsStale.add(id); });
           }
-          metricsScraperWebview.addEventListener("did-finish-load", handler);
-          const sep = db.url.includes("?") ? "&" : "?";
-          metricsScraperWebview.src = db.url + sep + "_ms=" + Date.now();
-        });
-
-        // Give the JS framework time to render
-        await new Promise(function (resolve) { setTimeout(resolve, 5000); });
-
-        // Re-read from appSettings so any field additions while loading are picked up
-        const live = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === db.id; });
-        const currentFields = live ? (live.fields || []) : db.fields;
-        const results = await metricsScraperWebview.executeJavaScript(
-          buildMetricsScrapeScript(currentFields)
-        );
-        Object.assign(metricsValues, results || {});
+        } catch {
+          dbFieldIds.forEach(function (id) { metricsStale.add(id); });
+        }
       }
-      const now = new Date();
-      metricsBarStatus.textContent = "Updated " + now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      renderMetricsBar();
-    } catch {
-      metricsBarStatus.textContent = "Refresh failed";
-    }
 
-    metricsScraperBusy = false;
+      const now = new Date();
+      metricsBarStatus.textContent = anySuccess
+        ? "Updated " + now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        : "Refresh failed";
+      renderMetricsBar();
+    } finally {
+      metricsScraperBusy = false;
+    }
   }
 
   function scheduleNextMetricsPoll() {

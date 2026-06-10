@@ -1202,6 +1202,44 @@ body.settings-page {
   display: none;
 }
 
+/* HTML source toggle button — highlighted when active */
+.toolbar-btn-html {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.toolbar-btn-html.active {
+  background: var(--primary);
+  color: #fff;
+  border-radius: 3px;
+}
+
+/* HTML source textarea — mirrors #note-content layout */
+.note-html-source {
+  display: none;
+  flex: 1;
+  min-height: 150px;
+  padding: 10px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 0 0 6px 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: Consolas, "Courier New", monospace;
+  line-height: 1.5;
+  outline: none;
+  resize: none;
+  tab-size: 2;
+  overflow-y: auto;
+  box-sizing: border-box;
+  word-break: break-all;
+}
+
+.note-html-source:focus {
+  border-color: var(--primary);
+}
+
 /* ===== Tab Pinning ===== */
 .tab-item.tab-pinned {
   border-bottom: 2px solid var(--saving-color);
@@ -1975,6 +2013,7 @@ body[data-theme="light"] .diff-overlay {
 }
 
 .metrics-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1999,6 +2038,22 @@ body[data-theme="light"] .diff-overlay {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
+}
+
+.metrics-card-stale {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: 9px;
+  line-height: 1;
+  color: #e67e22;
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.metrics-card-stale::before {
+  content: "⚠";
 }
 
 .metrics-bar-end {
