@@ -11,11 +11,12 @@ ConnectWise Manage++ supports an external plugin system that lets you add new fe
 3. [The manifest](#the-manifest)
 4. [Main-process component (`main.js`)](#main-process-component-mainjs)
 5. [Renderer component (`renderer.js`)](#renderer-component-rendererjs)
-6. [Events reference](#events-reference)
-7. [Complete API reference](#complete-api-reference)
-8. [Installing plugins](#installing-plugins)
-9. [Walkthrough: building a simple plugin](#walkthrough-building-a-simple-plugin)
-10. [Troubleshooting](#troubleshooting)
+6. [Settings window component (`settings.js`)](#settings-window-component-settingsjs)
+7. [Events reference](#events-reference)
+8. [Complete API reference](#complete-api-reference)
+9. [Installing plugins](#installing-plugins)
+10. [Walkthrough: building a simple plugin](#walkthrough-building-a-simple-plugin)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -26,10 +27,12 @@ The plugin system has three tiers:
 | Tier | File | What it can do |
 |---|---|---|
 | **Main process** | `main.js` | Register backend IPC handlers, react to app events, read/write files, add menu items |
-| **Renderer** | `renderer.js` | Manipulate the note editor UI, add toolbar buttons, listen to events |
-| **Both** | — | A plugin can have one or both components |
+| **Renderer** | `renderer.js` | Manipulate the main window UI, add toolbar buttons, inject DOM elements, open tabs |
+| **Settings window** | `settings.js` | Add nav items and panels to the Settings window via `window.pluginSettingsAPI` |
 
-On startup the app scans the `plugins/` directories, loads each plugin's `main.js` (if present) inside the main Electron process, and injects each `renderer.js` (if present) as a `<script>` tag into the main window after settings have loaded.
+A plugin can include any combination of these three components.
+
+On startup the app scans the `plugins/` directories, loads each `main.js` inside the main Electron process, and injects each `renderer.js` as a `<script>` tag into the main window after settings have loaded. `settings.js` files are injected into the Settings window after `window.pluginSettingsAPI` has been constructed.
 
 ---
 
@@ -39,11 +42,12 @@ On startup the app scans the `plugins/` directories, loads each plugin's `main.j
 my-plugin/
   manifest.json     ← required
   main.js           ← optional, runs in the main process
-  renderer.js       ← optional, runs in the renderer window
+  renderer.js       ← optional, runs in the main renderer window
+  settings.js       ← optional, runs in the settings window
   data/             ← any supporting files your plugin needs
 ```
 
-Both `main.js` and `renderer.js` are optional — a plugin may include one or both.
+All three script files are optional — a plugin can include any combination.
 
 ---
 
@@ -74,7 +78,8 @@ Every plugin must have a `manifest.json` at its root:
 | `description` | No | One-line summary. |
 | `author` | No | Plugin author name. |
 | `main` | No | Relative path to the main-process entry file. |
-| `renderer` | No | Relative path to the renderer entry file. |
+| `renderer` | No | Relative path to the main-window renderer entry file. |
+| `settings` | No | Relative path to the settings-window entry file. |
 | `minAppVersion` | No | Minimum app version required. Plugins below this threshold are skipped with a warning. |
 
 > **ID rules:** Use only lowercase letters, digits, hyphens, and underscores. Path-traversal characters (`../`, `/`, `\`) cause the plugin to be rejected at load time.
@@ -306,6 +311,96 @@ if (settings.theme === "dark") {
 }
 ```
 
+#### `window.pluginAPI.browser`
+
+Opens URLs in the app's tab system.
+
+| Method | Description |
+|---|---|
+| `browser.newTab(url)` | Opens `url` in a new tab and switches to it |
+
+```js
+window.pluginAPI.browser.newTab("https://my-dashboard.example.com");
+```
+
+---
+
+## Settings window component (`settings.js`)
+
+The settings file is a plain browser-environment script injected into the Settings window. Use it to add a nav item and content panel to the Settings UI.
+
+```js
+(function () {
+  // Guard: this script is only meaningful in the settings window
+  if (!window.pluginSettingsAPI) return;
+
+  window.pluginSettingsAPI.addPanel("options", "My Plugin", function (panel) {
+    // Populate the panel with your settings UI
+    panel.innerHTML =
+      '<div class="settings-section">' +
+      '<h3 class="settings-section-title">My Plugin</h3>' +
+      '<label class="settings-toggle">' +
+      '<input type="checkbox" id="plugin-my-enabled" />' +
+      '<span class="settings-toggle-slider"></span>' +
+      '<span class="settings-toggle-label">Enable feature</span>' +
+      '</label>' +
+      '</div>';
+
+    const checkbox = panel.querySelector("#plugin-my-enabled");
+
+    function populate(settings) {
+      checkbox.checked = !!settings.myPluginEnabled;
+    }
+
+    // Seed form from current settings
+    populate(window.pluginSettingsAPI.getSettings());
+
+    // Keep form in sync when settings change externally
+    window.pluginSettingsAPI.onSettingsChanged(populate);
+
+    checkbox.addEventListener("change", function () {
+      window.pluginSettingsAPI.saveSettings({ myPluginEnabled: checkbox.checked });
+    });
+  });
+})();
+```
+
+> **Always guard with `if (!window.pluginSettingsAPI) return;`** — the API only exists in the settings window. Your `settings.js` will not run in the main window, but defensive coding here costs nothing.
+
+> **ID namespacing:** Use a `plugin-` prefix on element IDs (e.g. `plugin-my-enabled`) to avoid collisions with core settings element IDs.
+
+### Settings window API (`window.pluginSettingsAPI`)
+
+#### `pluginSettingsAPI.addPanel(id, label, setupFn)`
+
+Adds a nav button and a content panel `<div>` to the Settings window.
+
+- `id` — string; the panel element gets `id="panel-plugin-<id>"`
+- `label` — text shown in the left-hand nav button
+- `setupFn(panel)` — called once immediately with the empty panel `HTMLElement`; populate and attach listeners here
+
+#### `pluginSettingsAPI.getSettings()`
+
+Returns a shallow copy of the current app settings object.
+
+#### `pluginSettingsAPI.saveSettings(patch)`
+
+Merges `patch` into the current settings and writes to disk. The main window receives a `settings:changed` event immediately.
+
+```js
+window.pluginSettingsAPI.saveSettings({ myPluginEnabled: true, myPluginThreshold: 10 });
+```
+
+#### `pluginSettingsAPI.onSettingsChanged(fn)`
+
+Registers a callback that fires whenever settings are saved — from any window. Use it to keep your panel's form fields in sync.
+
+```js
+window.pluginSettingsAPI.onSettingsChanged(function (settings) {
+  checkbox.checked = !!settings.myPluginEnabled;
+});
+```
+
 ---
 
 ## Events reference
@@ -357,7 +452,23 @@ pluginAPI.notes.setContent(html: string): void
 pluginAPI.notes.getTicketId(): string | null
 pluginAPI.notes.getPlainText(): string
 
+pluginAPI.browser.newTab(url: string): void
+
 pluginAPI.getSettings(): AppSettings
+```
+
+### Settings window (`window.pluginSettingsAPI`)
+
+```ts
+pluginSettingsAPI.addPanel(
+  id: string,
+  label: string,
+  setupFn: (panel: HTMLElement) => void
+): void
+
+pluginSettingsAPI.getSettings(): AppSettings
+pluginSettingsAPI.saveSettings(patch: Partial<AppSettings>): void
+pluginSettingsAPI.onSettingsChanged(fn: (settings: AppSettings) => void): void
 ```
 
 ---

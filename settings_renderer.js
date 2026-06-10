@@ -10,16 +10,25 @@
 document.addEventListener("DOMContentLoaded", function () {
 
   // ==================== Category Navigation ====================
-  (function () {
-    const navItems = document.querySelectorAll(".settings-nav-item");
-    const panels = document.querySelectorAll(".settings-panel");
-    function switchPanel(id) {
-      navItems.forEach(function (btn) { btn.classList.toggle("active", btn.dataset.panel === id); });
-      panels.forEach(function (p) { p.classList.toggle("active", p.id === "panel-" + id); });
-    }
-    navItems.forEach(function (btn) {
-      btn.addEventListener("click", function () { switchPanel(btn.dataset.panel); });
+  // switchPanel queries the DOM live so plugin-added panels and nav items
+  // (injected after DOMContentLoaded) are always included.
+  function switchPanel(id) {
+    document.querySelectorAll(".settings-nav-item").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.panel === id);
     });
+    document.querySelectorAll(".settings-panel").forEach(function (p) {
+      p.classList.toggle("active", p.id === "panel-" + id);
+    });
+  }
+  // Event delegation covers both core and plugin-added nav buttons.
+  (function () {
+    const nav = document.querySelector(".settings-nav");
+    if (nav) {
+      nav.addEventListener("click", function (e) {
+        const btn = e.target.closest(".settings-nav-item");
+        if (btn) switchPanel(btn.dataset.panel);
+      });
+    }
   }());
 
   function redirectToGeneral() {
@@ -558,14 +567,6 @@ document.addEventListener("DOMContentLoaded", function () {
           btn.className = "settings-nav-item";
           btn.dataset.panel = "plugin-" + id;
           btn.textContent = label;
-          btn.addEventListener("click", function () {
-            document.querySelectorAll(".settings-nav-item").forEach(function (b) {
-              b.classList.toggle("active", b === btn);
-            });
-            document.querySelectorAll(".settings-panel").forEach(function (p) {
-              p.classList.toggle("active", p.id === "panel-plugin-" + id);
-            });
-          });
           nav.appendChild(btn);
         }
 
