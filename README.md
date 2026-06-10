@@ -63,7 +63,7 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 - **Resizable panel** – Drag the divider to adjust the panel width
 - **Window state persistence** – The main window restores its last size and position on launch; validated against connected displays so it never opens off-screen
 - **Native settings window** – Settings open in a separate OS window (`Ctrl+,` or **Edit → Settings**); the main window stays fully usable while settings are open. Re-invoking the shortcut focuses the existing window rather than opening a second one
-- **Category sidebar** – Settings are organised into sections (General, Data, AI Assistant, Metrics Bar, Templates, Signature) accessible from a left-hand nav
+- **Category sidebar** – Settings are organised into sections (General, Data, AI Features, Metrics Bar, Templates, Signature) accessible from a left-hand nav
 - All settings are persisted to disk and applied to the main window immediately
 
 ---
@@ -153,7 +153,7 @@ Output is placed in the `dist/` folder.
 
 ## AI Assistant Setup
 
-1. Open **Settings** (`Ctrl+,`) and go to the **AI Assistant** section
+1. Open **Settings** (`Ctrl+,`) and go to the **AI Features** section
 2. Choose a **Provider**:
    - **Hatz AI** – paste your API key from the [Hatz Admin Dashboard](https://ai.hatz.ai)
    - **OpenAI** – paste a key from [platform.openai.com](https://platform.openai.com/api-keys)

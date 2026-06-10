@@ -22,6 +22,29 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }());
 
+  function redirectToGeneral() {
+    document.querySelectorAll(".settings-nav-item").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.panel === "general");
+    });
+    document.querySelectorAll(".settings-panel").forEach(function (p) {
+      p.classList.toggle("active", p.id === "panel-general");
+    });
+  }
+
+  function updateAiNavVisibility() {
+    if (!aiNavItem) return;
+    const enabled = appSettings.aiEnabled !== false;
+    aiNavItem.style.display = enabled ? "" : "none";
+    if (!enabled && aiNavItem.classList.contains("active")) redirectToGeneral();
+  }
+
+  function updateMetricsNavVisibility() {
+    if (!metricsNavItem) return;
+    const enabled = appSettings.metricsBarEnabled;
+    metricsNavItem.style.display = enabled ? "" : "none";
+    if (!enabled && metricsNavItem.classList.contains("active")) redirectToGeneral();
+  }
+
   // ==================== Constants ====================
   const SIG_SAVE_DEBOUNCE = 800;
 
@@ -38,7 +61,8 @@ document.addEventListener("DOMContentLoaded", function () {
     noteTemplates: [],
     liveSyncEnabled: true,
     snapshotThreshold: 5,
-    aiProvider: "none",
+    aiEnabled: true,
+    aiProvider: "hatz",
     aiModelName: "",
     aiApiKey: "",
     dismissedReleaseVersion: "",
@@ -46,6 +70,11 @@ document.addEventListener("DOMContentLoaded", function () {
     metricsBarEnabled: false,
     metricsBarInterval: 15,
     metricsBarDashboards: [],
+    metricsProgressEnabled: false,
+    metricsWorkDays: [1, 2, 3, 4, 5],
+    metricsWorkHoursStart: "08:00",
+    metricsWorkHoursEnd: "17:00",
+    metricsWorkWeekEndDay: 5,
   };
 
   // ==================== Element References ====================
@@ -59,16 +88,23 @@ document.addEventListener("DOMContentLoaded", function () {
   const settingSortField      = document.getElementById("setting-sort-field");
   const settingSortDirection  = document.getElementById("setting-sort-direction");
   const settingSignature      = document.getElementById("setting-signature");
+  const settingAiEnabled      = document.getElementById("setting-ai-enabled");
+  const aiNavItem             = document.querySelector('[data-panel="ai"]');
   const settingAiProvider     = document.getElementById("setting-ai-provider");
   const settingAiModel        = document.getElementById("setting-ai-model");
   const settingAiKey          = document.getElementById("setting-ai-key");
-  const aiProviderFields      = document.getElementById("ai-provider-fields");
-  const settingMetricsEnabled  = document.getElementById("setting-metrics-enabled");
-  const settingMetricsInterval = document.getElementById("setting-metrics-interval");
-  const metricsBarConfig       = document.getElementById("metrics-bar-config");
-  const metricsDashboardsList  = document.getElementById("metrics-dashboards-list");
-  const btnMetricsAddDashboard = document.getElementById("btn-metrics-add-dashboard");
-  const metricsScraperWebview = document.getElementById("metrics-scraper-webview");
+  const settingMetricsEnabled        = document.getElementById("setting-metrics-enabled");
+  const metricsNavItem               = document.querySelector('[data-panel="metrics"]');
+  const settingMetricsInterval       = document.getElementById("setting-metrics-interval");
+  const metricsDashboardsList        = document.getElementById("metrics-dashboards-list");
+  const btnMetricsAddDashboard       = document.getElementById("btn-metrics-add-dashboard");
+  const metricsScraperWebview        = document.getElementById("metrics-scraper-webview");
+  const settingMetricsProgressEnabled = document.getElementById("setting-metrics-progress-enabled");
+  const metricsProgressConfig        = document.getElementById("metrics-progress-config");
+  const metricsWorkDayCheckboxes     = document.querySelectorAll(".metrics-work-day");
+  const settingMetricsWeekEndDay     = document.getElementById("setting-metrics-week-end-day");
+  const settingMetricsWorkStart      = document.getElementById("setting-metrics-work-start");
+  const settingMetricsWorkEnd        = document.getElementById("setting-metrics-work-end");
   const metricsPickerOverlay  = document.getElementById("metrics-picker-overlay");
   const metricsPickerWebview  = document.getElementById("metrics-picker-webview");
   const metricsPickerCaptureBar = document.getElementById("metrics-picker-capture-bar");
@@ -120,22 +156,32 @@ document.addEventListener("DOMContentLoaded", function () {
       settingDefaultUrl.value = settings.defaultUrl || "https://na.myconnectwise.net/";
     }
 
-    const aiEnabled = settings.aiProvider && settings.aiProvider !== "none";
-    if (settingAiProvider) settingAiProvider.value = settings.aiProvider || "none";
+    if (settingAiEnabled) settingAiEnabled.checked = settings.aiEnabled !== false;
+    updateAiNavVisibility();
+    const savedProvider = settings.aiProvider && settings.aiProvider !== "none" ? settings.aiProvider : "hatz";
+    if (settingAiProvider) settingAiProvider.value = savedProvider;
     if (settingAiKey) {
       settingAiKey.value = "";
       settingAiKey.placeholder = settings.aiApiKey ? "••••••••  (saved)" : "Paste your API key here";
     }
-    if (aiProviderFields) aiProviderFields.style.display = aiEnabled ? "" : "none";
 
     if (settingMetricsEnabled) settingMetricsEnabled.checked = !!settings.metricsBarEnabled;
-    if (metricsBarConfig) {
-      if (settings.metricsBarEnabled) metricsBarConfig.classList.add("visible");
-      else metricsBarConfig.classList.remove("visible");
-    }
+    updateMetricsNavVisibility();
     if (settingMetricsInterval) {
       settingMetricsInterval.value = String(settings.metricsBarInterval || 15);
     }
+    if (settingMetricsProgressEnabled) settingMetricsProgressEnabled.checked = !!settings.metricsProgressEnabled;
+    if (metricsProgressConfig) {
+      if (settings.metricsProgressEnabled) metricsProgressConfig.classList.add("visible");
+      else metricsProgressConfig.classList.remove("visible");
+    }
+    const workDays = settings.metricsWorkDays || [1, 2, 3, 4, 5];
+    metricsWorkDayCheckboxes.forEach(function (cb) {
+      cb.checked = workDays.includes(parseInt(cb.value, 10));
+    });
+    if (settingMetricsWeekEndDay) settingMetricsWeekEndDay.value = String(settings.metricsWorkWeekEndDay !== undefined ? settings.metricsWorkWeekEndDay : 5);
+    if (settingMetricsWorkStart) settingMetricsWorkStart.value = settings.metricsWorkHoursStart || "08:00";
+    if (settingMetricsWorkEnd) settingMetricsWorkEnd.value = settings.metricsWorkHoursEnd || "17:00";
 
     renderDashboardList();
     renderTemplateList();
@@ -255,13 +301,19 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  if (settingAiEnabled) {
+    settingAiEnabled.addEventListener("change", function () {
+      appSettings.aiEnabled = settingAiEnabled.checked;
+      updateAiNavVisibility();
+      saveSettings();
+    });
+  }
+
   if (settingAiProvider) {
     settingAiProvider.addEventListener("change", function () {
       appSettings.aiProvider = settingAiProvider.value;
-      const aiEnabled = appSettings.aiProvider !== "none";
-      if (aiProviderFields) aiProviderFields.style.display = aiEnabled ? "" : "none";
       saveSettings();
-      if (aiEnabled) populateAiModelDropdown();
+      populateAiModelDropdown();
     });
   }
 
@@ -304,14 +356,45 @@ document.addEventListener("DOMContentLoaded", function () {
 
   settingMetricsEnabled.addEventListener("change", function () {
     appSettings.metricsBarEnabled = settingMetricsEnabled.checked;
-    if (appSettings.metricsBarEnabled) metricsBarConfig.classList.add("visible");
-    else metricsBarConfig.classList.remove("visible");
+    updateMetricsNavVisibility();
     saveSettings();
   });
 
   settingMetricsInterval.addEventListener("change", function () {
     const val = parseInt(settingMetricsInterval.value, 10);
     appSettings.metricsBarInterval = [5, 15, 30, 60].includes(val) ? val : 15;
+    saveSettings();
+  });
+
+  settingMetricsProgressEnabled.addEventListener("change", function () {
+    appSettings.metricsProgressEnabled = settingMetricsProgressEnabled.checked;
+    if (appSettings.metricsProgressEnabled) metricsProgressConfig.classList.add("visible");
+    else metricsProgressConfig.classList.remove("visible");
+    saveSettings();
+    renderDashboardList();
+  });
+
+  metricsWorkDayCheckboxes.forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      appSettings.metricsWorkDays = Array.from(metricsWorkDayCheckboxes)
+        .filter(function (c) { return c.checked; })
+        .map(function (c) { return parseInt(c.value, 10); });
+      saveSettings();
+    });
+  });
+
+  settingMetricsWeekEndDay.addEventListener("change", function () {
+    appSettings.metricsWorkWeekEndDay = parseInt(settingMetricsWeekEndDay.value, 10);
+    saveSettings();
+  });
+
+  settingMetricsWorkStart.addEventListener("change", function () {
+    appSettings.metricsWorkHoursStart = settingMetricsWorkStart.value;
+    saveSettings();
+  });
+
+  settingMetricsWorkEnd.addEventListener("change", function () {
+    appSettings.metricsWorkHoursEnd = settingMetricsWorkEnd.value;
     saveSettings();
   });
 
@@ -587,6 +670,32 @@ document.addEventListener("DOMContentLoaded", function () {
 
       wrap.appendChild(row);
       wrap.appendChild(selRow);
+
+      if (appSettings.metricsProgressEnabled) {
+        const targetRow = document.createElement("div");
+        targetRow.className = "metrics-field-target-row";
+        const targetLabel = document.createElement("span");
+        targetLabel.className = "metrics-field-target-label";
+        targetLabel.textContent = "Weekly target:";
+        const targetInput = document.createElement("input");
+        targetInput.type = "text";
+        targetInput.className = "settings-text-input metrics-field-target-input";
+        targetInput.value = f.weeklyTarget !== undefined ? String(f.weeklyTarget) : "";
+        targetInput.placeholder = "e.g. 40";
+        targetInput.title = "Minimum value to reach by end of work week";
+        targetInput.addEventListener("change", function () {
+          const updated = targetInput.value.trim();
+          const db_ = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
+          if (db_) db_.fields = (db_.fields || []).map(function (x) {
+            return x.id === f.id ? Object.assign({}, x, { weeklyTarget: updated }) : x;
+          });
+          saveSettings();
+        });
+        targetRow.appendChild(targetLabel);
+        targetRow.appendChild(targetInput);
+        wrap.appendChild(targetRow);
+      }
+
       containerEl.appendChild(wrap);
     });
   }

@@ -15,7 +15,8 @@ const DEFAULT_SETTINGS = {
   noteTemplates: [],
   liveSyncEnabled: true,
   snapshotThreshold: 5,
-  aiProvider: "none",
+  aiEnabled: true,
+  aiProvider: "hatz",
   aiModelName: "",
   aiApiKey: "",
   dismissedReleaseVersion: "",
@@ -55,6 +56,7 @@ function validateSettings(s) {
     (typeof s.snapshotThreshold !== "number" || s.snapshotThreshold < 1 || s.snapshotThreshold > 9999)
   )
     return false;
+  if (s.aiEnabled !== undefined && typeof s.aiEnabled !== "boolean") return false;
   if (s.aiProvider !== undefined && !["none", "hatz", "openai", "anthropic"].includes(s.aiProvider)) return false;
   if (s.aiModelName !== undefined && (typeof s.aiModelName !== "string" || s.aiModelName.length > 100)) return false;
   if (s.aiApiKey !== undefined && (typeof s.aiApiKey !== "string" || s.aiApiKey.length > 500)) return false;

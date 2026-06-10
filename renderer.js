@@ -123,7 +123,8 @@ document.addEventListener("DOMContentLoaded", function () {
     noteTemplates: [],
     liveSyncEnabled: true,
     snapshotThreshold: 5,
-    aiProvider: "none",
+    aiEnabled: true,
+    aiProvider: "hatz",
     aiModelName: "",
     aiApiKey: "",
     dismissedReleaseVersion: "",
@@ -131,6 +132,11 @@ document.addEventListener("DOMContentLoaded", function () {
     metricsBarEnabled: false,
     metricsBarInterval: 15,
     metricsBarDashboards: [],
+    metricsProgressEnabled: false,
+    metricsWorkDays: [1, 2, 3, 4, 5],
+    metricsWorkHoursStart: "08:00",
+    metricsWorkHoursEnd: "17:00",
+    metricsWorkWeekEndDay: 5,
   };
 
   function applySettings(settings) {
@@ -140,7 +146,7 @@ document.addEventListener("DOMContentLoaded", function () {
     document.body.setAttribute("data-theme", settings.theme || "dark");
     btnInsertSignature.style.display = settings.signatureHtml ? "" : "none";
 
-    const aiEnabled = settings.aiProvider && settings.aiProvider !== "none";
+    const aiEnabled = settings.aiEnabled !== false && settings.aiProvider && settings.aiProvider !== "none";
     if (btnAiSuggest) btnAiSuggest.style.display = aiEnabled ? "" : "none";
     if (btnAiSummarize) btnAiSummarize.style.display = aiEnabled ? "" : "none";
 
@@ -3441,6 +3447,54 @@ document.addEventListener("DOMContentLoaded", function () {
     return "(function(){var r={};"+parts.join("")+"return r;})()";
   }
 
+  function getWeekProgress(settings) {
+    const now = new Date();
+    const nowDay = now.getDay();
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const workDays = settings.metricsWorkDays || [1, 2, 3, 4, 5];
+    const weekEndDay = typeof settings.metricsWorkWeekEndDay === "number" ? settings.metricsWorkWeekEndDay : 5;
+    const startParts = (settings.metricsWorkHoursStart || "08:00").split(":").map(Number);
+    const endParts   = (settings.metricsWorkHoursEnd   || "17:00").split(":").map(Number);
+    const dayStartMins = startParts[0] * 60 + (startParts[1] || 0);
+    const dayEndMins   = endParts[0]   * 60 + (endParts[1]   || 0);
+    const dayMinutes = dayEndMins - dayStartMins;
+    if (dayMinutes <= 0 || workDays.length === 0) return 0;
+
+    // First work day after weekEndDay is the week start
+    let weekStartDay = -1;
+    for (let i = 1; i <= 7; i++) {
+      const candidate = (weekEndDay + i) % 7;
+      if (workDays.includes(candidate)) { weekStartDay = candidate; break; }
+    }
+    if (weekStartDay === -1) return 0;
+
+    // Ordered work days within one work week (weekStartDay → weekEndDay)
+    const orderedDays = [];
+    for (let i = 0; i < 7; i++) {
+      const d = (weekStartDay + i) % 7;
+      if (workDays.includes(d)) orderedDays.push({ day: d, offset: i });
+      if (d === weekEndDay) break;
+    }
+    const totalWorkMinutes = orderedDays.length * dayMinutes;
+    if (totalWorkMinutes === 0) return 0;
+
+    const daysSinceStart = (nowDay - weekStartDay + 7) % 7;
+    let elapsed = 0;
+    for (let i = 0; i < orderedDays.length; i++) {
+      const offset = orderedDays[i].offset;
+      if (offset < daysSinceStart) {
+        elapsed += dayMinutes;
+      } else if (offset === daysSinceStart) {
+        if (nowMins >= dayEndMins)        elapsed += dayMinutes;
+        else if (nowMins > dayStartMins)  elapsed += nowMins - dayStartMins;
+        break;
+      } else {
+        break;
+      }
+    }
+    return Math.min(1, elapsed / totalWorkMinutes);
+  }
+
   function renderMetricsBar() {
     metricsBarItems.innerHTML = "";
     const dashboards = appSettings.metricsBarDashboards || [];
@@ -3463,6 +3517,23 @@ document.addEventListener("DOMContentLoaded", function () {
           const ts = new Date(metricsCache[f.id].ts);
           staleEl.title = "Could not refresh — last updated " + ts.toLocaleString();
           card.appendChild(staleEl);
+        }
+        if (appSettings.metricsProgressEnabled && f.weeklyTarget) {
+          const target = parseFloat(String(f.weeklyTarget).replace(/[^0-9.]/g, ""));
+          if (!isNaN(target) && target > 0) {
+            const currentNum = parseFloat(String(val || "0").replace(/[^0-9.]/g, ""));
+            if (!isNaN(currentNum)) {
+              const progress = getWeekProgress(appSettings);
+              const expected = target * progress;
+              if (expected > 0) {
+                if (currentNum < expected * 0.9) {
+                  card.classList.add("metrics-progress-behind");
+                } else if (currentNum < expected) {
+                  card.classList.add("metrics-progress-warning");
+                }
+              }
+            }
+          }
         }
         if (db.url) {
           card.style.cursor = "pointer";

@@ -13,7 +13,7 @@
       <nav class="settings-nav" aria-label="Settings categories">
         <button type="button" class="settings-nav-item active" data-panel="general">General</button>
         <button type="button" class="settings-nav-item" data-panel="data">Data</button>
-        <button type="button" class="settings-nav-item" data-panel="ai">AI Assistant</button>
+        <button type="button" class="settings-nav-item" data-panel="ai">AI Features</button>
         <button type="button" class="settings-nav-item" data-panel="metrics">Metrics Bar</button>
         <button type="button" class="settings-nav-item" data-panel="templates">Templates</button>
         <button type="button" class="settings-nav-item" data-panel="signature">Signature</button>
@@ -72,6 +72,25 @@
             <p class="settings-description">
               Automatically load ticket notes when switching tabs and keep the panel in sync
               with the active CW notes field as you type.
+            </p>
+
+            <label class="settings-toggle settings-toggle-spaced">
+              <input type="checkbox" id="setting-ai-enabled" />
+              <span class="settings-toggle-slider"></span>
+              <span class="settings-toggle-label">AI Features</span>
+            </label>
+            <p class="settings-description">
+              Enable the AI Suggest and Summarize buttons. Configure provider and API key in the <strong>AI Features</strong> tab.
+            </p>
+
+            <label class="settings-toggle settings-toggle-spaced">
+              <input type="checkbox" id="setting-metrics-enabled" />
+              <span class="settings-toggle-slider"></span>
+              <span class="settings-toggle-label">Metrics Bar</span>
+            </label>
+            <p class="settings-description">
+              Show live stats from one or more dashboards (e.g. BrightGauge) above the tab bar.
+              Configure sources and targets in the <strong>Metrics Bar</strong> tab.
             </p>
           </div>
 
@@ -142,25 +161,21 @@
 
         </div><!-- #panel-data -->
 
-        <!-- AI Assistant panel -->
+        <!-- AI Features panel -->
         <div class="settings-panel" id="panel-ai">
 
           <div class="settings-section">
-            <h3 class="settings-section-title">AI Assistant</h3>
+            <h3 class="settings-section-title">AI Features</h3>
             <div class="settings-field">
               <label class="settings-field-label" for="setting-ai-provider">Provider</label>
               <div class="settings-field-row">
                 <select id="setting-ai-provider" class="settings-select-input" title="AI provider">
-                  <option value="none">None</option>
                   <option value="hatz">Hatz AI</option>
                   <option value="openai">OpenAI</option>
                   <option value="anthropic">Anthropic</option>
                 </select>
               </div>
             </div>
-            <p class="settings-description settings-description-field">
-              Choose an AI provider to enable note suggestions and ticket summarization.
-            </p>
             <div id="ai-provider-fields" class="ai-provider-fields">
               <div class="settings-field settings-field-column">
                 <label class="settings-field-label" for="setting-ai-model">Model</label>
@@ -192,14 +207,6 @@
 
           <div class="settings-section">
             <h3 class="settings-section-title">Metrics Bar</h3>
-            <p class="settings-description settings-description-field">
-              Show live stats from one or more dashboards (e.g. BrightGauge) above the tab bar.
-            </p>
-            <label class="settings-toggle">
-              <span class="settings-toggle-label">Enable Metrics Bar</span>
-              <input type="checkbox" id="setting-metrics-enabled" />
-              <span class="settings-toggle-track"></span>
-            </label>
             <div id="metrics-bar-config" class="metrics-bar-config">
               <div class="settings-field">
                 <label class="settings-field-label" for="setting-metrics-interval">Refresh interval</label>
@@ -210,6 +217,46 @@
                     <option value="30">Every 30 minutes</option>
                     <option value="60">Every hour</option>
                   </select>
+                </div>
+              </div>
+              <label class="settings-toggle settings-toggle-spaced">
+                <input type="checkbox" id="setting-metrics-progress-enabled" />
+                <span class="settings-toggle-slider"></span>
+                <span class="settings-toggle-label">Progress Tracking</span>
+              </label>
+              <div id="metrics-progress-config" class="metrics-progress-config">
+                <div class="settings-field">
+                  <span class="settings-field-label">Work days</span>
+                  <div class="metrics-work-days">
+                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="1"> Mon</label>
+                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="2"> Tue</label>
+                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="3"> Wed</label>
+                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="4"> Thu</label>
+                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="5"> Fri</label>
+                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="6"> Sat</label>
+                    <label class="metrics-work-day-label"><input type="checkbox" class="metrics-work-day" value="0"> Sun</label>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-field-label" for="setting-metrics-week-end-day">Week ends on</label>
+                  <select id="setting-metrics-week-end-day" class="settings-select-input settings-select-sm">
+                    <option value="0">Sunday</option>
+                    <option value="1">Monday</option>
+                    <option value="2">Tuesday</option>
+                    <option value="3">Wednesday</option>
+                    <option value="4">Thursday</option>
+                    <option value="5">Friday</option>
+                    <option value="6">Saturday</option>
+                  </select>
+                </div>
+                <div class="settings-field">
+                  <span class="settings-field-label">Work hours</span>
+                  <div class="metrics-work-hours-row">
+                    <label class="metrics-work-hours-label" for="setting-metrics-work-start">Start</label>
+                    <input type="time" id="setting-metrics-work-start" class="settings-time-input" />
+                    <label class="metrics-work-hours-label" for="setting-metrics-work-end">End</label>
+                    <input type="time" id="setting-metrics-work-end" class="settings-time-input" />
+                  </div>
                 </div>
               </div>
               <div id="metrics-dashboards-list"></div>
