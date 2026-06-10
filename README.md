@@ -2,7 +2,7 @@
 
 An Electron-based wrapper for ConnectWise Manage that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
 
-**Current version:** 0.2.1
+**Current version:** 0.2.2
 
 ---
 
@@ -12,7 +12,7 @@ An Electron-based wrapper for ConnectWise Manage that adds a persistent note edi
 - **Multi-tab browsing** – Open multiple ConnectWise pages simultaneously; tabs persist between launches
 - **Tab management** – Pin tabs, duplicate, close others, reopen closed tabs, copy URL, open in default browser (right-click any tab)
 - **Find in page** – `Ctrl+F` to search text on the current page
-- **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions and an active-download badge
+- **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions; a badge on the download icon shows how many files finished since you last opened the panel (resets when you open it)
 - **Image context menu** – Right-click any image for **Copy Image** (copies pixel data to clipboard) and **Save Image As…** (native save dialog); image links open as downloads instead of new tabs
 
 ### Note Editor
@@ -25,6 +25,7 @@ An Electron-based wrapper for ConnectWise Manage that adds a persistent note edi
 - **Copy to clipboard** – One-click copy of the current note
 - **Signatures** – Save an HTML signature that can be inserted at the end of any note
 - **Templates** – Create reusable note templates accessible from the toolbar
+- **HTML source view** – Toggle button in the toolbar swaps the rich-text editor for a raw HTML textarea; formatting toolbar is disabled while in HTML mode and re-enabled on exit
 
 ### ConnectWise Sync
 - **Live two-way sync** – With "Live Sync" enabled, the panel and the active CW notes field (Draft.js time-entry editor or stopwatch textarea) stay in sync as you type — no manual copy-paste needed
@@ -42,6 +43,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 - **View dashboard** – Click any metric card to open that card's source dashboard in a new tab
 - **Editable selectors** – Each field's captured selector is shown in Settings and can be manually corrected; a **Test selectors** button per dashboard re-scrapes immediately and updates the "→ found value" badges
 - **Re-pick** – Individual fields can be re-picked at any time without losing the others
+- **Cached values** – The last successfully scraped value for each field is persisted across launches; if a refresh fails the bar continues showing the cached value with a `⚠` indicator and a tooltip showing when it was last updated
 
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes
@@ -59,6 +61,7 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 - **Dark / Light theme**
 - **Collapsible panel** – Hide the side panel entirely; a slim toggle button brings it back
 - **Resizable panel** – Drag the divider to adjust the panel width
+- **Window state persistence** – The main window restores its last size and position on launch; validated against connected displays so it never opens off-screen
 - **Native settings window** – Settings open in a separate OS window (`Ctrl+,` or **Edit → Settings**); the main window stays fully usable while settings are open. Re-invoking the shortcut focuses the existing window rather than opening a second one
 - **Category sidebar** – Settings are organised into sections (General, Data, AI Assistant, Metrics Bar, Templates, Signature) accessible from a left-hand nav
 - All settings are persisted to disk and applied to the main window immediately
@@ -168,4 +171,5 @@ The ✨ Suggest and 📋 Summarize buttons will appear in the note panel once a 
 - **Login issues** – The embedded browser keeps its own session cookies. Log in once and the session will persist across launches.
 - **Live sync not working** – Check that you're on a ticket page with a visible notes field. The sync status pill at the bottom of the panel shows the current state (`⇅ Synced`, `⇅ Pushing…`, `⇅ No CW field`).
 - **Metrics bar shows `—` or `(not found)`** – Open Settings → Metrics Bar, click **Test selectors** next to the relevant dashboard to trigger an immediate scrape and see per-field results. If a field still shows `(not found — check selector)`, use **Re-pick** on that field, wait for the dashboard to fully load in the picker, then click the correct value to recapture the selector.
+- **Metrics bar shows `⚠` on a card** – The last refresh for that field failed (network issue, dashboard changed, etc.). The value shown is the last successfully cached value. Hover the `⚠` to see when it was last updated. The app will retry on the next poll interval.
 - **Blank screen or errors** – Press `Ctrl+Shift+I` to open DevTools and check the console.
