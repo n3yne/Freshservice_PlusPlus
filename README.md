@@ -51,6 +51,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes
 - **📋 Summarize** – Scrapes all visible note content from the active CW ticket page and asks the AI to produce a concise bullet-point summary
 - Supports **Hatz AI**, **OpenAI**, and **Anthropic** as providers; the model dropdown is populated automatically from the provider's API once an API key is entered
+- **Delivered as a bundled plugin** — AI Features is implemented via the plugin system; it can be disabled independently from Settings → Plugins
 
 ### Plugin System
 
@@ -75,7 +76,7 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 - **Resizable panel** – Drag the divider to adjust the panel width
 - **Window state persistence** – The main window restores its last size and position on launch; validated against connected displays so it never opens off-screen
 - **Native settings window** – Settings open in a separate OS window (`Ctrl+,` or **Edit → Settings**); the main window stays fully usable while settings are open. Re-invoking the shortcut focuses the existing window rather than opening a second one
-- **Category sidebar** – Settings are organised into sections (General, Data, AI Features, Templates, Signature, Plugins) accessible from a left-hand nav; enabled plugins that provide a settings panel add their own entries automatically
+- **Category sidebar** – Settings are organised into sections (General, Data, Templates, Signature, Plugins) accessible from a left-hand nav; enabled plugins that provide a settings panel appear as indented sub-items under Plugins automatically
 - All settings are persisted to disk and applied to the main window immediately
 
 ---
@@ -165,7 +166,9 @@ Output is placed in the `dist/` folder.
 
 ## AI Assistant Setup
 
-1. Open **Settings** (`Ctrl+,`) and go to the **AI Features** section
+The AI Assistant is a bundled plugin. Make sure it is enabled in **Settings → Plugins** (it is on by default).
+
+1. Open **Settings** (`Ctrl+,`) and go to **Plugins → AI Features**
 2. Choose a **Provider**:
    - **Hatz AI** – paste your API key from the [Hatz Admin Dashboard](https://ai.hatz.ai)
    - **OpenAI** – paste a key from [platform.openai.com](https://platform.openai.com/api-keys)
@@ -173,13 +176,13 @@ Output is placed in the `dist/` folder.
 3. The **Model** dropdown populates automatically once a valid key is saved
 4. Select the model you want to use
 
-The ✨ Suggest and 📋 Summarize buttons will appear in the note panel once a provider is configured.
+The ✨ Suggest and 📋 Summarize buttons appear in the note panel once a provider and API key are configured.
 
 ---
 
 ## Plugins
 
-The Metrics Bar is delivered as a bundled plugin and is always available. To install additional plugins, drop a plugin directory into the app's user data folder:
+The **Metrics Bar** and **AI Features** are both delivered as bundled plugins and are always available. To install additional plugins, drop a plugin directory into the app's user data folder:
 
 ```
 %APPDATA%\connectwise-manage-pp\plugins\

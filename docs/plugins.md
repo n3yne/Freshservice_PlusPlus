@@ -293,6 +293,7 @@ Read and write the current note editor content.
 | `notes.setContent(html)` | — | Replace editor content and schedule an autosave |
 | `notes.getTicketId()` | `string \| null` | Current ticket ID, or `null` if none set |
 | `notes.getPlainText()` | `string` | Editor content stripped of HTML tags |
+| `notes.saveSnapshot(incomingText)` | `Promise<void>` | Saves a snapshot of the current editor content if it differs enough from the last snapshot (respects the configured snapshot threshold). Call this before overwriting the editor with bulk-imported or AI-generated content so the previous note can be recovered from history. |
 
 ```js
 // Append a timestamp to the note
@@ -313,14 +314,20 @@ if (settings.theme === "dark") {
 
 #### `window.pluginAPI.browser`
 
-Opens URLs in the app's tab system.
+Interacts with the app's tab system and the active webview.
 
-| Method | Description |
-|---|---|
-| `browser.newTab(url)` | Opens `url` in a new tab and switches to it |
+| Method | Returns | Description |
+|---|---|---|
+| `browser.newTab(url)` | — | Opens `url` in a new tab and switches to it |
+| `browser.executeInActiveTab(script)` | `Promise<any>` | Runs a JavaScript string in the active webview and returns its result. Rejects if no tab is open. |
 
 ```js
 window.pluginAPI.browser.newTab("https://my-dashboard.example.com");
+
+// Read text from the active page
+const heading = await window.pluginAPI.browser.executeInActiveTab(
+  "document.querySelector('h1')?.innerText || ''"
+);
 ```
 
 ---
@@ -451,8 +458,10 @@ pluginAPI.notes.getContent(): string
 pluginAPI.notes.setContent(html: string): void
 pluginAPI.notes.getTicketId(): string | null
 pluginAPI.notes.getPlainText(): string
+pluginAPI.notes.saveSnapshot(incomingText: string): Promise<void>
 
 pluginAPI.browser.newTab(url: string): void
+pluginAPI.browser.executeInActiveTab(script: string): Promise<any>
 
 pluginAPI.getSettings(): AppSettings
 ```
