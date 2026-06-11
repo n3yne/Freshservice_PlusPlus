@@ -30,6 +30,19 @@
   "build": {
     "appId": "com.connectwise.managepp",
     "productName": "ConnectWise Manage++",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "settings_renderer.js",
+      "launch.js",
+      "utils.js",
+      "plugin-manager.js",
+      "index.html",
+      "settings.html",
+      "styles.css",
+      "plugins/**/*"
+    ],
     "win": {
       "target": [
         "portable"
