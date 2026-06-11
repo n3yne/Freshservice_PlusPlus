@@ -596,7 +596,7 @@
       '<label class="settings-toggle settings-toggle-spaced">' +
       '<input type="checkbox" id="plugin-setting-metrics-enabled" />' +
       '<span class="settings-toggle-slider"></span>' +
-      '<span class="settings-toggle-label">Enable Metrics Bar</span>' +
+      '<span class="settings-toggle-label">Show Metrics Bar</span>' +
       '</label>' +
       '<p class="settings-description">Show live stats from one or more dashboards (e.g. BrightGauge) above the tab bar.</p>' +
       '<div id="plugin-metrics-bar-config" class="metrics-bar-config">' +

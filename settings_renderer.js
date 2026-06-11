@@ -559,15 +559,24 @@ document.addEventListener("DOMContentLoaded", function () {
     const pluginPanels = [];
     window.pluginSettingsAPI = Object.freeze({
       addPanel: function (id, label, setupFn) {
-        // Add a nav item
+        // Add a nav item, indented under the Plugins button
         const nav = document.querySelector(".settings-nav");
         if (nav) {
           const btn = document.createElement("button");
           btn.type = "button";
-          btn.className = "settings-nav-item";
+          btn.className = "settings-nav-item settings-nav-subitem";
           btn.dataset.panel = "plugin-" + id;
           btn.textContent = label;
-          nav.appendChild(btn);
+          // Insert after the last existing sub-item, or directly after Plugins if none yet
+          const subItems = nav.querySelectorAll(".settings-nav-subitem");
+          const lastSubItem = subItems.length ? subItems[subItems.length - 1] : null;
+          const pluginsBtn = nav.querySelector('[data-panel="plugins"]');
+          const anchor = lastSubItem || pluginsBtn;
+          if (anchor && anchor.nextSibling) {
+            nav.insertBefore(btn, anchor.nextSibling);
+          } else {
+            nav.appendChild(btn);
+          }
         }
 
         // Add the panel div

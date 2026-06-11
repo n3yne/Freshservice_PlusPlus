@@ -968,6 +968,11 @@ body.settings-page {
   font-weight: 500;
 }
 
+.settings-nav-subitem {
+  padding-left: 26px;
+  font-size: 12px;
+}
+
 .settings-content {
   flex: 1;
   overflow-y: auto;
