@@ -1,0 +1,10 @@
+{
+  "id": "ai-features",
+  "name": "AI Features",
+  "version": "1.0.0",
+  "description": "AI-powered note suggestions and ticket summarization via Hatz AI, OpenAI, or Anthropic.",
+  "main": "main.js",
+  "renderer": "renderer.js",
+  "settings": "settings.js",
+  "minAppVersion": "0.3.0"
+}

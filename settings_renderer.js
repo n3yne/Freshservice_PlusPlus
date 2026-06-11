@@ -31,22 +31,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }());
 
-  function redirectToGeneral() {
-    document.querySelectorAll(".settings-nav-item").forEach(function (btn) {
-      btn.classList.toggle("active", btn.dataset.panel === "general");
-    });
-    document.querySelectorAll(".settings-panel").forEach(function (p) {
-      p.classList.toggle("active", p.id === "panel-general");
-    });
-  }
-
-  function updateAiNavVisibility() {
-    if (!aiNavItem) return;
-    const enabled = appSettings.aiEnabled !== false;
-    aiNavItem.style.display = enabled ? "" : "none";
-    if (!enabled && aiNavItem.classList.contains("active")) redirectToGeneral();
-  }
-
   // ==================== Constants ====================
   const SIG_SAVE_DEBOUNCE = 800;
 
@@ -63,10 +47,6 @@ document.addEventListener("DOMContentLoaded", function () {
     noteTemplates: [],
     liveSyncEnabled: true,
     snapshotThreshold: 5,
-    aiEnabled: true,
-    aiProvider: "hatz",
-    aiModelName: "",
-    aiApiKey: "",
     dismissedReleaseVersion: "",
     backupStorageWarningMb: 100,
     metricsBarEnabled: false,
@@ -90,11 +70,6 @@ document.addEventListener("DOMContentLoaded", function () {
   const settingSortField      = document.getElementById("setting-sort-field");
   const settingSortDirection  = document.getElementById("setting-sort-direction");
   const settingSignature      = document.getElementById("setting-signature");
-  const settingAiEnabled      = document.getElementById("setting-ai-enabled");
-  const aiNavItem             = document.querySelector('[data-panel="ai"]');
-  const settingAiProvider     = document.getElementById("setting-ai-provider");
-  const settingAiModel        = document.getElementById("setting-ai-model");
-  const settingAiKey          = document.getElementById("setting-ai-key");
   const templateList          = document.getElementById("template-list");
   const btnAddTemplate        = document.getElementById("btn-add-template");
   const templateAddForm       = document.getElementById("template-add-form");
@@ -139,15 +114,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (document.activeElement !== settingDefaultUrl) {
       settingDefaultUrl.value = settings.defaultUrl || "https://na.myconnectwise.net/";
-    }
-
-    if (settingAiEnabled) settingAiEnabled.checked = settings.aiEnabled !== false;
-    updateAiNavVisibility();
-    const savedProvider = settings.aiProvider && settings.aiProvider !== "none" ? settings.aiProvider : "hatz";
-    if (settingAiProvider) settingAiProvider.value = savedProvider;
-    if (settingAiKey) {
-      settingAiKey.value = "";
-      settingAiKey.placeholder = settings.aiApiKey ? "••••••••  (saved)" : "Paste your API key here";
     }
 
     renderTemplateList();
@@ -221,87 +187,6 @@ document.addEventListener("DOMContentLoaded", function () {
     appSettings.ticketSortDirection = settingSortDirection.value;
     saveSettings();
   });
-
-  // ---- AI ----
-
-  async function populateAiModelDropdown() {
-    if (!settingAiModel) return;
-    if (!appSettings.aiApiKey) {
-      settingAiModel.innerHTML = '<option value="" disabled selected>Enter API key first</option>';
-      settingAiModel.disabled = true;
-      return;
-    }
-    settingAiModel.innerHTML = '<option value="" disabled selected>Loading models…</option>';
-    settingAiModel.disabled = true;
-    const result = await window.backupAPI.aiGetModels({
-      aiProvider: appSettings.aiProvider,
-      aiApiKey: appSettings.aiApiKey,
-    });
-    if (result.error || !result.models || result.models.length === 0) {
-      const detail = result.error || "Empty model list returned";
-      console.error("[AI models]", detail);
-      settingAiModel.innerHTML = `<option value="" disabled selected>Error: ${detail.substring(0, 80)}</option>`;
-      settingAiModel.disabled = false;
-      return;
-    }
-    settingAiModel.innerHTML = "";
-    for (const { value, label } of result.models) {
-      const opt = document.createElement("option");
-      opt.value = value;
-      opt.textContent = label;
-      settingAiModel.appendChild(opt);
-    }
-    const saved = appSettings.aiModelName;
-    const values = result.models.map((m) => m.value);
-    if (saved && !values.includes(saved)) {
-      const opt = document.createElement("option");
-      opt.value = saved;
-      opt.textContent = saved;
-      settingAiModel.insertBefore(opt, settingAiModel.firstChild);
-    }
-    settingAiModel.value = saved || values[0] || "";
-    settingAiModel.disabled = false;
-    if (settingAiModel.value !== saved) {
-      appSettings.aiModelName = settingAiModel.value;
-      saveSettings();
-    }
-  }
-
-  if (settingAiEnabled) {
-    settingAiEnabled.addEventListener("change", function () {
-      appSettings.aiEnabled = settingAiEnabled.checked;
-      updateAiNavVisibility();
-      saveSettings();
-    });
-  }
-
-  if (settingAiProvider) {
-    settingAiProvider.addEventListener("change", function () {
-      appSettings.aiProvider = settingAiProvider.value;
-      saveSettings();
-      populateAiModelDropdown();
-    });
-  }
-
-  if (settingAiModel) {
-    settingAiModel.addEventListener("change", function () {
-      appSettings.aiModelName = settingAiModel.value;
-      saveSettings();
-    });
-  }
-
-  if (settingAiKey) {
-    settingAiKey.addEventListener("change", function () {
-      const val = settingAiKey.value.trim();
-      if (val) {
-        appSettings.aiApiKey = val;
-        saveSettings();
-        settingAiKey.value = "";
-        settingAiKey.placeholder = "••••••••  (saved)";
-        populateAiModelDropdown();
-      }
-    });
-  }
 
   // ---- Signature ----
 
@@ -550,9 +435,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
   window.backupAPI.loadSettings().then(function (settings) {
     applySettingsForm(settings);
-    if (appSettings.aiProvider && appSettings.aiProvider !== "none") {
-      populateAiModelDropdown();
-    }
 
     // Build the pluginSettingsAPI before injecting plugin settings scripts so
     // plugins can call addPanel() synchronously during their top-level execution.

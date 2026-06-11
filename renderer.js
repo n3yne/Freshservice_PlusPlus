@@ -26,17 +26,6 @@ document.addEventListener("DOMContentLoaded", function () {
   // --- Sync Status (main window) ---
   const syncStatus = document.getElementById("sync-status");
 
-  // --- AI Buttons (main window panel) ---
-  const btnAiSuggest = document.getElementById("btn-ai-suggest");
-  const btnAiSummarize = document.getElementById("btn-ai-summarize");
-  const aiOverlay = document.getElementById("ai-overlay");
-  const aiDialogTitle = document.getElementById("ai-dialog-title");
-  const aiDialogBody = document.getElementById("ai-dialog-body");
-  const btnAiApply = document.getElementById("btn-ai-apply");
-  const btnAiCopy = document.getElementById("btn-ai-copy");
-  const btnAiCancel = document.getElementById("btn-ai-cancel");
-  const btnAiClose = document.getElementById("btn-ai-close");
-
   const btnDownloads = document.getElementById("btn-downloads");
   const downloadsPanel = document.getElementById("downloads-panel");
   const downloadsList = document.getElementById("downloads-list");
@@ -155,10 +144,6 @@ document.addEventListener("DOMContentLoaded", function () {
     document.body.setAttribute("data-theme", settings.theme || "dark");
     btnInsertSignature.style.display = settings.signatureHtml ? "" : "none";
 
-    const aiEnabled = settings.aiEnabled !== false && settings.aiProvider && settings.aiProvider !== "none";
-    if (btnAiSuggest) btnAiSuggest.style.display = aiEnabled ? "" : "none";
-    if (btnAiSummarize) btnAiSummarize.style.display = aiEnabled ? "" : "none";
-
     btnInsertTemplate.style.display = (settings.noteTemplates && settings.noteTemplates.length > 0) ? "inline-block" : "none";
     refreshTicketList();
     updateSyncPill();
@@ -207,261 +192,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     autosaveStatus.textContent = "Signature inserted";
     autosaveStatus.className = "saved";
-  });
-
-  // ==================== AI Assistant ====================
-
-  // Scrapes all ticket note entries from the active CW ticket page.
-  // Each note block lives in label.TicketNote-noteLabel; author/date are
-  // pulled from the enclosing .TicketNote-rowWrap for context.
-  const CW_NOTES_SCRAPE_SCRIPT = `(function() {
-    var parts = [];
-    document.querySelectorAll('.TicketNote-noteLabel').forEach(function(label) {
-      var text = (label.innerText || label.textContent || '').trim();
-      if (!text) return;
-      var row = label.closest('.TicketNote-rowWrap') || label.closest('.TicketNote-row');
-      var author = '';
-      var date = '';
-      if (row) {
-        var authorEl = row.querySelector('.TicketNote-clickableName') || row.querySelector('.TicketNote-basicName');
-        if (authorEl) author = (authorEl.innerText || '').trim();
-        var dateEl = row.querySelector('.TimeText-date');
-        if (dateEl) {
-          date = Array.from(dateEl.childNodes)
-            .filter(function(n) { return n.nodeType === 3; })
-            .map(function(n) { return n.textContent.trim(); })
-            .join(' ').trim();
-        }
-      }
-      var header = [author, date].filter(Boolean).join(' — ');
-      parts.push((header ? '[' + header + ']\\n' : '') + text);
-    });
-    return parts.join('\\n\\n---\\n\\n').substring(0, 15000);
-  })()`;
-
-  let aiApplyCallback = null;
-
-  // Convert AI markdown output to panel-compatible HTML.
-  // Handles bullets (- / * / •), headers (#/##/###), **bold**, *italic*.
-  // Uses <br> line breaks so output is compatible with setEditorContent().
-  function markdownToHtml(text) {
-    function inlineMarkdown(str) {
-      return str
-        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-        .replace(/\*(.+?)\*/g, "<em>$1</em>");
-    }
-    const lines = text.split("\n");
-    const parts = [];
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        parts.push("<br>");
-        continue;
-      }
-      const header = trimmed.match(/^#{1,3}\s+(.+)/);
-      if (header) {
-        parts.push("<strong>" + inlineMarkdown(header[1]) + "</strong><br>");
-        continue;
-      }
-      const bullet = trimmed.match(/^[-*•]\s+(.*)/);
-      if (bullet) {
-        parts.push("&nbsp;&nbsp;• " + inlineMarkdown(bullet[1]) + "<br>");
-        continue;
-      }
-      parts.push(inlineMarkdown(trimmed) + "<br>");
-    }
-    return parts.join("").replace(/(<br>)+$/, "");
-  }
-
-  function showAiOverlay(title, bodyHtml, applyCallback, applyLabel) {
-    aiDialogTitle.textContent = title;
-    aiDialogBody.innerHTML = bodyHtml;
-    aiApplyCallback = applyCallback || null;
-    btnAiApply.textContent = applyLabel || "Apply";
-    btnAiApply.style.display = applyCallback ? "" : "none";
-    aiOverlay.classList.add("visible");
-  }
-
-  function closeAiOverlay() {
-    aiOverlay.classList.remove("visible");
-    aiApplyCallback = null;
-  }
-
-  btnAiClose.addEventListener("click", closeAiOverlay);
-  btnAiCancel.addEventListener("click", closeAiOverlay);
-  aiOverlay.addEventListener("click", function (e) {
-    if (e.target === aiOverlay) closeAiOverlay();
-  });
-
-  btnAiApply.addEventListener("click", async function () {
-    if (aiApplyCallback) await aiApplyCallback();
-    closeAiOverlay();
-  });
-
-  btnAiCopy.addEventListener("click", function () {
-    const text = aiDialogBody.innerText;
-    navigator.clipboard.writeText(text).catch(function () {});
-  });
-
-  function aiSettings() {
-    return {
-      aiProvider: appSettings.aiProvider,
-      aiApiKey: appSettings.aiApiKey,
-      aiModelName: appSettings.aiModelName,
-    };
-  }
-
-  // ---- Suggest button ----
-  btnAiSuggest.addEventListener("click", async function () {
-    if (isEditorEmpty()) {
-      autosaveStatus.textContent = "Nothing to suggest — add some notes first";
-      autosaveStatus.className = "";
-      return;
-    }
-
-    // Strip the saved signature from the end before sending to AI so it is never reworded.
-    // Re-append the original signature HTML when applying the result.
-    const sigHtml = appSettings.signatureHtml || "";
-    // DOMParser produces a non-rendered document, so innerText falls back to textContent
-    // and does not convert <br> to \n. Attach a live element instead for correct extraction.
-    let sigPlain = "";
-    if (sigHtml) {
-      const tmp = document.createElement("div");
-      document.body.appendChild(tmp);
-      tmp.innerHTML = sigHtml;
-      sigPlain = tmp.innerText.trim();
-      document.body.removeChild(tmp);
-    }
-    const fullText = getEditorPlainText();
-    const trimmedFull = fullText.trimEnd();
-    const textToSend =
-      sigPlain && trimmedFull.endsWith(sigPlain)
-        ? trimmedFull.slice(0, -sigPlain.length).trimEnd()
-        : fullText;
-
-    if (!textToSend.trim()) {
-      autosaveStatus.textContent = "Nothing to suggest — add some notes first";
-      autosaveStatus.className = "";
-      return;
-    }
-
-    showAiOverlay("✨ AI Suggestion", '<div class="ai-loading">Thinking…</div>', null);
-
-    let ticketContext = "";
-    const suggestWebview = getActiveWebview();
-    if (suggestWebview) {
-      try {
-        ticketContext = await suggestWebview.executeJavaScript(CW_NOTES_SCRAPE_SCRIPT) || "";
-      } catch { /* non-fatal — context is optional */ }
-    }
-
-    let response;
-    try {
-      response = await window.backupAPI.aiSuggest({ text: textToSend, ticketContext, settings: aiSettings() });
-    } catch (err) {
-      aiDialogBody.innerHTML = '<p class="ai-error">Request failed — check your connection.</p>';
-      console.error("[AI] Suggest error:", err);
-      return;
-    }
-
-    if (response.error) {
-      aiDialogBody.innerHTML = `<p class="ai-error">${response.error.replace(/</g, "&lt;")}</p>`;
-      return;
-    }
-
-    if (!response.result) {
-      aiDialogBody.innerHTML = '<p class="ai-error">AI returned an empty response.</p>';
-      return;
-    }
-
-    // Strip the signature from the AI result if the model included it despite instructions.
-    let resultText = response.result;
-    if (sigPlain) {
-      const trimmedResult = resultText.trimEnd();
-      if (trimmedResult.endsWith(sigPlain)) {
-        resultText = trimmedResult.slice(0, -sigPlain.length).trimEnd();
-      }
-    }
-
-    const escaped = resultText
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/\n/g, "<br>");
-    aiDialogBody.innerHTML = `<div class="ai-result">${escaped}</div>`;
-    aiApplyCallback = async function () {
-      await snapshotBeforeBulkImport(resultText);
-      const finalHtml = sigHtml ? escaped + "<br>" + sigHtml : escaped;
-      setEditorContent(finalHtml);
-      autosaveStatus.textContent = "AI suggestion applied";
-      autosaveStatus.className = "saved";
-      clearTimeout(autosaveTimer);
-      autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
-    };
-    btnAiApply.style.display = "";
-  });
-
-  // ---- Summarize button ----
-  btnAiSummarize.addEventListener("click", async function () {
-    const webview = getActiveWebview();
-    if (!webview) {
-      autosaveStatus.textContent = "No active tab";
-      autosaveStatus.className = "";
-      return;
-    }
-
-    showAiOverlay("📋 Ticket Summary", '<div class="ai-loading">Reading ticket notes…</div>', null);
-
-    let pageText;
-    try {
-      pageText = await webview.executeJavaScript(CW_NOTES_SCRAPE_SCRIPT);
-    } catch {
-      aiDialogBody.innerHTML = '<p class="ai-error">Could not read the ticket page.</p>';
-      return;
-    }
-
-    if (!pageText || pageText.trim().length < 20) {
-      aiDialogBody.innerHTML = '<p class="ai-error">No note content found on this page.</p>';
-      return;
-    }
-
-    aiDialogBody.innerHTML = '<div class="ai-loading">Summarizing…</div>';
-
-    let response;
-    try {
-      response = await window.backupAPI.aiSummarize({ text: pageText, settings: aiSettings() });
-    } catch (err) {
-      aiDialogBody.innerHTML = '<p class="ai-error">Request failed — check your connection.</p>';
-      console.error("[AI] Summarize error:", err);
-      return;
-    }
-
-    if (response.error) {
-      aiDialogBody.innerHTML = `<p class="ai-error">${response.error.replace(/</g, "&lt;")}</p>`;
-      return;
-    }
-
-    if (!response.result) {
-      aiDialogBody.innerHTML = '<p class="ai-error">AI returned an empty response.</p>';
-      return;
-    }
-
-    const summaryHtml = markdownToHtml(response.result);
-    aiDialogBody.innerHTML = `<div class="ai-result">${summaryHtml}</div>`;
-
-    const summaryResult = response.result;
-    aiApplyCallback = async function () {
-      const insertHtml =
-        "<strong>AI Ticket Summary:</strong><br><br>" + markdownToHtml(summaryResult);
-      await snapshotBeforeBulkImport(summaryResult);
-      const existing = getEditorContent().trim();
-      setEditorContent(existing ? existing + "<br><br>" + insertHtml : insertHtml);
-      autosaveStatus.textContent = "Summary inserted";
-      autosaveStatus.className = "saved";
-      clearTimeout(autosaveTimer);
-      autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
-    };
-    btnAiApply.textContent = "Insert";
-    btnAiApply.style.display = "";
   });
 
   // ==================== Download Manager ====================
@@ -1625,6 +1355,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
         browser: Object.freeze({
           newTab: function (url) { createTab(url, { activate: true }); },
+          executeInActiveTab: function (script) {
+            const webview = getActiveWebview();
+            if (!webview) return Promise.reject(new Error("No active tab"));
+            return webview.executeJavaScript(script);
+          },
         }),
 
         ui: Object.freeze({
@@ -1653,6 +1388,7 @@ document.addEventListener("DOMContentLoaded", function () {
           },
           getTicketId:  function () { return ticketIdInput.value.trim() || null; },
           getPlainText: function () { return getEditorPlainText(); },
+          saveSnapshot: function (incomingText) { return snapshotBeforeBulkImport(incomingText); },
         }),
 
         getSettings: function () { return Object.assign({}, appSettings); },
@@ -2225,7 +1961,6 @@ document.addEventListener("DOMContentLoaded", function () {
       closeNotificationsPanel();
       if (findActive) hideFindBar();
       if (confirmOverlay.classList.contains("visible")) closeConfirm(false);
-      if (aiOverlay.classList.contains("visible")) closeAiOverlay();
       if (diffOverlay.classList.contains("visible")) closeDiffOverlay();
     }
   });

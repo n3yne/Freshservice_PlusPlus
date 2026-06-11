@@ -13,7 +13,6 @@
       <nav class="settings-nav" aria-label="Settings categories">
         <button type="button" class="settings-nav-item active" data-panel="general">General</button>
         <button type="button" class="settings-nav-item" data-panel="data">Data</button>
-        <button type="button" class="settings-nav-item" data-panel="ai">AI Features</button>
 <button type="button" class="settings-nav-item" data-panel="templates">Templates</button>
         <button type="button" class="settings-nav-item" data-panel="signature">Signature</button>
         <button type="button" class="settings-nav-item" data-panel="plugins">Plugins</button>
@@ -72,15 +71,6 @@
             <p class="settings-description">
               Automatically load ticket notes when switching tabs and keep the panel in sync
               with the active CW notes field as you type.
-            </p>
-
-            <label class="settings-toggle settings-toggle-spaced">
-              <input type="checkbox" id="setting-ai-enabled" />
-              <span class="settings-toggle-slider"></span>
-              <span class="settings-toggle-label">AI Features</span>
-            </label>
-            <p class="settings-description">
-              Enable the AI Suggest and Summarize buttons. Configure provider and API key in the <strong>AI Features</strong> tab.
             </p>
 
           </div>
@@ -151,47 +141,6 @@
           </div>
 
         </div><!-- #panel-data -->
-
-        <!-- AI Features panel -->
-        <div class="settings-panel" id="panel-ai">
-
-          <div class="settings-section">
-            <h3 class="settings-section-title">AI Features</h3>
-            <div class="settings-field">
-              <label class="settings-field-label" for="setting-ai-provider">Provider</label>
-              <div class="settings-field-row">
-                <select id="setting-ai-provider" class="settings-select-input" title="AI provider">
-                  <option value="hatz">Hatz AI</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="anthropic">Anthropic</option>
-                </select>
-              </div>
-            </div>
-            <div id="ai-provider-fields" class="ai-provider-fields">
-              <div class="settings-field settings-field-column">
-                <label class="settings-field-label" for="setting-ai-model">Model</label>
-                <select id="setting-ai-model" class="settings-select-input">
-                  <option value="" disabled selected>Enter API key first</option>
-                </select>
-              </div>
-              <div class="settings-field settings-field-column">
-                <label class="settings-field-label" for="setting-ai-key">API Key</label>
-                <input
-                  type="password"
-                  id="setting-ai-key"
-                  class="settings-text-input"
-                  placeholder="Paste your API key here"
-                  maxlength="500"
-                  autocomplete="off"
-                />
-              </div>
-              <p class="settings-description settings-description-field">
-                For Hatz AI, generate your API key from the Hatz Admin Dashboard.
-              </p>
-            </div>
-          </div>
-
-        </div><!-- #panel-ai -->
 
         <!-- Templates panel -->
         <div class="settings-panel" id="panel-templates">
