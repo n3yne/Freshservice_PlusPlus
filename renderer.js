@@ -241,7 +241,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const safeFilename = escText(dl.filename);
     const safeTitle = escAttr(dl.savePath || dl.filename);
 
-    return `<div class="dl-item" data-dl-id="${dl.id}">
+    return `<div class="dl-item" data-dl-id="${escAttr(dl.id)}">
       <div class="dl-item-name" title="${safeTitle}">${safeFilename}</div>
       <div class="dl-item-meta">
         <span class="dl-state ${isComplete ? "dl-complete" : isFailed ? "dl-failed" : "dl-active"}">${stateLabel}</span>
@@ -686,6 +686,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const state = getSyncState(activeTabId);
       state.lastPushedText = plainText;
       clearTimeout(state.pushTimer);
+      clearTimeout(state.pullTimer);
     }
 
     try {
@@ -712,10 +713,11 @@ document.addEventListener("DOMContentLoaded", function () {
   //   2. syncEngine        — per-tab state machine driving push (panel→CW) and pull (CW→panel)
   //   3. ticketSwapper     — auto-loads content when the detected ticket changes
 
-  const SYNC_PUSH_DRAFT = 500;       // ms — Draft.js push debounce
-  const SYNC_PUSH_TA_VISIBLE = 100;  // ms — stopwatch popup visible
-  const SYNC_PUSH_TA_HIDDEN = 2000;  // ms — stopwatch hidden (longer debounce avoids rapid popup open/hide)
-  const SYNC_PULL_DEBOUNCE = 300;    // ms — incoming CW change pull
+  const SYNC_PUSH_DRAFT = 500;           // ms — Draft.js push debounce
+  const SYNC_PUSH_TA_VISIBLE = 100;      // ms — stopwatch popup visible
+  const SYNC_PUSH_TA_HIDDEN = 2000;      // ms — stopwatch hidden (longer debounce avoids rapid popup open/hide)
+  const SYNC_PULL_DEBOUNCE = 300;        // ms — incoming CW change pull
+  const SYNC_WATCHER_MIN_INTERVAL = 50;  // ms — minimum gap between processed watcher messages per tab
 
   // Injected once per page load. Uses console.log as the outbound channel so it
   // works without an extra IPC registration — the renderer filters by the [CW-SYNC]
@@ -805,6 +807,8 @@ document.addEventListener("DOMContentLoaded", function () {
         pushTimer: null,
         pullTimer: null,
         pushInFlight: false,
+        pullInFlight: false,
+        lastWatcherMsgAt: 0,
         consecutivePushFailures: 0,
       });
     }
@@ -875,24 +879,30 @@ document.addEventListener("DOMContentLoaded", function () {
     if (state.panelFocused) return;
     if (text === state.lastPulledText) return;  // no change
     if (text === state.lastPushedText) return;  // echo from our own push
+    if (state.pullInFlight) return;             // previous pull not yet complete
 
+    state.pullInFlight = true;
     state.lastPulledText = text;
-    await snapshotBeforeBulkImport(text);
-    const html = text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\n/g, "<br>");
-    setEditorContent(html);
+    try {
+      await snapshotBeforeBulkImport(text);
+      const html = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br>");
+      setEditorContent(html);
 
-    if (syncStatus) {
-      syncStatus.textContent = field === "draft" ? "⇅ Pulled (time entry)" : "⇅ Pulled (stopwatch)";
-      syncStatus.className = "sync-status sync-active";
-      setTimeout(updateSyncPill, 1500);
+      if (syncStatus) {
+        syncStatus.textContent = field === "draft" ? "⇅ Pulled (time entry)" : "⇅ Pulled (stopwatch)";
+        syncStatus.className = "sync-status sync-active";
+        setTimeout(updateSyncPill, 1500);
+      }
+
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+    } finally {
+      state.pullInFlight = false;
     }
-
-    clearTimeout(autosaveTimer);
-    autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
   }
 
   function schedulePush(tabId) {
@@ -1631,6 +1641,10 @@ document.addEventListener("DOMContentLoaded", function () {
     on(webview, "console-message", function (e) {
       const msg = e.message || "";
       if (!msg.startsWith("[CW-SYNC] ")) return;
+      const wState = getSyncState(id);
+      const now = Date.now();
+      if (now - wState.lastWatcherMsgAt < SYNC_WATCHER_MIN_INTERVAL) return;
+      wState.lastWatcherMsgAt = now;
       try {
         handleWatcherMessage(id, JSON.parse(msg.slice(10)));
       } catch { /* malformed payload — ignore */ }
@@ -2247,6 +2261,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function exitHtmlMode(saveContent) {
     if (!htmlEditMode) return;
+    if (!noteHtmlSource) return;
     if (saveContent !== false) noteContent.innerHTML = noteHtmlSource.value;
     noteHtmlSource.style.display = "none";
     noteContent.style.display = "";

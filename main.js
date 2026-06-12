@@ -28,7 +28,7 @@ const pendingSavePaths = new Map();
 let autosaveWriteQueue = Promise.resolve();
 function withAutosaveLock(fn) {
   const queued = autosaveWriteQueue.then(fn);
-  autosaveWriteQueue = queued.catch(() => {});
+  autosaveWriteQueue = queued.catch((err) => { console.error("[Autosave] Write failed:", err); });
   return queued;
 }
 
@@ -1279,9 +1279,11 @@ electron.app.whenReady().then(async () => {
       record.receivedBytes = item.getReceivedBytes();
       record.totalBytes = item.getTotalBytes();
       record.savePath = item.getSavePath();
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("download-update", { ...record });
-      }
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("download-update", { ...record });
+        }
+      } catch { /* window closed mid-download */ }
     });
 
     item.once("done", (_e, state) => {
@@ -1289,9 +1291,11 @@ electron.app.whenReady().then(async () => {
       record.receivedBytes = item.getReceivedBytes();
       record.totalBytes = item.getTotalBytes();
       record.savePath = item.getSavePath();
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("download-update", { ...record });
-      }
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("download-update", { ...record });
+        }
+      } catch { /* window closed mid-download */ }
     });
   });
 

@@ -1,5 +1,8 @@
 "use strict";
 
+const MAX_NOTES_CHARS   = 8000;   // per-field cap before sending to AI
+const MAX_CONTEXT_CHARS = 4000;   // ticket context cap for suggest
+
 module.exports = function (api) {
 
   async function callAiChat(prompt, aiSettings) {
@@ -111,10 +114,12 @@ module.exports = function (api) {
     if (!aiSettings || !["hatz", "openai", "anthropic"].includes(provider) || !aiApiKey) {
       return { error: "No AI provider configured. Add your API key in Settings → AI Features." };
     }
+    const safeText = (text || "").substring(0, MAX_NOTES_CHARS);
+    const safeContext = (ticketContext || "").substring(0, MAX_CONTEXT_CHARS);
     const contextSection =
-      ticketContext && ticketContext.trim().length > 20
+      safeContext.trim().length > 20
         ? "\n\nFor background, here are the existing ticket notes for context (do not repeat or summarize these — they are reference only):\n\n" +
-          ticketContext.trim() + "\n\n---\n\n"
+          safeContext.trim() + "\n\n---\n\n"
         : "";
     const prompt =
       "Review the following technical support notes and provide an improved version with better clarity, grammar, and professionalism. " +
@@ -122,7 +127,7 @@ module.exports = function (api) {
       "Do not add, include, or preserve any signature, sign-off, closing line, or contact information at the end. " +
       "Reply with only the improved notes text, no preamble, no labels, no explanation:" +
       contextSection +
-      "\n\nNotes to improve:\n\n" + text;
+      "\n\nNotes to improve:\n\n" + safeText;
     try {
       return { result: await callAiChat(prompt, Object.assign({}, aiSettings, { aiApiKey })) };
     } catch (err) {
@@ -136,11 +141,12 @@ module.exports = function (api) {
     if (!aiSettings || !["hatz", "openai", "anthropic"].includes(provider) || !aiApiKey) {
       return { error: "No AI provider configured. Add your API key in Settings → AI Features." };
     }
+    const safeText = (text || "").substring(0, MAX_NOTES_CHARS + MAX_CONTEXT_CHARS);
     const prompt =
       "Summarize the following ConnectWise ticket notes into a concise bullet-point summary. " +
       "Capture the key issue, actions taken, and current status. " +
       "Do not use em-dashes or en-dashes in your response — use commas, periods, or hyphens instead. " +
-      "Reply with only the summary, no preamble:\n\n" + text;
+      "Reply with only the summary, no preamble:\n\n" + safeText;
     try {
       return { result: await callAiChat(prompt, Object.assign({}, aiSettings, { aiApiKey })) };
     } catch (err) {
