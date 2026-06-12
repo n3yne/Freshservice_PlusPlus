@@ -356,9 +356,17 @@ async function importPlugin(sourcePath) {
   const destDir = path.join(_userData, "plugins");
   const destPlugin = path.join(destDir, manifest.id);
 
+  // Refuse to silently overwrite an already-installed plugin.
+  try {
+    await fsp.access(destPlugin);
+    return {
+      success: false,
+      error: `Plugin "${manifest.id}" is already installed. Remove it from the Plugins list first, then re-import to update.`,
+    };
+  } catch { /* does not exist — safe to proceed */ }
+
   try {
     await fsp.mkdir(destDir, { recursive: true });
-    // Copy plugin directory (overwrites existing — allows updates)
     fs.cpSync(sourcePath, destPlugin, { recursive: true, force: true });
   } catch (err) {
     return { success: false, error: "Failed to copy plugin: " + (err.message || err) };

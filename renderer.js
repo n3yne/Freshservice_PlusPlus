@@ -1480,6 +1480,11 @@ document.addEventListener("DOMContentLoaded", function () {
     const id = generateTabId();
     const activate = opts.activate !== false; // default: activate
     const startPinned = opts.pinned || false;
+    const _listeners = [];
+    function on(target, event, fn) {
+      target.addEventListener(event, fn);
+      _listeners.push({ target, event, fn });
+    }
 
     // Create webview element
     const webview = document.createElement("webview");
@@ -1490,7 +1495,7 @@ document.addEventListener("DOMContentLoaded", function () {
     webviewContainer.appendChild(webview);
 
     // Clicks inside a webview don't bubble to document, so close floating panels on webview focus
-    webview.addEventListener("focus", function () {
+    on(webview, "focus", function () {
       closeDownloadsPanel();
       closeNotificationsPanel();
       hideTabContextMenu();
@@ -1522,6 +1527,7 @@ document.addEventListener("DOMContentLoaded", function () {
       titleSpan: titleSpan,
       title: "Loading...",
       pinned: false,
+      _listeners: _listeners,
     };
     tabs.push(tabData);
 
@@ -1532,30 +1538,30 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // click (not mousedown) to avoid activating the tab while the user is starting a drag
-    tabEl.addEventListener("click", function (e) {
+    on(tabEl, "click", function (e) {
       if (e.target.closest(".tab-close")) return;
       activateTab(id);
     });
 
-    tabEl.addEventListener("auxclick", function (e) {
+    on(tabEl, "auxclick", function (e) {
       if (e.button === 1) {
         e.preventDefault();
         closeTab(id);
       }
     });
 
-    closeBtn.addEventListener("click", function (e) {
+    on(closeBtn, "click", function (e) {
       e.stopPropagation();
       closeTab(id);
     });
 
-    tabEl.addEventListener("contextmenu", function (e) {
+    on(tabEl, "contextmenu", function (e) {
       showTabContextMenu(e, id);
     });
 
     tabEl.setAttribute("draggable", "true");
 
-    tabEl.addEventListener("dragstart", function (e) {
+    on(tabEl, "dragstart", function (e) {
       draggedTabId = id;
       tabEl.classList.add("tab-dragging");
       e.dataTransfer.effectAllowed = "move";
@@ -1563,13 +1569,13 @@ document.addEventListener("DOMContentLoaded", function () {
       e.dataTransfer.setData("text/plain", id);
     });
 
-    tabEl.addEventListener("dragend", function () {
+    on(tabEl, "dragend", function () {
       draggedTabId = null;
       tabEl.classList.remove("tab-dragging");
       clearTabDragIndicators();
     });
 
-    tabEl.addEventListener("dragover", function (e) {
+    on(tabEl, "dragover", function (e) {
       if (!draggedTabId || draggedTabId === id) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
@@ -1591,11 +1597,11 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
-    tabEl.addEventListener("dragleave", function () {
+    on(tabEl, "dragleave", function () {
       tabEl.classList.remove("tab-drag-over-left", "tab-drag-over-right");
     });
 
-    tabEl.addEventListener("drop", function (e) {
+    on(tabEl, "drop", function (e) {
       e.preventDefault();
       if (!draggedTabId || draggedTabId === id) return;
 
@@ -1622,7 +1628,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // Messages emitted by the injected CW watcher arrive here as console-message events.
-    webview.addEventListener("console-message", function (e) {
+    on(webview, "console-message", function (e) {
       const msg = e.message || "";
       if (!msg.startsWith("[CW-SYNC] ")) return;
       try {
@@ -1630,12 +1636,12 @@ document.addEventListener("DOMContentLoaded", function () {
       } catch { /* malformed payload — ignore */ }
     });
 
-    webview.addEventListener("did-stop-loading", function () {
+    on(webview, "did-stop-loading", function () {
       updateTabTitle();
       saveTabSession();
     });
 
-    webview.addEventListener("page-title-updated", function (e) {
+    on(webview, "page-title-updated", function (e) {
       if (e.title && e.title !== "") {
         const display = cleanTitle(e.title);
         tabData.title = display;
@@ -1643,11 +1649,11 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
-    webview.addEventListener("did-start-loading", function () {
+    on(webview, "did-start-loading", function () {
       titleSpan.textContent = "Loading...";
     });
 
-    webview.addEventListener("did-navigate", function () {
+    on(webview, "did-navigate", function () {
       debouncedRefreshTicketList();
       updateTabTitle();
       saveTabSession();
@@ -1663,12 +1669,12 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
-    webview.addEventListener("did-finish-load", function () {
+    on(webview, "did-finish-load", function () {
       webview.executeJavaScript(CW_WATCHER_SCRIPT).catch(function () {});
       if (activeTabId === id) ticketSwapRun(id);
     });
 
-    webview.addEventListener("did-navigate-in-page", function () {
+    on(webview, "did-navigate-in-page", function () {
       debouncedRefreshTicketList();
       updateTabTitle();
       saveTabSession();
@@ -1678,7 +1684,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
-    webview.addEventListener("found-in-page", function (e) {
+    on(webview, "found-in-page", function (e) {
       if (findActive && activeTabId === id) {
         if (e.result.matches > 0) {
           findMatchCount.textContent =
@@ -1692,7 +1698,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // CW's "Save and Return" button calls window.close() on the child page.
     // After closing that tab, click the refresh button on the parent so CW reloads its list.
     // The refresh button is identified by its SVG path data — no stable class or ID is available.
-    webview.addEventListener("close", function () {
+    on(webview, "close", function () {
       console.log("[Tab] Webview requested close for tab:", id);
       closeTab(id);
       const returnedWebview = getActiveWebview();
@@ -1809,9 +1815,9 @@ document.addEventListener("DOMContentLoaded", function () {
       }
       if (!nextId) {
         const newIdx = idx > 0 ? idx - 1 : idx + 1;
-        nextId = tabs[newIdx].id;
+        nextId = tabs[newIdx] ? tabs[newIdx].id : null;
       }
-      activateTab(nextId);
+      if (nextId) activateTab(nextId);
     }
 
     tabHistory = tabHistory.filter(function (hId) { return hId !== id; });
@@ -1825,6 +1831,10 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch { /* webview may not be ready */ }
 
     clearSyncState(id);
+    (tab._listeners || []).forEach(function (l) {
+      try { l.target.removeEventListener(l.event, l.fn); } catch { /* ignore */ }
+    });
+    tab._listeners = [];
     tab.webview.remove();
     tab.tabEl.remove();
     tabs.splice(idx, 1);
