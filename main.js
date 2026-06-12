@@ -1056,6 +1056,8 @@ function registerIpcHandlers() {
 
     // 1. Search autosave.json (current drafts)
     try {
+      // Wait for any in-flight write to settle before reading
+      await autosaveWriteQueue.catch(() => {});
       const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
       const data = JSON.parse(raw);
       for (const [ticketId, info] of Object.entries(data)) {

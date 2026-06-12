@@ -203,7 +203,7 @@
     }
 
     if (response.error) {
-      aiDialogBody.innerHTML = '<p class="ai-error">' + response.error.replace(/</g, "&lt;") + "</p>";
+      aiDialogBody.innerHTML = '<p class="ai-error">' + response.error.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>";
       return;
     }
     if (!response.result) {
@@ -270,7 +270,7 @@
     }
 
     if (response.error) {
-      aiDialogBody.innerHTML = '<p class="ai-error">' + response.error.replace(/</g, "&lt;") + "</p>";
+      aiDialogBody.innerHTML = '<p class="ai-error">' + response.error.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>";
       return;
     }
     if (!response.result) {

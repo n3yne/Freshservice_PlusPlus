@@ -315,7 +315,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     if (!downloadsPanel.classList.contains("visible")) return;
-    const existing = downloadsList.querySelector(`[data-dl-id="${dl.id}"]`);
+    const existing = downloadsList.querySelector(`[data-dl-id="${CSS.escape(String(dl.id))}"]`);
     const html = renderDownloadItem(dl);
     if (existing) {
       existing.outerHTML = html;

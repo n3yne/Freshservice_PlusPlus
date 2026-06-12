@@ -64,7 +64,8 @@
       }
       if (result.error || !result.models || !result.models.length) {
         const detail = result.error || "Empty model list returned";
-        elModel.innerHTML = '<option value="" disabled selected>Error: ' + detail.substring(0, 80) + "</option>";
+        elModel.innerHTML = '<option value="" disabled selected></option>';
+        elModel.options[0].textContent = "Error: " + detail.substring(0, 80);
         elModel.disabled = false;
         return;
       }
