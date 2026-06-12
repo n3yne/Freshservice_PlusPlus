@@ -41,6 +41,7 @@
       "index.html",
       "settings.html",
       "styles.css",
+      "icon.png",
       "plugins/**/*"
     ],
     "win": {

@@ -22,3 +22,6 @@ Desktop.ini
 
 # Temporary build artifacts
 icon-raw.png
+
+# Claude Code local settings — per-user only, shared settings belong in .claude/settings.json
+.claude/settings.local.json
