@@ -108,8 +108,9 @@ jobs:
           path: artifacts/
 
       - name: Build release notes
+        env:
+          CURRENT: ${{ github.ref_name }}
         run: |
-          CURRENT="${{ github.ref_name }}"
           PREV=$(git tag --sort=-version:refname | grep -v "^${CURRENT}$" | head -1)
 
           {
@@ -125,7 +126,7 @@ jobs:
           } > release_notes.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           name: ConnectWise Manage++ ${{ github.ref_name }}
           body_path: release_notes.md

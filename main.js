@@ -72,6 +72,18 @@ async function loadSettings() {
         fields: parsed.metricsBarFields || [],
       }] : [];
     }
+    // Decrypt AI API key stored by safeStorage; fall back gracefully if unavailable
+    if (parsed.aiApiKeyEncrypted) {
+      try {
+        parsed.aiApiKey = electron.safeStorage.isEncryptionAvailable()
+          ? electron.safeStorage.decryptString(Buffer.from(parsed.aiApiKeyEncrypted, "base64"))
+          : "";
+      } catch (e) {
+        console.error("[Settings] Failed to decrypt AI API key:", e);
+        parsed.aiApiKey = "";
+      }
+      delete parsed.aiApiKeyEncrypted;
+    }
     return Object.assign({}, DEFAULT_SETTINGS, parsed);
   } catch (e) {
     if (e.code !== "ENOENT") console.error("[Settings] Error loading settings:", e);
@@ -82,7 +94,12 @@ async function loadSettings() {
 async function saveSettings(settings) {
   try {
     await ensureBackupDir();
-    await fsp.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf-8");
+    const toWrite = Object.assign({}, settings);
+    if (toWrite.aiApiKey && electron.safeStorage.isEncryptionAvailable()) {
+      toWrite.aiApiKeyEncrypted = electron.safeStorage.encryptString(toWrite.aiApiKey).toString("base64");
+      delete toWrite.aiApiKey;
+    }
+    await fsp.writeFile(SETTINGS_FILE, JSON.stringify(toWrite, null, 2), "utf-8");
   } catch (e) {
     console.error("[Settings] Error saving settings:", e);
   }
@@ -125,30 +142,37 @@ async function cleanupOldBackups() {
     const entries = await fsp.readdir(BACKUP_DIR, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
+      try {
+        const ticketDir = path.join(BACKUP_DIR, entry.name);
+        const files = await fsp.readdir(ticketDir);
 
-      const ticketDir = path.join(BACKUP_DIR, entry.name);
-      const files = await fsp.readdir(ticketDir);
+        for (const file of files) {
+          if (!file.endsWith(".html") && !file.endsWith(".txt")) continue;
 
-      for (const file of files) {
-        if (!file.endsWith(".html") && !file.endsWith(".txt")) continue;
-
-        const filePath = path.join(ticketDir, file);
-        try {
-          const stat = await fsp.stat(filePath);
-          if (stat.mtimeMs < cutoff) {
-            await fsp.unlink(filePath);
-            deletedFiles++;
+          const filePath = path.join(ticketDir, file);
+          try {
+            const stat = await fsp.stat(filePath);
+            if (stat.mtimeMs < cutoff) {
+              await fsp.unlink(filePath);
+              deletedFiles++;
+            }
+          } catch {
+            // Skip files we can't stat/delete
           }
-        } catch {
-          // Skip files we can't stat/delete
         }
-      }
 
-      // 2. Remove the ticket folder if it's now empty
-      const remaining = await fsp.readdir(ticketDir);
-      if (remaining.length === 0) {
-        await fsp.rmdir(ticketDir);
-        deletedDirs++;
+        // 2. Remove the ticket folder if it's now empty
+        const remaining = await fsp.readdir(ticketDir);
+        if (remaining.length === 0) {
+          try {
+            await fsp.rmdir(ticketDir);
+            deletedDirs++;
+          } catch (e) {
+            if (e.code !== "ENOTEMPTY") throw e;
+          }
+        }
+      } catch {
+        // Skip locked/unreadable ticket folder — don't abort cleanup for the rest
       }
     }
 
@@ -610,8 +634,11 @@ function isWindowOnScreen(bounds) {
 
 function saveMainWindowState(bounds) {
   if (!MAIN_WINDOW_STATE_FILE) return;
-  fsp.writeFile(MAIN_WINDOW_STATE_FILE, JSON.stringify(bounds), "utf-8")
-    .catch((e) => console.error("[Main window] Error saving window state:", e));
+  try {
+    fs.writeFileSync(MAIN_WINDOW_STATE_FILE, JSON.stringify(bounds), "utf-8");
+  } catch (e) {
+    console.error("[Main window] Error saving window state:", e);
+  }
 }
 
 function createSettingsWindow() {
@@ -1193,7 +1220,7 @@ if (!gotTheLock) {
 } else {
   electron.app.on("second-instance", () => {
     // Someone tried to open a second instance - focus our existing window
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
@@ -1261,7 +1288,11 @@ electron.app.whenReady().then(async () => {
   });
 
   const initialSettings = await loadSettings();
-  await pluginManager.initPlugins(electron.app.getPath("userData"), initialSettings, electron.ipcMain);
+  try {
+    await pluginManager.initPlugins(electron.app.getPath("userData"), initialSettings, electron.ipcMain);
+  } catch (e) {
+    console.error("[Plugins] initPlugins failed — starting without plugins:", e);
+  }
 
   registerIpcHandlers();
   createWindow();
@@ -1270,6 +1301,13 @@ electron.app.whenReady().then(async () => {
   electron.app.on("activate", () => {
     if (electron.BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+}).catch((err) => {
+  console.error("[App] Fatal startup error:", err);
+  electron.dialog.showErrorBox(
+    "ConnectWise Manage++ — startup failed",
+    String(err.message || err),
+  );
+  electron.app.quit();
 });
 
 electron.app.on("window-all-closed", () => {
