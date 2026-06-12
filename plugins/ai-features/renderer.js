@@ -27,6 +27,26 @@
     "return parts.join('\\n\\n---\\n\\n').substring(0, 15000);" +
     "})()";
 
+  function sanitizeHtml(html) {
+    if (!html) return "";
+    const root = document.createElement("div");
+    root.innerHTML = html;
+    root.querySelectorAll("script,iframe,object,embed,link,meta,base,style").forEach(function (el) {
+      el.remove();
+    });
+    root.querySelectorAll("*").forEach(function (el) {
+      Array.from(el.attributes).forEach(function (attr) {
+        if (/^on/i.test(attr.name)) {
+          el.removeAttribute(attr.name);
+        } else if ((attr.name === "href" || attr.name === "src" || attr.name === "action") &&
+                   /^\s*javascript:/i.test(attr.value)) {
+          el.removeAttribute(attr.name);
+        }
+      });
+    });
+    return root.innerHTML;
+  }
+
   function markdownToHtml(text) {
     function inlineMarkdown(str) {
       return str
@@ -141,7 +161,7 @@
     }
 
     const settings = api.getSettings();
-    const sigHtml = settings.signatureHtml || "";
+    const sigHtml = sanitizeHtml(settings.signatureHtml || "");
     let sigPlain = "";
     if (sigHtml) {
       const tmp = document.createElement("div");

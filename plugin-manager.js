@@ -145,6 +145,15 @@ function buildPluginApi(pluginId, ipcMain) {
 
 // ===================== Plugin loading =====================
 
+// Resolves a manifest-supplied relative path and validates it stays within pluginDir.
+// Returns the absolute path, or null if the entry attempts to escape the directory.
+function safePluginPath(pluginDir, entry) {
+  if (!entry || typeof entry !== "string") return null;
+  const resolved = path.resolve(pluginDir, entry);
+  const base = pluginDir.endsWith(path.sep) ? pluginDir : pluginDir + path.sep;
+  return resolved.startsWith(base) ? resolved : null;
+}
+
 async function loadPlugin(pluginDir, source, ipcMain) {
   // Parse manifest
   let manifest;
@@ -192,7 +201,12 @@ async function loadPlugin(pluginDir, source, ipcMain) {
 
   // Load main-process entry
   if (manifest.main) {
-    const mainPath = path.join(pluginDir, manifest.main);
+    const mainPath = safePluginPath(pluginDir, manifest.main);
+    if (!mainPath) {
+      record.loadError = "Invalid main entry point path";
+      console.warn(`[PluginManager] Skipping plugin "${id}" main: path traversal detected`);
+      return;
+    }
     try {
       const mod = require(mainPath);
       const api = buildPluginApi(id, ipcMain);
@@ -213,26 +227,34 @@ async function loadPlugin(pluginDir, source, ipcMain) {
 
   // Record renderer entry
   if (manifest.renderer) {
-    const rendererPath = path.join(pluginDir, manifest.renderer);
-    try {
-      await fsp.access(rendererPath, fs.constants.R_OK);
-      rendererScripts.push(rendererPath);
-      if (!manifest.main) {
-        console.log(`[PluginManager] Loaded plugin "${id}" (renderer only)`);
+    const rendererPath = safePluginPath(pluginDir, manifest.renderer);
+    if (!rendererPath) {
+      console.warn(`[PluginManager] Plugin "${id}" renderer: path traversal detected — skipped`);
+    } else {
+      try {
+        await fsp.access(rendererPath, fs.constants.R_OK);
+        rendererScripts.push(rendererPath);
+        if (!manifest.main) {
+          console.log(`[PluginManager] Loaded plugin "${id}" (renderer only)`);
+        }
+      } catch {
+        console.warn(`[PluginManager] Plugin "${id}" renderer file not found: ${rendererPath}`);
       }
-    } catch {
-      console.warn(`[PluginManager] Plugin "${id}" renderer file not found: ${rendererPath}`);
     }
   }
 
   // Record settings-window entry
   if (manifest.settings) {
-    const settingsPath = path.join(pluginDir, manifest.settings);
-    try {
-      await fsp.access(settingsPath, fs.constants.R_OK);
-      settingsScripts.push(settingsPath);
-    } catch {
-      console.warn(`[PluginManager] Plugin "${id}" settings file not found: ${settingsPath}`);
+    const settingsPath = safePluginPath(pluginDir, manifest.settings);
+    if (!settingsPath) {
+      console.warn(`[PluginManager] Plugin "${id}" settings: path traversal detected — skipped`);
+    } else {
+      try {
+        await fsp.access(settingsPath, fs.constants.R_OK);
+        settingsScripts.push(settingsPath);
+      } catch {
+        console.warn(`[PluginManager] Plugin "${id}" settings file not found: ${settingsPath}`);
+      }
     }
   }
 
