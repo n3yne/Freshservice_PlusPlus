@@ -680,6 +680,14 @@ document.addEventListener("DOMContentLoaded", function () {
     // Strip HTML formatting — CW notes fields accept plain text only
     const plainText = getEditorPlainText();
 
+    // Suppress the live sync echo for this push: mark the text as already-pushed
+    // so the watcher's input events don't trigger a pull-then-repush feedback loop.
+    if (activeTabId) {
+      const state = getSyncState(activeTabId);
+      state.lastPushedText = plainText;
+      clearTimeout(state.pushTimer);
+    }
+
     try {
       const result = await webview.executeJavaScript(buildCwPushScript(plainText));
       if (!result) {

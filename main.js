@@ -246,6 +246,7 @@ function createWindow() {
     width: winWidth,
     height: winHeight,
     ...(winX !== undefined && winY !== undefined ? { x: winX, y: winY } : {}),
+    show: false,
     title: "ConnectWise Manage++",
     icon: path.join(__dirname, "icon.png"),
     webPreferences: {
@@ -259,9 +260,16 @@ function createWindow() {
     },
   });
 
+  mainWindow.once("ready-to-show", () => {
+    if (usesSaved && saved.maximized) {
+      mainWindow.maximize();
+    }
+    mainWindow.show();
+  });
+
   mainWindow.on("close", () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      saveMainWindowState(mainWindow.getBounds());
+      saveMainWindowState(mainWindow.getBounds(), mainWindow.isMaximized());
     }
   });
 
@@ -632,10 +640,10 @@ function isWindowOnScreen(bounds) {
   });
 }
 
-function saveMainWindowState(bounds) {
+function saveMainWindowState(bounds, maximized) {
   if (!MAIN_WINDOW_STATE_FILE) return;
   try {
-    fs.writeFileSync(MAIN_WINDOW_STATE_FILE, JSON.stringify(bounds), "utf-8");
+    fs.writeFileSync(MAIN_WINDOW_STATE_FILE, JSON.stringify({ ...bounds, maximized: !!maximized }), "utf-8");
   } catch (e) {
     console.error("[Main window] Error saving window state:", e);
   }
