@@ -45,7 +45,7 @@
 
     async function populateModelDropdown() {
       const s = settingsAPI.getSettings();
-      if (!s.aiApiKey) {
+      if (!s.aiApiKeySet) {
         elModel.innerHTML = '<option value="" disabled selected>Enter API key first</option>';
         elModel.disabled = true;
         return;
@@ -56,7 +56,6 @@
       try {
         result = await window.backupAPI.pluginInvoke("plugin:ai-features:get-models", {
           aiProvider: s.aiProvider || "hatz",
-          aiApiKey: s.aiApiKey,
         });
       } catch {
         elModel.innerHTML = '<option value="" disabled selected>Error loading models</option>';
@@ -95,11 +94,11 @@
       const provider = s.aiProvider && s.aiProvider !== "none" ? s.aiProvider : "hatz";
       elProvider.value = provider;
       elKey.value = "";
-      elKey.placeholder = s.aiApiKey ? "••••••••  (saved)" : "Paste your API key here";
+      elKey.placeholder = s.aiApiKeySet ? "••••••••  (saved)" : "Paste your API key here";
     }
 
     applyForm(settingsAPI.getSettings());
-    if (settingsAPI.getSettings().aiApiKey) populateModelDropdown();
+    if (settingsAPI.getSettings().aiApiKeySet) populateModelDropdown();
 
     settingsAPI.onSettingsChanged(function (s) {
       applyForm(s);

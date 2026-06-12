@@ -88,6 +88,16 @@ async function saveSettings(settings) {
   }
 }
 
+// Returns a copy of settings safe to broadcast to renderer processes and plugins.
+// Strips the AI API key (a billing credential) and replaces it with a boolean
+// so plugin scripts can check whether a key is configured without reading it.
+function toPublicSettings(s) {
+  const out = Object.assign({}, s);
+  out.aiApiKeySet = Boolean(out.aiApiKey);
+  delete out.aiApiKey;
+  return out;
+}
+
 async function ensureBackupDir() {
   await fsp.mkdir(BACKUP_DIR, { recursive: true });
 }
@@ -912,25 +922,32 @@ function registerIpcHandlers() {
     createSettingsWindow();
   });
 
-  // Load settings from disk
+  // Load settings from disk (returns public form — aiApiKey stripped, aiApiKeySet added)
   electron.ipcMain.handle("load-settings", async () => {
-    return loadSettings();
+    return toPublicSettings(await loadSettings());
   });
 
   // Save settings to disk and notify the renderer
   electron.ipcMain.handle("save-settings", async (event, settings) => {
+    const existing = await loadSettings();
     const merged = Object.assign({}, DEFAULT_SETTINGS, settings);
+    // If the caller didn't supply a key (e.g. renderers that received a stripped
+    // broadcast and then saved a non-key setting), preserve whatever is on disk.
+    if (!settings.aiApiKey) {
+      merged.aiApiKey = existing.aiApiKey;
+    }
     if (!validateSettings(merged)) {
       console.warn("[Settings] Rejected invalid settings payload");
       return { success: false };
     }
     await saveSettings(merged);
-    pluginManager.fireEvent("settings:changed", merged);
-    pluginManager.updateSettings(merged);
+    const publicMerged = toPublicSettings(merged);
+    pluginManager.fireEvent("settings:changed", publicMerged);
+    pluginManager.updateSettings(merged); // plugin-manager keeps the full settings for main-process plugins
     const sender = electron.BrowserWindow.fromWebContents(event.sender);
     electron.BrowserWindow.getAllWindows().forEach((win) => {
       if (win !== sender && !win.isDestroyed()) {
-        win.webContents.send("settings-changed", merged);
+        win.webContents.send("settings-changed", publicMerged);
       }
     });
     return { success: true };

@@ -124,7 +124,7 @@ document.addEventListener("DOMContentLoaded", function () {
     aiEnabled: true,
     aiProvider: "hatz",
     aiModelName: "",
-    aiApiKey: "",
+    aiApiKeySet: false,
     dismissedReleaseVersion: "",
     backupStorageWarningMb: 100,
     metricsBarEnabled: false,

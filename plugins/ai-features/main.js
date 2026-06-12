@@ -107,7 +107,8 @@ module.exports = function (api) {
 
   api.handle("suggest", async function ({ text, ticketContext, settings: aiSettings }) {
     const provider = aiSettings?.aiProvider;
-    if (!aiSettings || !["hatz", "openai", "anthropic"].includes(provider) || !aiSettings.aiApiKey) {
+    const aiApiKey = api.getSettings().aiApiKey;
+    if (!aiSettings || !["hatz", "openai", "anthropic"].includes(provider) || !aiApiKey) {
       return { error: "No AI provider configured. Add your API key in Settings → AI Features." };
     }
     const contextSection =
@@ -123,7 +124,7 @@ module.exports = function (api) {
       contextSection +
       "\n\nNotes to improve:\n\n" + text;
     try {
-      return { result: await callAiChat(prompt, aiSettings) };
+      return { result: await callAiChat(prompt, Object.assign({}, aiSettings, { aiApiKey })) };
     } catch (err) {
       return { error: err.message || String(err) };
     }
@@ -131,7 +132,8 @@ module.exports = function (api) {
 
   api.handle("summarize", async function ({ text, settings: aiSettings }) {
     const provider = aiSettings?.aiProvider;
-    if (!aiSettings || !["hatz", "openai", "anthropic"].includes(provider) || !aiSettings.aiApiKey) {
+    const aiApiKey = api.getSettings().aiApiKey;
+    if (!aiSettings || !["hatz", "openai", "anthropic"].includes(provider) || !aiApiKey) {
       return { error: "No AI provider configured. Add your API key in Settings → AI Features." };
     }
     const prompt =
@@ -140,13 +142,14 @@ module.exports = function (api) {
       "Do not use em-dashes or en-dashes in your response — use commas, periods, or hyphens instead. " +
       "Reply with only the summary, no preamble:\n\n" + text;
     try {
-      return { result: await callAiChat(prompt, aiSettings) };
+      return { result: await callAiChat(prompt, Object.assign({}, aiSettings, { aiApiKey })) };
     } catch (err) {
       return { error: err.message || String(err) };
     }
   });
 
-  api.handle("get-models", async function ({ aiProvider, aiApiKey }) {
+  api.handle("get-models", async function ({ aiProvider }) {
+    const aiApiKey = api.getSettings().aiApiKey;
     if (!["hatz", "openai", "anthropic"].includes(aiProvider) || !aiApiKey) {
       return { error: "No provider configured" };
     }

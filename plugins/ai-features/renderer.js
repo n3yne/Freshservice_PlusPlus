@@ -174,7 +174,6 @@
         ticketContext: ticketContext,
         settings: {
           aiProvider: settings.aiProvider,
-          aiApiKey: settings.aiApiKey,
           aiModelName: settings.aiModelName,
         },
       });
@@ -242,7 +241,6 @@
         text: pageText,
         settings: {
           aiProvider: settings.aiProvider,
-          aiApiKey: settings.aiApiKey,
           aiModelName: settings.aiModelName,
         },
       });
