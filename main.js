@@ -32,6 +32,14 @@ function withAutosaveLock(fn) {
   return queued;
 }
 
+// Atomically overwrites autosave.json via a tmp-file + rename to prevent
+// truncation on crash/power-loss mid-write.
+async function writeAutosaveAtomic(data) {
+  const tmp = AUTOSAVE_FILE + ".tmp";
+  await fsp.writeFile(tmp, JSON.stringify(data, null, 2), "utf-8");
+  await fsp.rename(tmp, AUTOSAVE_FILE);
+}
+
 // Microsoft SSO hostnames — these popups communicate login state back to the
 // ConnectWise page via window.opener / postMessage and must open as real windows.
 const MICROSOFT_SSO_PATTERNS = [
@@ -134,38 +142,43 @@ async function cleanupOldBackups() {
       }
     }
 
-    // 3. Prune stale autosave entries (old + no remaining history folder)
-    try {
-      const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
-      const data = JSON.parse(raw);
-      let changed = false;
+    // 3. Prune stale autosave entries (old + no remaining history folder).
+    // Serialized through withAutosaveLock so a concurrent save-note IPC call
+    // can't land between our read and write and have its draft overwritten by
+    // our stale snapshot.
+    await withAutosaveLock(async () => {
+      try {
+        const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
+        const data = JSON.parse(raw);
+        let changed = false;
 
-      for (const [ticketId, info] of Object.entries(data)) {
-        const updatedAt = new Date(info.updatedAt || 0).getTime();
-        if (updatedAt >= cutoff) continue;
+        for (const [ticketId, info] of Object.entries(data)) {
+          const updatedAt = new Date(info.updatedAt || 0).getTime();
+          if (updatedAt >= cutoff) continue;
 
-        const historyDir = path.join(BACKUP_DIR, ticketId);
-        let hasHistory = false;
-        try {
-          const histFiles = await fsp.readdir(historyDir);
-          hasHistory = histFiles.some((f) => f.endsWith(".html") || f.endsWith(".txt"));
-        } catch {
-          // Directory doesn't exist — no history
+          const historyDir = path.join(BACKUP_DIR, ticketId);
+          let hasHistory = false;
+          try {
+            const histFiles = await fsp.readdir(historyDir);
+            hasHistory = histFiles.some((f) => f.endsWith(".html") || f.endsWith(".txt"));
+          } catch {
+            // Directory doesn't exist — no history
+          }
+
+          if (!hasHistory) {
+            delete data[ticketId];
+            prunedAutosaves++;
+            changed = true;
+          }
         }
 
-        if (!hasHistory) {
-          delete data[ticketId];
-          prunedAutosaves++;
-          changed = true;
+        if (changed) {
+          await writeAutosaveAtomic(data);
         }
+      } catch (e) {
+        if (e.code !== "ENOENT") console.error("[Cleanup] Error pruning autosaves:", e);
       }
-
-      if (changed) {
-        await fsp.writeFile(AUTOSAVE_FILE, JSON.stringify(data, null, 2), "utf-8");
-      }
-    } catch (e) {
-      if (e.code !== "ENOENT") console.error("[Cleanup] Error pruning autosaves:", e);
-    }
+    });
 
     if (deletedFiles > 0 || deletedDirs > 0 || prunedAutosaves > 0) {
       console.log(
@@ -649,15 +662,17 @@ function registerIpcHandlers() {
         try {
           const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
           autosaveData = JSON.parse(raw);
-        } catch {
-          // File doesn't exist yet or is corrupt — start fresh
+        } catch (e) {
+          if (e.code !== "ENOENT") {
+            // Corrupt file (truncated write, disk error) — preserve it before starting fresh
+            // so the data isn't silently destroyed and can be manually recovered.
+            const corruptPath = `${AUTOSAVE_FILE}.corrupt-${timestamp.replace(/[:.]/g, "-")}`;
+            await fsp.rename(AUTOSAVE_FILE, corruptPath).catch(() => {});
+            console.error("[Autosave] Corrupt autosave.json preserved at", corruptPath, e);
+          }
         }
         autosaveData[safeTicketId] = { content: noteContent, updatedAt: timestamp };
-        await fsp.writeFile(
-          AUTOSAVE_FILE,
-          JSON.stringify(autosaveData, null, 2),
-          "utf-8",
-        );
+        await writeAutosaveAtomic(autosaveData);
       });
 
       // On manual save, also write a timestamped history file (HTML format)
@@ -779,7 +794,7 @@ function registerIpcHandlers() {
         const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
         const data = JSON.parse(raw);
         delete data[safeTicketId];
-        await fsp.writeFile(AUTOSAVE_FILE, JSON.stringify(data, null, 2), "utf-8");
+        await writeAutosaveAtomic(data);
       } catch {
         // File doesn't exist or is corrupt — nothing to delete
       }
@@ -797,7 +812,7 @@ function registerIpcHandlers() {
         const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
         const data = JSON.parse(raw);
         delete data[safeTicketId];
-        await fsp.writeFile(AUTOSAVE_FILE, JSON.stringify(data, null, 2), "utf-8");
+        await writeAutosaveAtomic(data);
       } catch {
         // File doesn't exist or is corrupt
       }
