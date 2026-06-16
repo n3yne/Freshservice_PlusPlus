@@ -1149,6 +1149,7 @@ document.addEventListener("DOMContentLoaded", function () {
       } catch { /* ignore */ }
     }
 
+    if (tabId !== activeTabId) return;
     _busEmit("ticket:changed", { ticketId: newTicket, previous: currentPanelTicket });
     ticketIdInput.value = newTicket;
     currentPanelTicket = newTicket;

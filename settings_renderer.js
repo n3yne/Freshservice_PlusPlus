@@ -471,7 +471,11 @@ document.addEventListener("DOMContentLoaded", function () {
         pluginPanels.push({ id, panel });
 
         // Let the plugin populate the panel
-        if (typeof setupFn === "function") setupFn(panel);
+        if (typeof setupFn === "function") {
+          try { setupFn(panel); } catch (err) {
+            console.error("[PluginSettings] Panel setup for \"" + id + "\" failed:", err);
+          }
+        }
       },
       getSettings: function () { return Object.assign({}, appSettings); },
       saveSettings: function (patch) {

@@ -804,12 +804,12 @@ function registerIpcHandlers() {
           // so history-only tickets can show a date in the UI.
           let updatedAt = null;
           try {
-            const files = await fsp.readdir(path.join(BACKUP_DIR, dir));
+            const files = await fsp.readdir(path.join(BACKUP_DIR, safeDir));
             let latestMs = 0;
             for (const f of files) {
               if (!f.endsWith(".html") && !f.endsWith(".txt")) continue;
               try {
-                const st = await fsp.stat(path.join(BACKUP_DIR, dir, f));
+                const st = await fsp.stat(path.join(BACKUP_DIR, safeDir, f));
                 if (st.mtimeMs > latestMs) {
                   latestMs = st.mtimeMs;
                   updatedAt = new Date(st.mtimeMs).toISOString();
