@@ -501,6 +501,16 @@ These plugins ship with the app and are loaded for all users.
 
 ### User-installed plugins
 
+**Option A — Import via the UI (recommended)**
+
+1. Open **Settings → Plugins**
+2. Click **Import Plugin** and select your plugin folder in the file dialog
+3. The app copies it into the user data directory and confirms the name; restart to activate
+
+If a plugin with the same `id` is already installed, the import is blocked and an error is shown — remove the existing plugin first.
+
+**Option B — Copy manually**
+
 Drop the plugin directory into the app's data folder. You can open it from within the app via **📁 Open Folder** in the note panel, then navigate up one level:
 
 ```

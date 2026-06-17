@@ -48,7 +48,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 - **Delivered as a bundled plugin** — the Metrics Bar is implemented via the plugin system; it can be disabled independently from Settings → Plugins
 
 ### AI Assistant
-- **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes
+- **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes. After a suggestion is returned, a **Refine** textarea appears — type follow-up instructions (e.g. "make it shorter", "keep this as a client-facing message") and click **↺ Refine** to generate a revised version without losing the Apply option
 - **📋 Summarize** – Scrapes all visible note content from the active CW ticket page and asks the AI to produce a concise bullet-point summary
 - Supports **Hatz AI**, **OpenAI**, and **Anthropic** as providers; the model dropdown is populated automatically from the provider's API once an API key is entered
 - **Delivered as a bundled plugin** — AI Features is implemented via the plugin system; it can be disabled independently from Settings → Plugins
@@ -60,6 +60,7 @@ Extend the app with self-contained plugin directories — no build step required
 - **Bundled plugins** – Ship with the app and are always available (e.g. the Metrics Bar)
 - **User-installed plugins** – Drop a plugin folder into `%APPDATA%\connectwise-manage-pp\plugins\` for plugins that survive app updates
 - **Plugin management** – Enable or disable individual plugins from Settings → Plugins; restart to apply
+- **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed
 - Plugins can add toolbar buttons, Settings panels, backend IPC handlers, DOM elements, and application menu items
 - See [`docs/plugins.md`](docs/plugins.md) for the full development guide and [`docs/example-plugin/`](docs/example-plugin/) for a reference skeleton
 
