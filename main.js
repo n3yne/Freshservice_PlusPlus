@@ -998,6 +998,11 @@ function registerIpcHandlers() {
     return pluginManager.getSettingsScripts();
   });
 
+  // Plugin system: return stylesheet paths for injection in both windows
+  electron.ipcMain.handle("plugin-get-stylesheets", () => {
+    return pluginManager.getPluginStylesheets();
+  });
+
   // Plugin system: forward renderer-originated events to main-process plugin listeners
   electron.ipcMain.on("plugin-event-from-renderer", (_event, payload) => {
     if (payload && typeof payload.name === "string") {

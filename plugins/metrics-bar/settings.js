@@ -68,6 +68,11 @@
   let settingMetricsWeekEndDay = null;
   let settingMetricsWorkStart = null;
   let settingMetricsWorkEnd = null;
+  let settingMetricsLunchMinutes = null;
+  let metricsPtoDateInput = null;
+  let metricsPtoHoursInput = null;
+  let btnMetricsAddPto = null;
+  let metricsPtoList = null;
 
   // ==================== Utilities ====================
 
@@ -434,6 +439,36 @@
     });
   }
 
+  function renderPtoList() {
+    if (!metricsPtoList) return;
+    metricsPtoList.innerHTML = "";
+    const entries = appSettings.metricsTimeOff || [];
+    entries.forEach(function (entry) {
+      const row = document.createElement("div");
+      row.className = "metrics-pto-entry";
+      const label = document.createElement("span");
+      label.className = "metrics-pto-entry-label";
+      const d = new Date(entry.date + "T12:00:00");
+      const formatted = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+      label.textContent = formatted + " — " + entry.hours + " hr" + (entry.hours !== 1 ? "s" : "");
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "btn btn-small metrics-pto-delete-btn";
+      del.title = "Remove";
+      del.textContent = "×";
+      del.addEventListener("click", function () {
+        appSettings.metricsTimeOff = (appSettings.metricsTimeOff || []).filter(function (e) {
+          return e.date !== entry.date;
+        });
+        saveSettings();
+        renderPtoList();
+      });
+      row.appendChild(label);
+      row.appendChild(del);
+      metricsPtoList.appendChild(row);
+    });
+  }
+
   async function scrapeMetrics(dbId) {
     if (metricsScraperBusy) return;
     const db = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
@@ -584,6 +619,8 @@
     if (settingMetricsWeekEndDay) settingMetricsWeekEndDay.value = String(settings.metricsWorkWeekEndDay !== undefined ? settings.metricsWorkWeekEndDay : 5);
     if (settingMetricsWorkStart) settingMetricsWorkStart.value = settings.metricsWorkHoursStart || "08:00";
     if (settingMetricsWorkEnd) settingMetricsWorkEnd.value = settings.metricsWorkHoursEnd || "17:00";
+    if (settingMetricsLunchMinutes) settingMetricsLunchMinutes.value = String(settings.metricsLunchMinutes || 0);
+    renderPtoList();
     renderDashboardList();
   }
 
@@ -650,22 +687,43 @@
       '<input type="time" id="plugin-setting-metrics-work-end" class="settings-time-input" />' +
       '</div>' +
       '</div>' +
+      '<div class="settings-field">' +
+      '<span class="settings-field-label">Lunch break</span>' +
+      '<div class="metrics-work-hours-row">' +
+      '<input type="number" id="plugin-setting-metrics-lunch-mins" class="settings-text-input metrics-lunch-input" min="0" max="480" step="5" />' +
+      '<span class="metrics-work-hours-label">minutes</span>' +
+      '</div>' +
+      '</div>' +
+      '<div class="settings-field settings-field-column">' +
+      '<span class="settings-field-label">Time Off</span>' +
+      '<div class="metrics-pto-add-row">' +
+      '<input type="date" id="plugin-metrics-pto-date" class="settings-text-input metrics-pto-date-input" />' +
+      '<input type="number" id="plugin-metrics-pto-hours" class="settings-text-input metrics-pto-hours-input" min="0" max="24" step="0.5" placeholder="hrs" />' +
+      '<button type="button" id="plugin-btn-metrics-add-pto" class="btn btn-small btn-secondary">+ Add PTO</button>' +
+      '</div>' +
+      '<div id="plugin-metrics-pto-list" class="metrics-pto-list"></div>' +
+      '</div>' +
       '</div>' +
       '<div id="plugin-metrics-dashboards-list"></div>' +
       '<button type="button" id="plugin-btn-metrics-add-dashboard" class="btn btn-small btn-secondary metrics-add-dashboard-btn">+ Add Dashboard</button>' +
       '</div>' +
       '</div>';
 
-    settingMetricsEnabled        = panel.querySelector("#plugin-setting-metrics-enabled");
-    settingMetricsInterval       = panel.querySelector("#plugin-setting-metrics-interval");
+    settingMetricsEnabled         = panel.querySelector("#plugin-setting-metrics-enabled");
+    settingMetricsInterval        = panel.querySelector("#plugin-setting-metrics-interval");
     settingMetricsProgressEnabled = panel.querySelector("#plugin-setting-metrics-progress-enabled");
-    metricsProgressConfig        = panel.querySelector("#plugin-metrics-progress-config");
-    metricsWorkDayCheckboxes     = Array.from(panel.querySelectorAll(".metrics-work-day"));
-    settingMetricsWeekEndDay     = panel.querySelector("#plugin-setting-metrics-week-end-day");
-    settingMetricsWorkStart      = panel.querySelector("#plugin-setting-metrics-work-start");
-    settingMetricsWorkEnd        = panel.querySelector("#plugin-setting-metrics-work-end");
-    metricsDashboardsList        = panel.querySelector("#plugin-metrics-dashboards-list");
-    const btnMetricsAddDashboard  = panel.querySelector("#plugin-btn-metrics-add-dashboard");
+    metricsProgressConfig         = panel.querySelector("#plugin-metrics-progress-config");
+    metricsWorkDayCheckboxes      = Array.from(panel.querySelectorAll(".metrics-work-day"));
+    settingMetricsWeekEndDay      = panel.querySelector("#plugin-setting-metrics-week-end-day");
+    settingMetricsWorkStart       = panel.querySelector("#plugin-setting-metrics-work-start");
+    settingMetricsWorkEnd         = panel.querySelector("#plugin-setting-metrics-work-end");
+    settingMetricsLunchMinutes    = panel.querySelector("#plugin-setting-metrics-lunch-mins");
+    metricsPtoDateInput           = panel.querySelector("#plugin-metrics-pto-date");
+    metricsPtoHoursInput          = panel.querySelector("#plugin-metrics-pto-hours");
+    btnMetricsAddPto              = panel.querySelector("#plugin-btn-metrics-add-pto");
+    metricsPtoList                = panel.querySelector("#plugin-metrics-pto-list");
+    metricsDashboardsList         = panel.querySelector("#plugin-metrics-dashboards-list");
+    const btnMetricsAddDashboard   = panel.querySelector("#plugin-btn-metrics-add-dashboard");
 
     settingMetricsEnabled.addEventListener("change", function () {
       appSettings.metricsBarEnabled = settingMetricsEnabled.checked;
@@ -708,6 +766,30 @@
     settingMetricsWorkEnd.addEventListener("change", function () {
       appSettings.metricsWorkHoursEnd = settingMetricsWorkEnd.value;
       saveSettings();
+    });
+
+    settingMetricsLunchMinutes.addEventListener("change", function () {
+      const val = parseInt(settingMetricsLunchMinutes.value, 10);
+      appSettings.metricsLunchMinutes = (isNaN(val) || val < 0) ? 0 : Math.min(val, 480);
+      saveSettings();
+    });
+
+    btnMetricsAddPto.addEventListener("click", function () {
+      const date = metricsPtoDateInput.value;
+      const hours = parseFloat(metricsPtoHoursInput.value);
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(hours) || hours <= 0 || hours > 24) return;
+      if (!appSettings.metricsTimeOff) appSettings.metricsTimeOff = [];
+      const existing = appSettings.metricsTimeOff.findIndex(function (e) { return e.date === date; });
+      if (existing >= 0) {
+        appSettings.metricsTimeOff[existing].hours = hours;
+      } else {
+        appSettings.metricsTimeOff.push({ date: date, hours: hours });
+        appSettings.metricsTimeOff.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+      }
+      saveSettings();
+      metricsPtoDateInput.value = "";
+      metricsPtoHoursInput.value = "";
+      renderPtoList();
     });
 
     if (btnMetricsAddDashboard) {

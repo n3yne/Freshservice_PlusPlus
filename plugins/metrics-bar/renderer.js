@@ -70,15 +70,16 @@
     const endParts   = (settings.metricsWorkHoursEnd   || "17:00").split(":").map(Number);
     const dayStartMins = startParts[0] * 60 + (startParts[1] || 0);
     const dayEndMins   = endParts[0]   * 60 + (endParts[1]   || 0);
-    const dayMinutes = dayEndMins - dayStartMins;
-    if (dayMinutes <= 0 || workDays.length === 0) return 0;
+    const lunchMins  = Math.max(0, parseInt(settings.metricsLunchMinutes || 0, 10));
+    const dayMinutes = Math.max(0, dayEndMins - dayStartMins - lunchMins);
+    if (dayMinutes <= 0 || workDays.length === 0) return { progress: 0, ptoRatio: 1 };
 
     let weekStartDay = -1;
     for (let i = 1; i <= 7; i++) {
       const candidate = (weekEndDay + i) % 7;
       if (workDays.includes(candidate)) { weekStartDay = candidate; break; }
     }
-    if (weekStartDay === -1) return 0;
+    if (weekStartDay === -1) return { progress: 0, ptoRatio: 1 };
 
     const orderedDays = [];
     for (let i = 0; i < 7; i++) {
@@ -86,24 +87,58 @@
       if (workDays.includes(d)) orderedDays.push({ day: d, offset: i });
       if (d === weekEndDay) break;
     }
-    const totalWorkMinutes = orderedDays.length * dayMinutes;
-    if (totalWorkMinutes === 0) return 0;
+
+    // fullWeekMinutes is the base (no PTO). ptoRatio = totalWorkMinutes / fullWeekMinutes
+    // is used to scale the weekly target down for weeks with PTO.
+    const fullWeekMinutes = orderedDays.length * dayMinutes;
+    if (fullWeekMinutes === 0) return { progress: 0, ptoRatio: 1 };
 
     const daysSinceStart = (nowDay - weekStartDay + 7) % 7;
+
+    // Determine the calendar date of each work day so we can look up PTO entries.
+    const weekStartDate = new Date(now);
+    weekStartDate.setDate(weekStartDate.getDate() - daysSinceStart);
+    weekStartDate.setHours(0, 0, 0, 0);
+    const timeOff = settings.metricsTimeOff || [];
+
+    function ptoMinsForOffset(offset) {
+      const d = new Date(weekStartDate);
+      d.setDate(d.getDate() + offset);
+      const dateStr = d.getFullYear() + "-" +
+        String(d.getMonth() + 1).padStart(2, "0") + "-" +
+        String(d.getDate()).padStart(2, "0");
+      const entry = timeOff.find(function (e) { return e.date === dateStr; });
+      return entry ? Math.min((parseFloat(entry.hours) || 0) * 60, dayMinutes) : 0;
+    }
+
+    // Total available work minutes this week after subtracting PTO.
+    let totalWorkMinutes = 0;
+    orderedDays.forEach(function (od) {
+      totalWorkMinutes += Math.max(0, dayMinutes - ptoMinsForOffset(od.offset));
+    });
+
     let elapsed = 0;
     for (let i = 0; i < orderedDays.length; i++) {
-      const offset = orderedDays[i].offset;
-      if (offset < daysSinceStart) {
-        elapsed += dayMinutes;
-      } else if (offset === daysSinceStart) {
-        if (nowMins >= dayEndMins)        elapsed += dayMinutes;
-        else if (nowMins > dayStartMins)  elapsed += nowMins - dayStartMins;
+      const od = orderedDays[i];
+      const effectiveMins = Math.max(0, dayMinutes - ptoMinsForOffset(od.offset));
+      if (od.offset < daysSinceStart) {
+        elapsed += effectiveMins;
+      } else if (od.offset === daysSinceStart) {
+        if (nowMins >= dayEndMins)       elapsed += effectiveMins;
+        else if (nowMins > dayStartMins) elapsed += Math.min(nowMins - dayStartMins, effectiveMins);
         break;
       } else {
         break;
       }
     }
-    return Math.min(1, elapsed / totalWorkMinutes);
+
+    // progress uses fullWeekMinutes so that target * progress gives the right
+    // expected value — PTO days reduce what's expected, not inflate the ratio.
+    // ptoRatio scales the target itself for the goal-met threshold.
+    return {
+      progress: Math.min(1, elapsed / fullWeekMinutes),
+      ptoRatio: Math.min(1, totalWorkMinutes / fullWeekMinutes),
+    };
   }
 
   function renderMetricsBar() {
@@ -136,11 +171,12 @@
           if (!isNaN(target) && target > 0) {
             const currentNum = parseFloat(String(val || "0").replace(/[^0-9.]/g, ""));
             if (!isNaN(currentNum)) {
-              const progress = getWeekProgress(appSettings);
+              const { progress, ptoRatio } = getWeekProgress(appSettings);
+              const adjustedTarget = Math.round(target * ptoRatio * 10) / 10;
               const expected = target * progress;
               const expectedRounded = Math.round(expected * 10) / 10;
-              tooltipLines.push("On track: " + expectedRounded + " of " + target);
-              if (currentNum >= target) {
+              tooltipLines.push("On track: " + expectedRounded + " of " + adjustedTarget);
+              if (adjustedTarget > 0 && currentNum >= adjustedTarget) {
                 card.classList.add("metrics-progress-goal-met");
               } else if (expected > 0) {
                 if (currentNum < expected * 0.9) {

@@ -497,6 +497,18 @@ document.addEventListener("DOMContentLoaded", function () {
     }).catch(function (err) {
       console.error("[Settings] Failed to load plugin settings scripts:", err);
     });
+
+    // Inject stylesheets from installed plugins
+    window.backupAPI.getPluginStylesheets().then(function (sheetPaths) {
+      (sheetPaths || []).forEach(function (href) {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = href;
+        document.head.appendChild(link);
+      });
+    }).catch(function (err) {
+      console.error("[Settings] Failed to load plugin stylesheets:", err);
+    });
   }).catch(function (err) {
     console.error("[Settings] Error loading settings:", err);
   });

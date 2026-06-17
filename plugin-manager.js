@@ -19,6 +19,9 @@ const rendererScripts = [];
 // Absolute settings-window script paths collected during initPlugins.
 const settingsScripts = [];
 
+// Absolute stylesheet paths collected during initPlugins (loaded in both windows).
+const pluginStylesheets = [];
+
 // All plugins discovered during initPlugins (including disabled and failed).
 const _discoveredPlugins = [];
 
@@ -258,6 +261,13 @@ async function loadPlugin(pluginDir, source, ipcMain) {
     }
   }
 
+  // Auto-load styles.css if present — injected into both windows
+  const stylesPath = path.join(pluginDir, "styles.css");
+  try {
+    await fsp.access(stylesPath, fs.constants.R_OK);
+    pluginStylesheets.push(stylesPath);
+  } catch { /* no styles.css — fine */ }
+
   record.loaded = true;
 }
 
@@ -302,6 +312,10 @@ function getRendererScripts() {
 
 function getSettingsScripts() {
   return settingsScripts.map(p => "file:///" + p.replace(/\\/g, "/"));
+}
+
+function getPluginStylesheets() {
+  return pluginStylesheets.map(p => "file:///" + p.replace(/\\/g, "/"));
 }
 
 function getPluginInfo() {
@@ -391,6 +405,7 @@ module.exports = {
   initPlugins,
   getRendererScripts,
   getSettingsScripts,
+  getPluginStylesheets,
   getPluginInfo,
   setPluginEnabled,
   importPlugin,

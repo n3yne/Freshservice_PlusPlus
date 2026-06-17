@@ -1432,6 +1432,20 @@ document.addEventListener("DOMContentLoaded", function () {
       }).catch(function (err) {
         console.error("[Plugin loader]", err);
       });
+
+      // Inject stylesheets from installed plugins
+      window.backupAPI.getPluginStylesheets().then(function (sheetPaths) {
+        if (!Array.isArray(sheetPaths)) return;
+        sheetPaths.forEach(function (sheetPath) {
+          if (typeof sheetPath !== "string") return;
+          const link = document.createElement("link");
+          link.rel = "stylesheet";
+          link.href = sheetPath;
+          document.head.appendChild(link);
+        });
+      }).catch(function (err) {
+        console.error("[Plugin loader]", err);
+      });
     })
     .catch(function (err) {
       console.error("[Settings] Error loading settings:", err);

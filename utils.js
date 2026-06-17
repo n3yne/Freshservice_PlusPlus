@@ -24,6 +24,8 @@ const DEFAULT_SETTINGS = {
   metricsBarEnabled: false,
   metricsBarInterval: 15,
   metricsBarDashboards: [],
+  metricsLunchMinutes: 0,
+  metricsTimeOff: [],
 };
 
 function sanitizeTicketId(raw) {
@@ -79,6 +81,19 @@ function validateSettings(s) {
         if (typeof f.label !== "string" || f.label.length === 0 || f.label.length > 50) return false;
         if (typeof f.selector !== "string" || f.selector.length === 0 || f.selector.length > 2000) return false;
       }
+    }
+  }
+  // TODO: metricsLunchMinutes and metricsTimeOff belong to the metrics-bar plugin.
+  // Move these defaults + validators here once a plugin settings registration API exists
+  // (plugin exports defaultSettings + validateSettings, merged by plugin-manager at load time).
+  if (s.metricsLunchMinutes !== undefined && (typeof s.metricsLunchMinutes !== "number" || s.metricsLunchMinutes < 0 || s.metricsLunchMinutes > 480)) return false;
+  if (s.metricsTimeOff !== undefined) {
+    if (!Array.isArray(s.metricsTimeOff)) return false;
+    if (s.metricsTimeOff.length > 365) return false;
+    for (const t of s.metricsTimeOff) {
+      if (typeof t !== "object" || t === null || Array.isArray(t)) return false;
+      if (typeof t.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(t.date)) return false;
+      if (typeof t.hours !== "number" || t.hours < 0 || t.hours > 24) return false;
     }
   }
   if (!Array.isArray(s.noteTemplates)) return false;

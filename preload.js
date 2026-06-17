@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld("backupAPI", {
   openSettingsWindow: () => ipcRenderer.invoke("open-settings-window"),
   getPluginScripts: () => ipcRenderer.invoke("plugin-get-scripts"),
   getPluginSettingsScripts: () => ipcRenderer.invoke("plugin-get-settings-scripts"),
+  getPluginStylesheets: () => ipcRenderer.invoke("plugin-get-stylesheets"),
   pluginInvoke: (channel, data) => {
     if (typeof channel !== "string" || !/^plugin:[a-z0-9][a-z0-9_-]*:[a-z0-9_-]+$/i.test(channel))
       return Promise.reject(new Error("Invalid plugin channel"));
