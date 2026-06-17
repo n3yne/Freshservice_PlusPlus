@@ -105,8 +105,13 @@
     '<button type="button" id="btn-ai-close" class="settings-close" title="Close">&times;</button>' +
     "</div>" +
     '<div id="ai-dialog-body" class="ai-dialog-body"></div>' +
+    '<div id="ai-instructions-row" class="ai-instructions-row" style="display:none">' +
+    '<textarea id="ai-instructions-input" class="ai-instructions-input" rows="2" ' +
+    'placeholder="Refine: e.g. make it shorter, use bullet points, keep it as a client-facing message…"></textarea>' +
+    "</div>" +
     '<div class="ai-dialog-footer">' +
     '<button type="button" id="btn-ai-apply" class="btn btn-primary">Apply</button>' +
+    '<button type="button" id="btn-ai-refine" class="btn btn-secondary" style="display:none">↺ Refine</button>' +
     '<button type="button" id="btn-ai-copy" class="btn btn-secondary">📋 Copy</button>' +
     '<button type="button" id="btn-ai-cancel" class="btn btn-secondary">Cancel</button>' +
     "</div>" +
@@ -115,12 +120,16 @@
 
   const aiDialogTitle = document.getElementById("ai-dialog-title");
   const aiDialogBody = document.getElementById("ai-dialog-body");
+  const aiInstructionsRow = document.getElementById("ai-instructions-row");
+  const aiInstructionsInput = document.getElementById("ai-instructions-input");
   const btnAiApply = document.getElementById("btn-ai-apply");
+  const btnAiRefine = document.getElementById("btn-ai-refine");
   const btnAiCopy = document.getElementById("btn-ai-copy");
   const btnAiCancel = document.getElementById("btn-ai-cancel");
   const btnAiClose = document.getElementById("btn-ai-close");
 
   let aiApplyCallback = null;
+  let currentRefineState = null;
 
   function showAiOverlay(title, bodyHtml, applyCallback, applyLabel) {
     aiDialogTitle.textContent = title;
@@ -128,12 +137,21 @@
     aiApplyCallback = applyCallback || null;
     btnAiApply.textContent = applyLabel || "Apply";
     btnAiApply.style.display = applyCallback ? "" : "none";
+    aiInstructionsRow.style.display = "none";
+    btnAiRefine.style.display = "none";
+    btnAiRefine.disabled = false;
+    currentRefineState = null;
     aiOverlay.classList.add("visible");
   }
 
   function closeAiOverlay() {
     aiOverlay.classList.remove("visible");
     aiApplyCallback = null;
+    currentRefineState = null;
+    aiInstructionsInput.value = "";
+    aiInstructionsRow.style.display = "none";
+    btnAiRefine.style.display = "none";
+    btnAiRefine.disabled = false;
   }
 
   btnAiClose.addEventListener("click", closeAiOverlay);
@@ -151,6 +169,25 @@
     const text = aiDialogBody.innerText;
     navigator.clipboard.writeText(text).catch(function () {});
   });
+
+  function applySuggestResult(rawResult, sigHtml, sigPlain) {
+    let resultText = rawResult;
+    if (sigPlain) {
+      const trimmed = resultText.trimEnd();
+      if (trimmed.endsWith(sigPlain)) resultText = trimmed.slice(0, -sigPlain.length).trimEnd();
+    }
+    const escaped = resultText
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+    aiDialogBody.innerHTML = '<div class="ai-result">' + escaped + "</div>";
+    aiApplyCallback = (function (text, esc, sig) {
+      return async function () {
+        await api.notes.saveSnapshot(text);
+        api.notes.setContent(sig ? esc + "<br>" + sig : esc);
+      };
+    }(resultText, escaped, sigHtml));
+    btnAiApply.style.display = "";
+  }
 
   // --- Suggest ---
   btnSuggest.addEventListener("click", async function () {
@@ -187,15 +224,13 @@
       ticketContext = await api.browser.executeInActiveTab(CW_NOTES_SCRAPE_SCRIPT) || "";
     } catch { /* non-fatal — context is optional */ }
 
+    const invokeSettings = { aiProvider: settings.aiProvider, aiModelName: settings.aiModelName };
     let response;
     try {
       response = await api.invoke("ai-features", "suggest", {
         text: textToSend,
         ticketContext: ticketContext,
-        settings: {
-          aiProvider: settings.aiProvider,
-          aiModelName: settings.aiModelName,
-        },
+        settings: invokeSettings,
       });
     } catch {
       aiDialogBody.innerHTML = '<p class="ai-error">Request failed — check your connection.</p>';
@@ -211,28 +246,49 @@
       return;
     }
 
-    let resultText = response.result;
-    if (sigPlain) {
-      const trimmedResult = resultText.trimEnd();
-      if (trimmedResult.endsWith(sigPlain)) {
-        resultText = trimmedResult.slice(0, -sigPlain.length).trimEnd();
-      }
+    applySuggestResult(response.result, sigHtml, sigPlain);
+    currentRefineState = { textToSend, ticketContext, settings: invokeSettings, sigHtml, sigPlain };
+    aiInstructionsRow.style.display = "";
+    btnAiRefine.style.display = "";
+  });
+
+  // --- Refine ---
+  btnAiRefine.addEventListener("click", async function () {
+    if (btnAiRefine.disabled || !currentRefineState) return;
+    const instructions = aiInstructionsInput.value.trim();
+    const { textToSend, ticketContext, settings: invokeSettings, sigHtml, sigPlain } = currentRefineState;
+
+    btnAiRefine.disabled = true;
+    btnAiApply.style.display = "none";
+    aiDialogBody.innerHTML = '<div class="ai-loading">Refining…</div>';
+
+    let response;
+    try {
+      response = await api.invoke("ai-features", "suggest", {
+        text: textToSend,
+        ticketContext: ticketContext,
+        customInstructions: instructions,
+        settings: invokeSettings,
+      });
+    } catch {
+      aiDialogBody.innerHTML = '<p class="ai-error">Request failed — check your connection.</p>';
+      btnAiRefine.disabled = false;
+      return;
     }
 
-    const escaped = resultText
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/\n/g, "<br>");
-    aiDialogBody.innerHTML = '<div class="ai-result">' + escaped + "</div>";
+    if (response.error) {
+      aiDialogBody.innerHTML = '<p class="ai-error">' + response.error.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>";
+      btnAiRefine.disabled = false;
+      return;
+    }
+    if (!response.result) {
+      aiDialogBody.innerHTML = '<p class="ai-error">AI returned an empty response.</p>';
+      btnAiRefine.disabled = false;
+      return;
+    }
 
-    const capturedEscaped = escaped;
-    const capturedSigHtml = sigHtml;
-    const capturedResultText = resultText;
-    aiApplyCallback = async function () {
-      await api.notes.saveSnapshot(capturedResultText);
-      const finalHtml = capturedSigHtml ? capturedEscaped + "<br>" + capturedSigHtml : capturedEscaped;
-      api.notes.setContent(finalHtml);
-    };
-    btnAiApply.style.display = "";
+    applySuggestResult(response.result, sigHtml, sigPlain);
+    btnAiRefine.disabled = false;
   });
 
   // --- Summarize ---

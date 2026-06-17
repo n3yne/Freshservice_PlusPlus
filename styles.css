@@ -1525,6 +1525,30 @@ body.settings-page {
   white-space: pre-wrap;
 }
 
+.ai-instructions-row {
+  padding: 10px 16px 4px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ai-instructions-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+}
+
+.ai-instructions-input:focus {
+  border-color: var(--accent);
+}
+
 /* ===== AI Settings Fields ===== */
 .ai-provider-fields {
   margin-top: 10px;

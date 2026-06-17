@@ -1,7 +1,8 @@
 "use strict";
 
-const MAX_NOTES_CHARS   = 8000;   // per-field cap before sending to AI
-const MAX_CONTEXT_CHARS = 4000;   // ticket context cap for suggest
+const MAX_NOTES_CHARS        = 8000;
+const MAX_CONTEXT_CHARS      = 4000;
+const MAX_INSTRUCTIONS_CHARS = 500;
 
 module.exports = function (api) {
 
@@ -108,7 +109,7 @@ module.exports = function (api) {
       .filter(Boolean);
   }
 
-  api.handle("suggest", async function ({ text, ticketContext, settings: aiSettings }) {
+  api.handle("suggest", async function ({ text, ticketContext, customInstructions, settings: aiSettings }) {
     const provider = aiSettings?.aiProvider;
     const aiApiKey = api.getSettings().aiApiKey;
     if (!aiSettings || !["hatz", "openai", "anthropic"].includes(provider) || !aiApiKey) {
@@ -116,18 +117,27 @@ module.exports = function (api) {
     }
     const safeText = (text || "").substring(0, MAX_NOTES_CHARS);
     const safeContext = (ticketContext || "").substring(0, MAX_CONTEXT_CHARS);
+    const safeInstructions = (customInstructions || "").substring(0, MAX_INSTRUCTIONS_CHARS);
     const contextSection =
       safeContext.trim().length > 20
         ? "\n\nFor background, here are the existing ticket notes for context (do not repeat or summarize these — they are reference only):\n\n" +
           safeContext.trim() + "\n\n---\n\n"
         : "";
+    const instructionsSection = safeInstructions.trim()
+      ? "\nAdditional user instructions: " + safeInstructions.trim() + "\n"
+      : "";
     const prompt =
-      "Review the following technical support notes and provide an improved version with better clarity, grammar, and professionalism. " +
-      "Do not use em-dashes or en-dashes in your response — use commas, periods, or hyphens instead. " +
-      "Do not add, include, or preserve any signature, sign-off, closing line, or contact information at the end. " +
-      "Reply with only the improved notes text, no preamble, no labels, no explanation:" +
+      "You are a professional writing assistant for an IT help desk. " +
+      "Improve the following text for clarity, grammar, and professionalism.\n\n" +
+      "CRITICAL — preserve the original voice and intended audience:\n" +
+      "- If the text addresses a client directly (has a salutation or uses second-person \"you\"/\"your\"), keep it as a second-person client-facing message. Do NOT rewrite it as a third-person internal note.\n" +
+      "- If the text is an internal note (uses third person, refers to \"the client\", \"the user\", or \"they\"), keep it as a third-person internal note. Do NOT convert it to second person.\n\n" +
+      "Do not use em-dashes or en-dashes — use commas, periods, or hyphens instead. " +
+      "Do not add, include, or preserve any signature, sign-off, closing line, or contact information at the end.\n" +
+      instructionsSection +
+      "Reply with only the improved text, no preamble, no labels, no explanation." +
       contextSection +
-      "\n\nNotes to improve:\n\n" + safeText;
+      "\n\nText to improve:\n\n" + safeText;
     try {
       return { result: await callAiChat(prompt, Object.assign({}, aiSettings, { aiApiKey })) };
     } catch (err) {
