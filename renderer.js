@@ -691,7 +691,7 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (err) {
       autosaveStatus.textContent = "Error pushing to CW notes field";
       autosaveStatus.className = "";
-      console.error("[CW Sync] Push error:", err);
+      console.error("[CW Push] manual push error:", err);
     }
   });
 
@@ -939,7 +939,8 @@ document.addEventListener("DOMContentLoaded", function () {
           syncStatus.className = "sync-status sync-idle";
         }
       }
-    } catch {
+    } catch (pushErr) {
+      console.error("[CW Push] auto push error:", pushErr);
       state.consecutivePushFailures = (state.consecutivePushFailures || 0) + 1;
       if (state.consecutivePushFailures === 1) {
         addUniqueNotification({
@@ -1015,7 +1016,10 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         obs.disconnect();
         if (!ta) { styleTag.remove(); return null; }
-        if (!popup) { popup = ta.closest('.cw-gxt-wnd'); if (popup) popup.classList.add('cw-sync-hidden'); }
+        if (!popup) {
+          popup = ta.closest('.cw-gxt-wnd');
+          if (popup) popup.classList.add('cw-sync-hidden');
+        }
         return { ta: ta, wasHidden: true, popup: popup, styleTag: styleTag };
       }
 
@@ -1031,11 +1035,104 @@ document.addEventListener("DOMContentLoaded", function () {
 
       var draftEl = document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
       if (draftEl) {
-        withVisible(draftEl, function() {
-          draftEl.focus();
-          document.execCommand('selectAll', false, null);
-          document.execCommand('insertText', false, text);
-        });
+        withVisible(draftEl, function() { draftEl.focus(); });
+
+        // DOM-based selection (execCommand selectAll, Selection API, synthetic Ctrl+A)
+        // all fail to update _latestEditorState before the paste fires because Draft.js
+        // debounces selectionchange asynchronously. Instead, reach into the React fiber
+        // to set _latestEditorState to an all-blocks selection via a Proxy. Draft.js's
+        // paste handler reads _latestEditorState.getSelection() synchronously, so the
+        // paste replaces all existing content rather than inserting at the cursor.
+        try {
+          var fiberKey = Object.keys(draftEl).find(function(k) {
+            return k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance');
+          });
+          var draftEditorInst = null;
+          if (fiberKey) {
+            var f = draftEl[fiberKey];
+            while (f) {
+              if (f.stateNode && f.stateNode._latestEditorState) {
+                draftEditorInst = f.stateNode;
+                break;
+              }
+              f = f.return;
+            }
+          }
+          if (draftEditorInst) {
+            var es = draftEditorInst._latestEditorState;
+            var curSel = es.getSelection();
+            // Get block keys from DOM (data-offset-key="blockKey-decoratorIdx-leafIdx").
+            // \\d inside the template literal produces \d in the injected script string.
+            var blockEls = draftEl.querySelectorAll('[data-block="true"]');
+            var keyRe = /^(.+)-\\d+-\\d+$/;
+            var firstBlockKey = blockEls.length > 0
+              && (keyRe.exec(blockEls[0].getAttribute('data-offset-key') || '') || [])[1];
+            var lastBlockEl = blockEls[blockEls.length - 1];
+            var lastBlockKey = lastBlockEl
+              && (keyRe.exec(lastBlockEl.getAttribute('data-offset-key') || '') || [])[1];
+            var lastBlockLen = lastBlockEl ? lastBlockEl.textContent.length : 0;
+            if (curSel && firstBlockKey && lastBlockKey) {
+              var newSel;
+              try {
+                newSel = new curSel.constructor({
+                  anchorKey: firstBlockKey,
+                  anchorOffset: 0,
+                  focusKey: lastBlockKey,
+                  focusOffset: lastBlockLen,
+                  isBackward: false,
+                  hasFocus: true,
+                });
+              } catch (selConsErr) {
+                newSel = {
+                  anchorKey: firstBlockKey, anchorOffset: 0,
+                  focusKey: lastBlockKey, focusOffset: lastBlockLen,
+                  isBackward: false, hasFocus: true,
+                };
+              }
+              // Wrap _latestEditorState in a Proxy. getSelection() is not minified in
+              // this build, so intercept it directly. Also swap curSel → newSel on any
+              // other access path that returns it, as a safety net.
+              draftEditorInst._latestEditorState = new Proxy(es, {
+                get: function(target, prop) {
+                  if (prop === 'getSelection') return function() { return newSel; };
+                  var val = target[prop];
+                  if (val === curSel) return newSel;
+                  if (typeof val === 'function') {
+                    return function() {
+                      var r = val.apply(target, arguments);
+                      return r === curSel ? newSel : r;
+                    };
+                  }
+                  return val;
+                },
+              });
+            }
+          }
+        } catch (fiberErr) { /* selection update failed — paste will insert at cursor */ }
+
+        // Dispatch paste event. The paste pathway (insertFragment) does not trigger
+        // the CW NoteRichTextEditor unmount that execCommand('insertText') caused.
+        try {
+          var dt = new DataTransfer();
+          dt.setData('text/plain', text);
+          draftEl.dispatchEvent(new ClipboardEvent('paste', {
+            bubbles: true,
+            cancelable: true,
+            clipboardData: dt,
+          }));
+        } catch (pasteErr) {
+          // DataTransfer or ClipboardEvent unavailable — fall back to execCommand.
+          withVisible(draftEl, function() {
+            document.execCommand('selectAll', false, null);
+            document.execCommand('insertText', false, text);
+          });
+        }
+
+        if (!draftEl.isConnected) {
+          var freshDraftEl = document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
+          if (freshDraftEl) freshDraftEl.focus();
+        }
+
         return { type: 'draft' };
       }
 
@@ -1641,7 +1738,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
-    // Messages emitted by the injected CW watcher arrive here as console-message events.
+    // Messages emitted by the injected CW watcher arrive here.
     on(webview, "console-message", function (e) {
       const msg = e.message || "";
       if (!msg.startsWith("[CW-SYNC] ")) return;
