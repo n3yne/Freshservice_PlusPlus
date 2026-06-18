@@ -1061,8 +1061,7 @@ document.addEventListener("DOMContentLoaded", function () {
           if (draftEditorInst) {
             var es = draftEditorInst._latestEditorState;
             var curSel = es.getSelection();
-            // Get block keys from DOM (data-offset-key="blockKey-decoratorIdx-leafIdx").
-            // \\d inside the template literal produces \d in the injected script string.
+            // Block keys are encoded in data-offset-key="blockKey-decoratorIdx-leafIdx".
             var blockEls = draftEl.querySelectorAll('[data-block="true"]');
             var keyRe = /^(.+)-\\d+-\\d+$/;
             var firstBlockKey = blockEls.length > 0
