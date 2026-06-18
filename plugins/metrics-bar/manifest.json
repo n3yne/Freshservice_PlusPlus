@@ -3,6 +3,7 @@
   "name": "Metrics Bar",
   "version": "0.4.1",
   "description": "Live stats bar displaying values scraped from BrightGauge and other dashboards.",
+  "main": "main.js",
   "renderer": "renderer.js",
   "settings": "settings.js",
   "minAppVersion": "0.4.1"

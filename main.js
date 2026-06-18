@@ -60,58 +60,43 @@ const CW_AUTH_PATH_PATTERN =
 
 // ===================== Settings Persistence =====================
 
-async function loadSettings() {
+// Reads and parses settings.json with no transformations applied.
+async function readSettingsFile() {
   try {
     const raw = await fsp.readFile(SETTINGS_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    // Migrate old single-dashboard format to metricsBarDashboards array
-    if (!parsed.metricsBarDashboards && (parsed.metricsBarUrl || parsed.metricsBarFields)) {
-      parsed.metricsBarDashboards = parsed.metricsBarUrl ? [{
-        id: "db-migrated",
-        url: parsed.metricsBarUrl,
-        fields: parsed.metricsBarFields || [],
-      }] : [];
-    }
-    // Decrypt AI API key stored by safeStorage; fall back gracefully if unavailable
-    if (parsed.aiApiKeyEncrypted) {
-      try {
-        parsed.aiApiKey = electron.safeStorage.isEncryptionAvailable()
-          ? electron.safeStorage.decryptString(Buffer.from(parsed.aiApiKeyEncrypted, "base64"))
-          : "";
-      } catch (e) {
-        console.error("[Settings] Failed to decrypt AI API key:", e);
-        parsed.aiApiKey = "";
-      }
-      delete parsed.aiApiKeyEncrypted;
-    }
-    return Object.assign({}, DEFAULT_SETTINGS, parsed);
+    return JSON.parse(raw);
   } catch (e) {
-    if (e.code !== "ENOENT") console.error("[Settings] Error loading settings:", e);
-    return Object.assign({}, DEFAULT_SETTINGS);
+    if (e.code !== "ENOENT") console.error("[Settings] Error reading settings file:", e);
+    return {};
   }
+}
+
+// Merges core + plugin defaults onto a raw parsed object. Does NOT run migrations —
+// those are run once at startup (after initPlugins) so they never fire on routine reads.
+function applySettingsDefaults(parsed) {
+  return Object.assign({}, DEFAULT_SETTINGS, pluginManager.getPluginDefaultSettings(), parsed);
+}
+
+async function loadSettings() {
+  return applySettingsDefaults(await readSettingsFile());
 }
 
 async function saveSettings(settings) {
   try {
     await ensureBackupDir();
-    const toWrite = Object.assign({}, settings);
-    if (toWrite.aiApiKey && electron.safeStorage.isEncryptionAvailable()) {
-      toWrite.aiApiKeyEncrypted = electron.safeStorage.encryptString(toWrite.aiApiKey).toString("base64");
-      delete toWrite.aiApiKey;
-    }
-    await fsp.writeFile(SETTINGS_FILE, JSON.stringify(toWrite, null, 2), "utf-8");
+    await fsp.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf-8");
   } catch (e) {
     console.error("[Settings] Error saving settings:", e);
   }
 }
 
 // Returns a copy of settings safe to broadcast to renderer processes and plugins.
-// Strips the AI API key (a billing credential) and replaces it with a boolean
-// so plugin scripts can check whether a key is configured without reading it.
+// Strips AI credentials (billing secrets) and replaces with a boolean flag.
 function toPublicSettings(s) {
   const out = Object.assign({}, s);
-  out.aiApiKeySet = Boolean(out.aiApiKey);
+  out.aiApiKeySet = Boolean(out.aiApiKey || out.aiApiKeyEncrypted);
   delete out.aiApiKey;
+  delete out.aiApiKeyEncrypted;
   return out;
 }
 
@@ -965,20 +950,21 @@ function registerIpcHandlers() {
   // Save settings to disk and notify the renderer
   electron.ipcMain.handle("save-settings", async (event, settings) => {
     const existing = await loadSettings();
-    const merged = Object.assign({}, DEFAULT_SETTINGS, settings);
-    // If the caller didn't supply a key (e.g. renderers that received a stripped
-    // broadcast and then saved a non-key setting), preserve whatever is on disk.
+    const merged = Object.assign({}, DEFAULT_SETTINGS, pluginManager.getPluginDefaultSettings(), settings);
+    // If caller didn't supply a new plaintext key, preserve whatever encrypted key is on disk.
     if (!settings.aiApiKey) {
-      merged.aiApiKey = existing.aiApiKey;
+      merged.aiApiKeyEncrypted = existing.aiApiKeyEncrypted;
+      if (existing.aiApiKey) merged.aiApiKey = existing.aiApiKey; // backward compat
     }
-    if (!validateSettings(merged)) {
+    if (!validateSettings(merged) || !pluginManager.validatePluginSettings(merged)) {
       console.warn("[Settings] Rejected invalid settings payload");
       return { success: false };
     }
-    await saveSettings(merged);
-    const publicMerged = toPublicSettings(merged);
+    const toSave = pluginManager.transformSettingsForSave(merged);
+    await saveSettings(toSave);
+    const publicMerged = toPublicSettings(toSave);
     pluginManager.fireEvent("settings:changed", publicMerged);
-    pluginManager.updateSettings(merged); // plugin-manager keeps the full settings for main-process plugins
+    pluginManager.updateSettings(toSave);
     const sender = electron.BrowserWindow.fromWebContents(event.sender);
     electron.BrowserWindow.getAllWindows().forEach((win) => {
       if (win !== sender && !win.isDestroyed()) {
@@ -1306,12 +1292,32 @@ electron.app.whenReady().then(async () => {
     });
   });
 
-  const initialSettings = await loadSettings();
+  // Two-phase startup: read raw file first so plugins can see persisted values during init,
+  // then run plugin migrations + merge defaults to produce the final settings object.
+  const rawParsed = await readSettingsFile();
   try {
-    await pluginManager.initPlugins(electron.app.getPath("userData"), initialSettings, electron.ipcMain);
+    await pluginManager.initPlugins(
+      electron.app.getPath("userData"),
+      Object.assign({}, DEFAULT_SETTINGS, rawParsed),
+      electron.ipcMain
+    );
   } catch (e) {
     console.error("[Plugins] initPlugins failed — starting without plugins:", e);
   }
+  // Run migrations exactly once — plugins are now registered so all migrators are available.
+  // If any migration modified rawParsed, write the upgraded data back to disk so future
+  // loadSettings() calls (IPC, backup cleanup) never see the legacy format again.
+  const preMigration = JSON.stringify(rawParsed);
+  pluginManager.runMigrations(rawParsed);
+  let effectiveRaw = rawParsed;
+  if (JSON.stringify(rawParsed) !== preMigration) {
+    // Route through plugin transformers so a legacy plaintext credential is encrypted on the migration write.
+    effectiveRaw = pluginManager.transformSettingsForSave(rawParsed);
+    await saveSettings(effectiveRaw);
+  }
+
+  const initialSettings = applySettingsDefaults(effectiveRaw);
+  pluginManager.updateSettings(initialSettings);
 
   registerIpcHandlers();
   createWindow();

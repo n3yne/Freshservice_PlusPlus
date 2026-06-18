@@ -22,6 +22,15 @@ const settingsScripts = [];
 // Absolute stylesheet paths collected during initPlugins (loaded in both windows).
 const pluginStylesheets = [];
 
+// Merged default settings from all loaded plugins — filled during initPlugins.
+const _pluginDefaultSettings = {};
+// Settings validators from plugins — each { pluginId, fn }.
+const _pluginValidators = [];
+// Settings transformers from plugins — each { pluginId, fn } — called before writing to disk.
+const _settingsTransformers = [];
+// Settings migrators from plugins — each { pluginId, fn } — mutate raw parsed object in-place.
+const _migrators = [];
+
 // All plugins discovered during initPlugins (including disabled and failed).
 const _discoveredPlugins = [];
 
@@ -143,6 +152,32 @@ function buildPluginApi(pluginId, ipcMain) {
     log(...args) {
       console.log(`[Plugin:${pluginId}]`, ...args);
     },
+
+    encryptCredential(plaintext) {
+      if (typeof plaintext !== "string" || !plaintext) return null;
+      try {
+        const electron = require("electron");
+        if (!electron.safeStorage.isEncryptionAvailable()) return null;
+        return electron.safeStorage.encryptString(plaintext).toString("base64");
+      } catch { return null; }
+    },
+
+    decryptCredential(encrypted) {
+      if (typeof encrypted !== "string" || !encrypted) return null;
+      try {
+        const electron = require("electron");
+        if (!electron.safeStorage.isEncryptionAvailable()) return null;
+        return electron.safeStorage.decryptString(Buffer.from(encrypted, "base64"));
+      } catch { return null; }
+    },
+
+    registerSettingsTransformer(fn) {
+      if (typeof fn !== "function") {
+        console.warn(`[Plugin:${pluginId}] registerSettingsTransformer: argument must be a function`);
+        return;
+      }
+      _settingsTransformers.push({ pluginId, fn });
+    },
   });
 }
 
@@ -217,8 +252,18 @@ async function loadPlugin(pluginDir, source, ipcMain) {
         mod(api);
       } else if (mod && typeof mod.init === "function") {
         mod.init(api);
-      } else {
-        console.warn(`[PluginManager] Plugin "${id}" main.js does not export a function or { init }`);
+      } else if (!mod?.defaultSettings && !mod?.validateSettings) {
+        console.warn(`[PluginManager] Plugin "${id}" main.js does not export a function, { init }, or plugin metadata`);
+      }
+      // Collect plugin-provided settings metadata (defaultSettings, validateSettings)
+      if (mod?.defaultSettings && typeof mod.defaultSettings === "object" && !Array.isArray(mod.defaultSettings)) {
+        Object.assign(_pluginDefaultSettings, mod.defaultSettings);
+      }
+      if (typeof mod?.validateSettings === "function") {
+        _pluginValidators.push({ pluginId: id, fn: mod.validateSettings });
+      }
+      if (typeof mod?.migrateSettings === "function") {
+        _migrators.push({ pluginId: id, fn: mod.migrateSettings });
       }
       console.log(`[PluginManager] Loaded plugin "${id}" (main)`);
     } catch (err) {
@@ -279,6 +324,10 @@ async function initPlugins(userData, initialSettings, ipcMain, rebuildMenuFn) {
   _rebuildMenu = rebuildMenuFn || null;
   _pluginsConfigFile = path.join(userData, "note-backups", "plugins-config.json");
   _discoveredPlugins.length = 0; // Clear on re-init
+  for (const key of Object.keys(_pluginDefaultSettings)) delete _pluginDefaultSettings[key];
+  _pluginValidators.length = 0;
+  _settingsTransformers.length = 0;
+  _migrators.length = 0;
 
   await loadPluginsConfig();
 
@@ -401,6 +450,48 @@ function updateSettings(settings) {
   _currentSettings = Object.assign({}, settings);
 }
 
+function runMigrations(rawSettings) {
+  for (const { pluginId, fn } of _migrators) {
+    try {
+      fn(rawSettings);
+    } catch (err) {
+      console.error(`[PluginManager] Plugin "${pluginId}" migrateSettings threw:`, err);
+    }
+  }
+}
+
+function getPluginDefaultSettings() {
+  return Object.assign({}, _pluginDefaultSettings);
+}
+
+function validatePluginSettings(s) {
+  for (const { pluginId, fn } of _pluginValidators) {
+    try {
+      if (!fn(s)) {
+        console.warn(`[PluginManager] Plugin "${pluginId}" validateSettings rejected the payload`);
+        return false;
+      }
+    } catch (err) {
+      console.error(`[PluginManager] Plugin "${pluginId}" validateSettings threw:`, err);
+      return false;
+    }
+  }
+  return true;
+}
+
+function transformSettingsForSave(settings) {
+  let result = Object.assign({}, settings);
+  for (const { pluginId, fn } of _settingsTransformers) {
+    try {
+      const out = fn(result);
+      if (out && typeof out === "object" && !Array.isArray(out)) result = out;
+    } catch (err) {
+      console.error(`[PluginManager] Plugin "${pluginId}" settings transformer threw:`, err);
+    }
+  }
+  return result;
+}
+
 module.exports = {
   initPlugins,
   getRendererScripts,
@@ -411,4 +502,8 @@ module.exports = {
   importPlugin,
   fireEvent,
   updateSettings,
+  runMigrations,
+  getPluginDefaultSettings,
+  validatePluginSettings,
+  transformSettingsForSave,
 };

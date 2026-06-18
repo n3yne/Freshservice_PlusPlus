@@ -108,7 +108,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2 MB — max pasted/dropped image size
 
   // ==================== Settings ====================
-  // Mirror of DEFAULT_SETTINGS in utils.js — update both if adding a new key.
+  // Core settings fallback — only keys used by applySettings() before the async load resolves.
+  // Plugin keys are omitted; plugins handle their own missing-value fallbacks via getSettings().
   let appSettings = {
     notePanelEnabled: true,
     backupRetentionDays: 7,
@@ -121,20 +122,8 @@ document.addEventListener("DOMContentLoaded", function () {
     noteTemplates: [],
     liveSyncEnabled: true,
     snapshotThreshold: 5,
-    aiEnabled: true,
-    aiProvider: "hatz",
-    aiModelName: "",
-    aiApiKeySet: false,
     dismissedReleaseVersion: "",
     backupStorageWarningMb: 100,
-    metricsBarEnabled: false,
-    metricsBarInterval: 15,
-    metricsBarDashboards: [],
-    metricsProgressEnabled: false,
-    metricsWorkDays: [1, 2, 3, 4, 5],
-    metricsWorkHoursStart: "08:00",
-    metricsWorkHoursEnd: "17:00",
-    metricsWorkWeekEndDay: 5,
   };
 
   function applySettings(settings) {

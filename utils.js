@@ -1,7 +1,8 @@
 "use strict";
 
 // Shared between main process (required directly) and tests.
-// renderer.js cannot require this — it mirrors DEFAULT_SETTINGS as a literal.
+// Contains only core app settings. Plugin-specific defaults and validators
+// live in each plugin's main.js (defaultSettings + validateSettings exports).
 
 const DEFAULT_SETTINGS = {
   notePanelEnabled: true,
@@ -15,17 +16,8 @@ const DEFAULT_SETTINGS = {
   noteTemplates: [],
   liveSyncEnabled: true,
   snapshotThreshold: 5,
-  aiEnabled: true,
-  aiProvider: "hatz",
-  aiModelName: "",
-  aiApiKey: "",
   dismissedReleaseVersion: "",
   backupStorageWarningMb: 100,
-  metricsBarEnabled: false,
-  metricsBarInterval: 15,
-  metricsBarDashboards: [],
-  metricsLunchMinutes: 0,
-  metricsTimeOff: [],
 };
 
 function sanitizeTicketId(raw) {
@@ -58,44 +50,8 @@ function validateSettings(s) {
     (typeof s.snapshotThreshold !== "number" || s.snapshotThreshold < 1 || s.snapshotThreshold > 9999)
   )
     return false;
-  if (s.aiEnabled !== undefined && typeof s.aiEnabled !== "boolean") return false;
-  if (s.aiProvider !== undefined && !["none", "hatz", "openai", "anthropic"].includes(s.aiProvider)) return false;
-  if (s.aiModelName !== undefined && (typeof s.aiModelName !== "string" || s.aiModelName.length > 100)) return false;
-  if (s.aiApiKey !== undefined && (typeof s.aiApiKey !== "string" || s.aiApiKey.length > 500)) return false;
   if (s.dismissedReleaseVersion !== undefined && (typeof s.dismissedReleaseVersion !== "string" || s.dismissedReleaseVersion.length > 20)) return false;
   if (s.backupStorageWarningMb !== undefined && (typeof s.backupStorageWarningMb !== "number" || s.backupStorageWarningMb < 0 || s.backupStorageWarningMb > 100000)) return false;
-  if (s.metricsBarEnabled !== undefined && typeof s.metricsBarEnabled !== "boolean") return false;
-  if (s.metricsBarInterval !== undefined && (typeof s.metricsBarInterval !== "number" || ![5, 15, 30, 60].includes(s.metricsBarInterval))) return false;
-  if (s.metricsBarDashboards !== undefined) {
-    if (!Array.isArray(s.metricsBarDashboards)) return false;
-    if (s.metricsBarDashboards.length > 10) return false;
-    for (const db of s.metricsBarDashboards) {
-      if (typeof db !== "object" || db === null || Array.isArray(db)) return false;
-      if (typeof db.id !== "string" || db.id.length === 0 || db.id.length > 50) return false;
-      if (typeof db.url !== "string" || db.url.length > 500) return false;
-      if (!Array.isArray(db.fields)) return false;
-      if (db.fields.length > 20) return false;
-      for (const f of db.fields) {
-        if (typeof f !== "object" || f === null || Array.isArray(f)) return false;
-        if (typeof f.id !== "string" || f.id.length === 0 || f.id.length > 50) return false;
-        if (typeof f.label !== "string" || f.label.length === 0 || f.label.length > 50) return false;
-        if (typeof f.selector !== "string" || f.selector.length === 0 || f.selector.length > 2000) return false;
-      }
-    }
-  }
-  // TODO: metricsLunchMinutes and metricsTimeOff belong to the metrics-bar plugin.
-  // Move these defaults + validators here once a plugin settings registration API exists
-  // (plugin exports defaultSettings + validateSettings, merged by plugin-manager at load time).
-  if (s.metricsLunchMinutes !== undefined && (typeof s.metricsLunchMinutes !== "number" || s.metricsLunchMinutes < 0 || s.metricsLunchMinutes > 480)) return false;
-  if (s.metricsTimeOff !== undefined) {
-    if (!Array.isArray(s.metricsTimeOff)) return false;
-    if (s.metricsTimeOff.length > 365) return false;
-    for (const t of s.metricsTimeOff) {
-      if (typeof t !== "object" || t === null || Array.isArray(t)) return false;
-      if (typeof t.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(t.date)) return false;
-      if (typeof t.hours !== "number" || t.hours < 0 || t.hours > 24) return false;
-    }
-  }
   if (!Array.isArray(s.noteTemplates)) return false;
   if (s.noteTemplates.length > 50) return false;
   for (const tmpl of s.noteTemplates) {
