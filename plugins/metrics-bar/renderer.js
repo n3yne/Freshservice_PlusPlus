@@ -102,6 +102,7 @@
     weekStartDate.setDate(weekStartDate.getDate() - daysSinceStart);
     weekStartDate.setHours(0, 0, 0, 0);
     const timeOff = settings.metricsTimeOff || [];
+    const recurringBlocks = settings.metricsRecurringBlocks || [];
 
     function ptoMinsForOffset(offset) {
       const d = new Date(weekStartDate);
@@ -111,6 +112,12 @@
         String(d.getDate()).padStart(2, "0");
       const entry = timeOff.find(function (e) { return e.date === dateStr; });
       return entry ? Math.min((parseFloat(entry.hours) || 0) * 60, dayMinutes) : 0;
+    }
+
+    function meetingMinsForDay(dayOfWeek) {
+      return recurringBlocks.reduce(function (sum, b) {
+        return sum + (b.dayOfWeek === dayOfWeek ? Math.min((parseFloat(b.hours) || 0) * 60, dayMinutes) : 0);
+      }, 0);
     }
 
     // Total available work minutes this week after subtracting PTO.
@@ -123,11 +130,12 @@
     for (let i = 0; i < orderedDays.length; i++) {
       const od = orderedDays[i];
       const effectiveMins = Math.max(0, dayMinutes - ptoMinsForOffset(od.offset));
+      const meetingMins = meetingMinsForDay(od.day);
       if (od.offset < daysSinceStart) {
-        elapsed += effectiveMins;
+        elapsed += Math.max(0, effectiveMins - meetingMins);
       } else if (od.offset === daysSinceStart) {
-        if (nowMins >= dayEndMins)       elapsed += effectiveMins;
-        else if (nowMins > dayStartMins) elapsed += Math.min(nowMins - dayStartMins, effectiveMins);
+        if (nowMins >= dayEndMins)       elapsed += Math.max(0, effectiveMins - meetingMins);
+        else if (nowMins > dayStartMins) elapsed += Math.max(0, Math.min(nowMins - dayStartMins, effectiveMins) - meetingMins);
         break;
       } else {
         break;
@@ -174,7 +182,11 @@
             const currentNum = parseFloat(String(val || "0").replace(/[^0-9.]/g, ""));
             if (!isNaN(currentNum)) {
               const { progress, ptoRatio } = getWeekProgress(appSettings);
-              const adjustedTarget = Math.round(target * ptoRatio * 10) / 10;
+              const _rawAdjusted = target * ptoRatio;
+              const _rounding = appSettings.metricsTargetRounding || "none";
+              const adjustedTarget = _rounding === "floor" ? Math.floor(_rawAdjusted)
+                : _rounding === "ceil" ? Math.ceil(_rawAdjusted)
+                : Math.round(_rawAdjusted * 10) / 10;
               const expected = target * progress;
               const expectedRounded = Math.round(expected * 10) / 10;
               tooltipLines.push("On track: " + expectedRounded + " of " + adjustedTarget);

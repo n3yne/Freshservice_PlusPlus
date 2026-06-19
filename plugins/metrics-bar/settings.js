@@ -69,10 +69,16 @@
   let settingMetricsWorkStart = null;
   let settingMetricsWorkEnd = null;
   let settingMetricsLunchMinutes = null;
+  let settingMetricsTargetRounding = null;
   let metricsPtoDateInput = null;
   let metricsPtoHoursInput = null;
   let btnMetricsAddPto = null;
   let metricsPtoList = null;
+  let metricsBlockDayInput = null;
+  let metricsBlockHoursInput = null;
+  let metricsBlockLabelInput = null;
+  let btnMetricsAddBlock = null;
+  let metricsBlockList = null;
 
   // ==================== Utilities ====================
 
@@ -469,6 +475,38 @@
     });
   }
 
+  const BLOCK_DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+  function renderBlockList() {
+    if (!metricsBlockList) return;
+    metricsBlockList.innerHTML = "";
+    const entries = appSettings.metricsRecurringBlocks || [];
+    entries.forEach(function (entry) {
+      const row = document.createElement("div");
+      row.className = "metrics-pto-entry";
+      const label = document.createElement("span");
+      label.className = "metrics-pto-entry-label";
+      const dayName = BLOCK_DAY_NAMES[entry.dayOfWeek] || "Day " + entry.dayOfWeek;
+      label.textContent = dayName + " — " + entry.hours + " hr" + (entry.hours !== 1 ? "s" : "") +
+        (entry.label ? " (" + entry.label + ")" : "");
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "btn btn-small metrics-pto-delete-btn";
+      del.title = "Remove";
+      del.textContent = "×";
+      del.addEventListener("click", function () {
+        appSettings.metricsRecurringBlocks = (appSettings.metricsRecurringBlocks || []).filter(function (b) {
+          return b.id !== entry.id;
+        });
+        saveSettings();
+        renderBlockList();
+      });
+      row.appendChild(label);
+      row.appendChild(del);
+      metricsBlockList.appendChild(row);
+    });
+  }
+
   async function scrapeMetrics(dbId) {
     if (metricsScraperBusy) return;
     const db = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
@@ -622,7 +660,9 @@
     if (settingMetricsWorkStart) settingMetricsWorkStart.value = settings.metricsWorkHoursStart || "08:00";
     if (settingMetricsWorkEnd) settingMetricsWorkEnd.value = settings.metricsWorkHoursEnd || "17:00";
     if (settingMetricsLunchMinutes) settingMetricsLunchMinutes.value = String(settings.metricsLunchMinutes || 0);
+    if (settingMetricsTargetRounding) settingMetricsTargetRounding.value = settings.metricsTargetRounding || "none";
     renderPtoList();
+    renderBlockList();
     renderDashboardList();
   }
 
@@ -696,6 +736,16 @@
       '<span class="metrics-work-hours-label">minutes</span>' +
       '</div>' +
       '</div>' +
+      '<div class="settings-field">' +
+      '<label class="settings-field-label" for="plugin-setting-metrics-target-rounding">Adjusted target rounding</label>' +
+      '<div class="settings-field-row">' +
+      '<select id="plugin-setting-metrics-target-rounding" class="settings-select-input settings-select-sm">' +
+      '<option value="none">No rounding (e.g. 22.5)</option>' +
+      '<option value="floor">Round down (e.g. 22)</option>' +
+      '<option value="ceil">Round up (e.g. 23)</option>' +
+      '</select>' +
+      '</div>' +
+      '</div>' +
       '<div class="settings-field settings-field-column">' +
       '<span class="settings-field-label">Time Off</span>' +
       '<div class="metrics-pto-add-row">' +
@@ -704,6 +754,25 @@
       '<button type="button" id="plugin-btn-metrics-add-pto" class="btn btn-small btn-secondary">+ Add PTO</button>' +
       '</div>' +
       '<div id="plugin-metrics-pto-list" class="metrics-pto-list"></div>' +
+      '</div>' +
+      '<div class="settings-field settings-field-column">' +
+      '<span class="settings-field-label">Weekly Blocks</span>' +
+      '<p class="settings-description">Time reserved each week (meetings, etc.) that reduces on-track hours without affecting the weekly target.</p>' +
+      '<div class="metrics-pto-add-row">' +
+      '<select id="plugin-metrics-block-day" class="settings-select-input settings-select-sm">' +
+      '<option value="0">Sunday</option>' +
+      '<option value="1">Monday</option>' +
+      '<option value="2">Tuesday</option>' +
+      '<option value="3">Wednesday</option>' +
+      '<option value="4">Thursday</option>' +
+      '<option value="5">Friday</option>' +
+      '<option value="6">Saturday</option>' +
+      '</select>' +
+      '<input type="number" id="plugin-metrics-block-hours" class="settings-text-input metrics-pto-hours-input" min="0.25" max="24" step="0.25" placeholder="hrs" />' +
+      '<input type="text" id="plugin-metrics-block-label" class="settings-text-input metrics-block-label-input" placeholder="Label (optional)" maxlength="50" />' +
+      '<button type="button" id="plugin-btn-metrics-add-block" class="btn btn-small btn-secondary">+ Add</button>' +
+      '</div>' +
+      '<div id="plugin-metrics-block-list" class="metrics-pto-list"></div>' +
       '</div>' +
       '</div>' +
       '<div id="plugin-metrics-dashboards-list"></div>' +
@@ -720,10 +789,16 @@
     settingMetricsWorkStart       = panel.querySelector("#plugin-setting-metrics-work-start");
     settingMetricsWorkEnd         = panel.querySelector("#plugin-setting-metrics-work-end");
     settingMetricsLunchMinutes    = panel.querySelector("#plugin-setting-metrics-lunch-mins");
+    settingMetricsTargetRounding  = panel.querySelector("#plugin-setting-metrics-target-rounding");
     metricsPtoDateInput           = panel.querySelector("#plugin-metrics-pto-date");
     metricsPtoHoursInput          = panel.querySelector("#plugin-metrics-pto-hours");
     btnMetricsAddPto              = panel.querySelector("#plugin-btn-metrics-add-pto");
     metricsPtoList                = panel.querySelector("#plugin-metrics-pto-list");
+    metricsBlockDayInput          = panel.querySelector("#plugin-metrics-block-day");
+    metricsBlockHoursInput        = panel.querySelector("#plugin-metrics-block-hours");
+    metricsBlockLabelInput        = panel.querySelector("#plugin-metrics-block-label");
+    btnMetricsAddBlock            = panel.querySelector("#plugin-btn-metrics-add-block");
+    metricsBlockList              = panel.querySelector("#plugin-metrics-block-list");
     metricsDashboardsList         = panel.querySelector("#plugin-metrics-dashboards-list");
     const btnMetricsAddDashboard   = panel.querySelector("#plugin-btn-metrics-add-dashboard");
 
@@ -776,6 +851,12 @@
       saveSettings();
     });
 
+    settingMetricsTargetRounding.addEventListener("change", function () {
+      const val = settingMetricsTargetRounding.value;
+      appSettings.metricsTargetRounding = ["none", "floor", "ceil"].includes(val) ? val : "none";
+      saveSettings();
+    });
+
     btnMetricsAddPto.addEventListener("click", function () {
       const date = metricsPtoDateInput.value;
       const hours = parseFloat(metricsPtoHoursInput.value);
@@ -792,6 +873,19 @@
       metricsPtoDateInput.value = "";
       metricsPtoHoursInput.value = "";
       renderPtoList();
+    });
+
+    btnMetricsAddBlock.addEventListener("click", function () {
+      const dayOfWeek = parseInt(metricsBlockDayInput.value, 10);
+      const hours = parseFloat(metricsBlockHoursInput.value);
+      const label = metricsBlockLabelInput.value.trim();
+      if (isNaN(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6 || isNaN(hours) || hours <= 0 || hours > 24) return;
+      if (!appSettings.metricsRecurringBlocks) appSettings.metricsRecurringBlocks = [];
+      appSettings.metricsRecurringBlocks.push({ id: "rb-" + Date.now(), dayOfWeek: dayOfWeek, hours: hours, label: label || null });
+      saveSettings();
+      metricsBlockHoursInput.value = "";
+      metricsBlockLabelInput.value = "";
+      renderBlockList();
     });
 
     if (btnMetricsAddDashboard) {

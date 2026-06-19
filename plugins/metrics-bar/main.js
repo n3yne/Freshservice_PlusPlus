@@ -12,7 +12,9 @@ module.exports = {
     metricsWorkHoursEnd: "17:00",
     metricsWorkWeekEndDay: 5,
     metricsLunchMinutes: 0,
+    metricsTargetRounding: "none",
     metricsTimeOff: [],
+    metricsRecurringBlocks: [],
   },
 
   migrateSettings: function (parsed) {
@@ -59,6 +61,7 @@ module.exports = {
     if (s.metricsWorkHoursStart !== undefined && (typeof s.metricsWorkHoursStart !== "string" || !/^\d{2}:\d{2}$/.test(s.metricsWorkHoursStart))) return false;
     if (s.metricsWorkHoursEnd !== undefined && (typeof s.metricsWorkHoursEnd !== "string" || !/^\d{2}:\d{2}$/.test(s.metricsWorkHoursEnd))) return false;
     if (s.metricsLunchMinutes !== undefined && (typeof s.metricsLunchMinutes !== "number" || s.metricsLunchMinutes < 0 || s.metricsLunchMinutes > 480)) return false;
+    if (s.metricsTargetRounding !== undefined && !["none", "floor", "ceil"].includes(s.metricsTargetRounding)) return false;
     if (s.metricsTimeOff !== undefined) {
       if (!Array.isArray(s.metricsTimeOff)) return false;
       if (s.metricsTimeOff.length > 365) return false;
@@ -66,6 +69,17 @@ module.exports = {
         if (typeof t !== "object" || t === null || Array.isArray(t)) return false;
         if (typeof t.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(t.date)) return false;
         if (typeof t.hours !== "number" || t.hours < 0 || t.hours > 24) return false;
+      }
+    }
+    if (s.metricsRecurringBlocks !== undefined) {
+      if (!Array.isArray(s.metricsRecurringBlocks)) return false;
+      if (s.metricsRecurringBlocks.length > 50) return false;
+      for (const b of s.metricsRecurringBlocks) {
+        if (typeof b !== "object" || b === null || Array.isArray(b)) return false;
+        if (typeof b.id !== "string" || b.id.length === 0 || b.id.length > 50) return false;
+        if (typeof b.dayOfWeek !== "number" || !Number.isInteger(b.dayOfWeek) || b.dayOfWeek < 0 || b.dayOfWeek > 6) return false;
+        if (typeof b.hours !== "number" || b.hours <= 0 || b.hours > 24) return false;
+        if (b.label !== null && b.label !== undefined && (typeof b.label !== "string" || b.label.length > 100)) return false;
       }
     }
     return true;
