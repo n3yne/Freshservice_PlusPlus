@@ -583,12 +583,14 @@
     if (!label || !selector) return;
     const db = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === metricsPickerDashboardId; });
     if (!db) return;
+    const pickedText = metricsPickerValuePreview.textContent;
+    const initialValue = (pickedText && pickedText !== "(no text)") ? pickedText : null;
     if (metricsPickerTargetFieldId) {
       db.fields = (db.fields || []).map(function (f) {
-        return f.id === metricsPickerTargetFieldId ? Object.assign({}, f, { label, selector }) : f;
+        return f.id === metricsPickerTargetFieldId ? Object.assign({}, f, { label, selector, initialValue }) : f;
       });
     } else {
-      db.fields = (db.fields || []).concat([{ id: "mf-" + Date.now(), label, selector }]);
+      db.fields = (db.fields || []).concat([{ id: "mf-" + Date.now(), label, selector, initialValue }]);
     }
     saveSettings();
     closeMetricsPicker();

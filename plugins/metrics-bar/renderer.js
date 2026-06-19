@@ -42,8 +42,10 @@
   try {
     const _c = JSON.parse(localStorage.getItem("cwpp-metrics-cache") || "{}");
     Object.keys(_c).forEach(function (id) {
-      metricsCache[id] = _c[id];
-      metricsValues[id] = _c[id].value;
+      if (_c[id] && _c[id].value !== null && _c[id].value !== undefined) {
+        metricsCache[id] = _c[id];
+        metricsValues[id] = _c[id].value;
+      }
     });
   } catch { /* start fresh */ }
 
@@ -241,12 +243,20 @@
 
           if (results) {
             const now = Date.now();
+            let hasNewValues = false;
             Object.keys(results).forEach(function (id) {
-              metricsValues[id] = results[id];
-              metricsCache[id] = { value: results[id], ts: now };
-              metricsStale.delete(id);
+              if (results[id] !== null) {
+                metricsValues[id] = results[id];
+                metricsCache[id] = { value: results[id], ts: now };
+                metricsStale.delete(id);
+                hasNewValues = true;
+              } else {
+                metricsStale.add(id);
+              }
             });
-            try { localStorage.setItem("cwpp-metrics-cache", JSON.stringify(metricsCache)); } catch { /* storage unavailable */ }
+            if (hasNewValues) {
+              try { localStorage.setItem("cwpp-metrics-cache", JSON.stringify(metricsCache)); } catch { /* storage unavailable */ }
+            }
             anySuccess = true;
           } else {
             dbFieldIds.forEach(function (id) { metricsStale.add(id); });
@@ -299,11 +309,30 @@
     metricsPollTimer = null;
   }
 
+  function applyInitialValues(settings) {
+    const now = Date.now();
+    let changed = false;
+    (settings.metricsBarDashboards || []).forEach(function (db) {
+      (db.fields || []).forEach(function (f) {
+        if (f.initialValue != null && metricsValues[f.id] == null) {
+          metricsValues[f.id] = f.initialValue;
+          metricsCache[f.id] = { value: f.initialValue, ts: now };
+          changed = true;
+        }
+      });
+    });
+    if (changed) {
+      try { localStorage.setItem("cwpp-metrics-cache", JSON.stringify(metricsCache)); } catch { /* storage unavailable */ }
+    }
+  }
+
   function applyMetrics(settings) {
     const metricsActive = settings.metricsBarEnabled &&
       (settings.metricsBarDashboards || []).some(function (db) { return db.url && (db.fields || []).length > 0; });
     if (metricsActive) {
       metricsBar.classList.add("visible");
+      applyInitialValues(settings);
+      renderMetricsBar();
       startMetricsPoll();
     } else {
       metricsBar.classList.remove("visible");
