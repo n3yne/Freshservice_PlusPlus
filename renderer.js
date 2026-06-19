@@ -2938,7 +2938,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const sortDir = appSettings.ticketSortDirection || "desc";
 
       tickets.sort(function (a, b) {
-        let result = 0;
+        let result;
         if (sortField === "lastUpdated") {
           const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
           const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
