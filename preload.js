@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld("backupAPI", {
     onIpc("download-update", (event, data) => callback(data)),
   onOpenSettings: (callback) => onIpc("open-settings", () => callback()),
   onFindInPage: (callback) => onIpc("find-in-page", () => callback()),
+  onRefreshAllTabs: (callback) => onIpc("refresh-all-tabs", () => callback()),
   onSettingsChanged: (callback) =>
     onIpc("settings-changed", (event, settings) => callback(settings)),
   openSettingsWindow: () => ipcRenderer.invoke("open-settings-window"),

@@ -299,6 +299,15 @@ function createWindow() {
       submenu: [
         { role: "reload" },
         { role: "forceReload" },
+        {
+          label: "Refresh All Tabs",
+          accelerator: "CmdOrCtrl+Alt+R",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("refresh-all-tabs");
+            }
+          },
+        },
         { role: "toggleDevTools" },
         { type: "separator" },
         { role: "resetZoom" },

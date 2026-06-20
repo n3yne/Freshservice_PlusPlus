@@ -1434,6 +1434,12 @@ document.addEventListener("DOMContentLoaded", function () {
     showFindBar();
   });
 
+  window.backupAPI.onRefreshAllTabs(function () {
+    tabs.forEach(function (t) {
+      try { t.webview.reload(); } catch { /* ignore */ }
+    });
+  });
+
   // Listen for settings changed from main process
   window.backupAPI.onSettingsChanged(function (settings) {
     applySettings(settings);
