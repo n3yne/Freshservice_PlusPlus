@@ -49,6 +49,35 @@
     });
   } catch { /* start fresh */ }
 
+  // Zero out cached values from a previous work week so stale numbers
+  // don't persist into the new week before the first successful scrape.
+  (function () {
+    const _workDays = appSettings.metricsWorkDays || [1, 2, 3, 4, 5];
+    const _weekEndDay = typeof appSettings.metricsWorkWeekEndDay === "number" ? appSettings.metricsWorkWeekEndDay : 5;
+    let _weekStartDay = -1;
+    for (let i = 1; i <= 7; i++) {
+      const c = (_weekEndDay + i) % 7;
+      if (_workDays.includes(c)) { _weekStartDay = c; break; }
+    }
+    if (_weekStartDay === -1) return;
+    const _now = new Date();
+    const _weekStart = new Date(_now);
+    _weekStart.setDate(_weekStart.getDate() - (_now.getDay() - _weekStartDay + 7) % 7);
+    _weekStart.setHours(0, 0, 0, 0);
+    const _weekStartMs = _weekStart.getTime();
+    let _changed = false;
+    Object.keys(metricsCache).forEach(function (id) {
+      if (metricsCache[id].ts < _weekStartMs) {
+        metricsValues[id] = "0";
+        metricsCache[id] = { value: "0", ts: Date.now(), prevValue: metricsCache[id].value };
+        _changed = true;
+      }
+    });
+    if (_changed) {
+      try { localStorage.setItem("cwpp-metrics-cache", JSON.stringify(metricsCache)); } catch { /* storage unavailable */ }
+    }
+  }());
+
   function buildMetricsScrapeScript(fields) {
     const parts = fields.map(function (f) {
       const idJ = JSON.stringify(f.id);
@@ -258,10 +287,17 @@
             let hasNewValues = false;
             Object.keys(results).forEach(function (id) {
               if (results[id] !== null) {
-                metricsValues[id] = results[id];
-                metricsCache[id] = { value: results[id], ts: now };
-                metricsStale.delete(id);
-                hasNewValues = true;
+                const cached = metricsCache[id];
+                // If the entry was zeroed at week start and CW still returns the old
+                // value, the page hasn't refreshed yet — keep showing 0.
+                if (cached && cached.prevValue !== undefined && results[id] === cached.prevValue) {
+                  metricsStale.add(id);
+                } else {
+                  metricsValues[id] = results[id];
+                  metricsCache[id] = { value: results[id], ts: now };
+                  metricsStale.delete(id);
+                  hasNewValues = true;
+                }
               } else {
                 metricsStale.add(id);
               }
