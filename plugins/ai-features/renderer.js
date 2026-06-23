@@ -156,9 +156,6 @@
 
   btnAiClose.addEventListener("click", closeAiOverlay);
   btnAiCancel.addEventListener("click", closeAiOverlay);
-  aiOverlay.addEventListener("click", function (e) {
-    if (e.target === aiOverlay) closeAiOverlay();
-  });
 
   btnAiApply.addEventListener("click", async function () {
     if (aiApplyCallback) await aiApplyCallback();
