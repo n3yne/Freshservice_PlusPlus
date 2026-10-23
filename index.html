@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ConnectWise Manage++</title>
+    <title>Freshservice++</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <!-- ====== MAIN LAYOUT ====== -->
     <div id="app-container">
-      <!-- ConnectWise Webview Area -->
+      <!-- Freshservice Webview Area -->
       <div id="webview-area">
         <!-- Tab Bar -->
         <div id="tab-bar">
@@ -64,7 +64,7 @@
               <button
                 id="btn-grab-ticket"
                 class="btn btn-small"
-                title="Grab ticket number from the currently open ConnectWise page"
+                title="Grab the ticket number from the currently open Freshservice page"
               >
                 🎯 Grab
               </button>
@@ -189,23 +189,23 @@
           <!-- Status Bar -->
           <div id="status-bar">
             <span id="autosave-status">Ready</span>
-            <span id="sync-status" class="sync-status sync-off">⇅ No CW field</span>
+            <span id="sync-status" class="sync-status sync-off">⇅ No FS field</span>
           </div>
 
-          <!-- CW Notes Sync -->
-          <div id="cw-sync-buttons">
+          <!-- Freshservice Notes Sync -->
+          <div id="fs-sync-buttons">
             <button
               type="button"
-              id="btn-pull-from-cw"
+              id="btn-pull-from-fs"
               class="btn btn-small"
-              title="Load the active CW notes field into this panel"
-            >⬇ Pull from CW</button>
+              title="Load the open Freshservice note editor into this panel"
+            >⬇ Pull from FS</button>
             <button
               type="button"
-              id="btn-push-to-cw"
+              id="btn-push-to-fs"
               class="btn btn-small"
-              title="Send panel notes to the active CW notes field"
-            >⬆ Push to CW</button>
+              title="Send panel notes to the open Freshservice note editor"
+            >⬆ Push to FS</button>
           </div>
 
           <!-- Action Buttons -->

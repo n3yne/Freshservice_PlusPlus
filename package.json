@@ -1,7 +1,7 @@
 {
-  "name": "connectwise-manage-pp",
+  "name": "freshservice-pp",
   "version": "0.4.2",
-  "description": "ConnectWise Manage++ wrapper with automatic ticket note backup",
+  "description": "Freshservice++ wrapper with automatic ticket note backup",
   "main": "main.js",
   "scripts": {
     "start": "node launch.js",
@@ -28,8 +28,8 @@
     ]
   },
   "build": {
-    "appId": "com.connectwise.managepp",
-    "productName": "ConnectWise Manage++",
+    "appId": "com.n3yne.freshservicepp",
+    "productName": "Freshservice++",
     "files": [
       "main.js",
       "preload.js",

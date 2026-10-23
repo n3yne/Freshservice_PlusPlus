@@ -202,7 +202,7 @@ describe("DEFAULT_SETTINGS", () => {
   });
 
   test("accepts valid http/https defaultUrl", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "https://na.myconnectwise.net/" })).toBe(true);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "https://yourcompany.freshservice.com/" })).toBe(true);
     expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "http://localhost:8080/" })).toBe(true);
   });
 

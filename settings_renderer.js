@@ -1,7 +1,7 @@
 "use strict";
 
 // ===================================================
-// ConnectWise Manage++ — Settings Window Renderer
+// Freshservice++ — Settings Window Renderer
 // Handles all settings form logic. Saves via backupAPI.saveSettings;
 // main.js broadcasts settings-changed to the main window so it can
 // update its UI without needing to reload.
@@ -43,7 +43,7 @@ document.addEventListener("DOMContentLoaded", function () {
     ticketSortField: "lastUpdated",
     ticketSortDirection: "desc",
     panelCollapsed: false,
-    defaultUrl: "https://na.myconnectwise.net/",
+    defaultUrl: "https://freshservice.com/login",
     theme: "dark",
     noteTemplates: [],
     liveSyncEnabled: true,
@@ -106,7 +106,7 @@ document.addEventListener("DOMContentLoaded", function () {
     settingTheme.checked = theme === "light";
 
     if (document.activeElement !== settingDefaultUrl) {
-      settingDefaultUrl.value = settings.defaultUrl || "https://na.myconnectwise.net/";
+      settingDefaultUrl.value = settings.defaultUrl || "https://freshservice.com/login";
     }
 
     renderTemplateList();

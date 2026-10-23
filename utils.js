@@ -11,7 +11,7 @@ const DEFAULT_SETTINGS = {
   ticketSortField: "lastUpdated",
   ticketSortDirection: "desc",
   panelCollapsed: false,
-  defaultUrl: "https://na.myconnectwise.net/",
+  defaultUrl: "https://freshservice.com/login",
   theme: "dark",
   noteTemplates: [],
   liveSyncEnabled: true,

@@ -1,6 +1,6 @@
 # Plugin Development Guide
 
-ConnectWise Manage++ supports an external plugin system that lets you add new features without modifying the core application source. Plugins are self-contained directories dropped into a `plugins/` folder — no build step required.
+Freshservice++ supports an external plugin system that lets you add new features without modifying the core application source. Plugins are self-contained directories dropped into a `plugins/` folder — no build step required.
 
 ---
 
@@ -489,7 +489,7 @@ pluginSettingsAPI.onSettingsChanged(fn: (settings: AppSettings) => void): void
 Place your plugin directory inside the `plugins/` folder at the root of the project:
 
 ```
-ConnectWise_Manage_PlusPlus/
+Freshservice_PlusPlus/
   plugins/
     my-plugin/
       manifest.json
@@ -514,7 +514,7 @@ If a plugin with the same `id` is already installed, the import is blocked and a
 Drop the plugin directory into the app's data folder. You can open it from within the app via **📁 Open Folder** in the note panel, then navigate up one level:
 
 ```
-%APPDATA%\connectwise-manage-pp\plugins\
+%APPDATA%\freshservice-pp\plugins\
   my-plugin\
     manifest.json
     main.js

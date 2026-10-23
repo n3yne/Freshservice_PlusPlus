@@ -40,7 +40,7 @@
   const metricsStale = new Set();
 
   try {
-    const _c = JSON.parse(localStorage.getItem("cwpp-metrics-cache") || "{}");
+    const _c = JSON.parse(localStorage.getItem("fspp-metrics-cache") || "{}");
     Object.keys(_c).forEach(function (id) {
       if (_c[id] && _c[id].value !== null && _c[id].value !== undefined) {
         metricsCache[id] = _c[id];
@@ -74,7 +74,7 @@
       }
     });
     if (_changed) {
-      try { localStorage.setItem("cwpp-metrics-cache", JSON.stringify(metricsCache)); } catch { /* storage unavailable */ }
+      try { localStorage.setItem("fspp-metrics-cache", JSON.stringify(metricsCache)); } catch { /* storage unavailable */ }
     }
   }());
 
@@ -288,7 +288,7 @@
             Object.keys(results).forEach(function (id) {
               if (results[id] !== null) {
                 const cached = metricsCache[id];
-                // If the entry was zeroed at week start and CW still returns the old
+                // If the entry was zeroed at week start and the dashboard still returns the old
                 // value, the page hasn't refreshed yet — keep showing 0.
                 if (cached && cached.prevValue !== undefined && results[id] === cached.prevValue) {
                   metricsStale.add(id);
@@ -303,7 +303,7 @@
               }
             });
             if (hasNewValues) {
-              try { localStorage.setItem("cwpp-metrics-cache", JSON.stringify(metricsCache)); } catch { /* storage unavailable */ }
+              try { localStorage.setItem("fspp-metrics-cache", JSON.stringify(metricsCache)); } catch { /* storage unavailable */ }
             }
             anySuccess = true;
           } else {
@@ -370,7 +370,7 @@
       });
     });
     if (changed) {
-      try { localStorage.setItem("cwpp-metrics-cache", JSON.stringify(metricsCache)); } catch { /* storage unavailable */ }
+      try { localStorage.setItem("fspp-metrics-cache", JSON.stringify(metricsCache)); } catch { /* storage unavailable */ }
     }
   }
 
