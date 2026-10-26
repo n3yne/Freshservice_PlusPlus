@@ -4,6 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const fsp = fs.promises;
 const { EventEmitter } = require("events");
+const { pathToFileURL } = require("url");
 
 const { version: APP_VERSION } = require("./package.json");
 
@@ -355,16 +356,17 @@ async function initPlugins(userData, initialSettings, ipcMain, rebuildMenuFn) {
 }
 
 function getRendererScripts() {
-  // Return file:// URLs so the renderer can use them as <script src>
-  return rendererScripts.map(p => "file:///" + p.replace(/\\/g, "/"));
+  // Return file:// URLs so the renderer can use them as <script src>.
+  // pathToFileURL percent-encodes characters such as # and % in the install path.
+  return rendererScripts.map(p => pathToFileURL(p).href);
 }
 
 function getSettingsScripts() {
-  return settingsScripts.map(p => "file:///" + p.replace(/\\/g, "/"));
+  return settingsScripts.map(p => pathToFileURL(p).href);
 }
 
 function getPluginStylesheets() {
-  return pluginStylesheets.map(p => "file:///" + p.replace(/\\/g, "/"));
+  return pluginStylesheets.map(p => pathToFileURL(p).href);
 }
 
 function getPluginInfo() {

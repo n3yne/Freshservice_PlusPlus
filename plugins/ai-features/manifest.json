@@ -1,7 +1,7 @@
 {
   "id": "ai-features",
   "name": "AI Features",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "AI-powered note suggestions and ticket summarization via Hatz AI, OpenAI, Anthropic, Azure OpenAI, or Microsoft 365 Copilot.",
   "main": "main.js",
   "renderer": "renderer.js",

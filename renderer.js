@@ -1137,7 +1137,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Bind the panel to the new ticket in the same step as its content, so an
     // autosave can never pair one ticket's number with another ticket's notes.
-    _busEmit("ticket:changed", { ticketId: newTicket, previous: currentPanelTicket });
+    const ticketChange = { ticketId: newTicket, previous: currentPanelTicket };
+    _busEmit("ticket:changed", ticketChange);
+    window.backupAPI.emitPluginEvent("ticket:changed", ticketChange);
     ticketIdInput.value = newTicket;
     currentPanelTicket = newTicket;
     userTypedTicket = false;

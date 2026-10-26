@@ -38,6 +38,7 @@
   const metricsValues = {};
   const metricsCache = {};
   const metricsStale = new Set();
+  const WEEK_RESET_STALE_WINDOW_MS = 60 * 60 * 1000;
 
   try {
     const _c = JSON.parse(localStorage.getItem("fspp-metrics-cache") || "{}");
@@ -289,8 +290,12 @@
               if (results[id] !== null) {
                 const cached = metricsCache[id];
                 // If the entry was zeroed at week start and the dashboard still returns the old
-                // value, the page hasn't refreshed yet — keep showing 0.
-                if (cached && cached.prevValue !== undefined && results[id] === cached.prevValue) {
+                // value, the page hasn't refreshed yet — keep showing 0. Only for the first
+                // hour after the reset, and not for 0 itself: a count that genuinely matches
+                // last week's (e.g. still 0) would otherwise stay marked stale all week.
+                if (cached && cached.prevValue !== undefined && results[id] === cached.prevValue &&
+                    now - cached.ts < WEEK_RESET_STALE_WINDOW_MS &&
+                    parseFloat(String(results[id]).replace(/[^0-9.]/g, "")) !== 0) {
                   metricsStale.add(id);
                 } else {
                   metricsValues[id] = results[id];
