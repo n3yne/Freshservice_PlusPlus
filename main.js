@@ -32,6 +32,16 @@ function withAutosaveLock(fn) {
   return queued;
 }
 
+// Serializes save-settings calls. Each save reads the file, merges and writes with
+// awaits in between; overlapping saves could otherwise write back a stale copy
+// (for example an old encrypted API key over one that was just entered).
+let settingsSaveQueue = Promise.resolve();
+function withSettingsLock(fn) {
+  const queued = settingsSaveQueue.then(fn);
+  settingsSaveQueue = queued.catch((err) => { console.error("[Settings] Save failed:", err); });
+  return queued;
+}
+
 // Atomically overwrites autosave.json via a tmp-file + rename to prevent
 // truncation on crash/power-loss mid-write.
 async function writeAutosaveAtomic(data) {
@@ -969,7 +979,10 @@ function registerIpcHandlers() {
   });
 
   // Save settings to disk and notify the renderer
-  electron.ipcMain.handle("save-settings", async (event, settings) => {
+  electron.ipcMain.handle("save-settings", (event, settings) => withSettingsLock(async () => {
+    if (typeof settings !== "object" || settings === null || Array.isArray(settings)) {
+      return { success: false };
+    }
     const existing = await loadSettings();
     const merged = Object.assign({}, DEFAULT_SETTINGS, pluginManager.getPluginDefaultSettings(), settings);
     // If caller didn't supply a new plaintext key, preserve whatever encrypted key is on disk.
@@ -993,7 +1006,7 @@ function registerIpcHandlers() {
       }
     });
     return { success: true };
-  });
+  }));
 
   // Plugin system: return renderer script paths for injection
   electron.ipcMain.handle("plugin-get-scripts", () => {

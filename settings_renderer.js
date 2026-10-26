@@ -82,7 +82,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function saveSettings() {
-    window.backupAPI.saveSettings(appSettings);
+    return window.backupAPI.saveSettings(appSettings);
   }
 
   // ==================== Form Population ====================
@@ -473,7 +473,11 @@ document.addEventListener("DOMContentLoaded", function () {
       getSettings: function () { return Object.assign({}, appSettings); },
       saveSettings: function (patch) {
         appSettings = Object.assign({}, appSettings, patch);
-        saveSettings();
+        const saved = saveSettings();
+        // A new API key is sent once; the plaintext is never kept in this window
+        // or resent with later saves.
+        delete appSettings.aiApiKey;
+        return saved;
       },
       onSettingsChanged: function (fn) {
         window.backupAPI.onSettingsChanged(fn);

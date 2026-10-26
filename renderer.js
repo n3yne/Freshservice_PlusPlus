@@ -1118,11 +1118,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Save a snapshot before any bulk import that changes the panel beyond the configured threshold.
   // Prevents losing panel content when live sync or a manual pull overwrites it.
-  async function snapshotBeforeBulkImport(incomingPlainText) {
+  // force skips the size check — used before replacing the note with a rewrite of
+  // similar length (e.g. an AI suggestion), which the threshold would let through.
+  async function snapshotBeforeBulkImport(incomingPlainText, force) {
     if (isEditorEmpty()) return;
     const currentText = getEditorPlainText();
     const threshold = appSettings.snapshotThreshold ?? 5;
-    if (Math.abs(currentText.length - incomingPlainText.length) < threshold) return;
+    if (!force && Math.abs(currentText.length - incomingPlainText.length) < threshold) return;
     const ticketId = ticketIdInput.value.trim() || "general";
     try {
       const html = getEditorContent();
@@ -1362,7 +1364,9 @@ document.addEventListener("DOMContentLoaded", function () {
           },
           getTicketId:  function () { return ticketIdInput.value.trim() || null; },
           getPlainText: function () { return getEditorPlainText(); },
-          saveSnapshot: function (incomingText) { return snapshotBeforeBulkImport(incomingText); },
+          saveSnapshot: function (incomingText, options) {
+            return snapshotBeforeBulkImport(incomingText, !!(options && options.force));
+          },
         }),
 
         getSettings: function () { return Object.assign({}, appSettings); },

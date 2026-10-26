@@ -230,10 +230,11 @@
       if (s.aiProvider === "m365copilot") refreshM365Status();
     });
 
-    elProvider.addEventListener("change", function () {
+    elProvider.addEventListener("change", async function () {
       const provider = elProvider.value;
-      settingsAPI.saveSettings({ aiProvider: provider });
       showProviderFields(provider);
+      // Wait for the save so the model list is fetched with the saved provider.
+      await settingsAPI.saveSettings({ aiProvider: provider });
       if (providerUsesModelList(provider)) populateModelDropdown();
       if (provider === "m365copilot") refreshM365Status();
     });
@@ -271,13 +272,15 @@
       settingsAPI.saveSettings({ aiModelName: elModel.value });
     });
 
-    elKey.addEventListener("change", function () {
+    elKey.addEventListener("change", async function () {
       const val = elKey.value.trim();
       if (val) {
-        settingsAPI.saveSettings({ aiApiKey: val });
         keyEnteredFor = elProvider.value;
         elKey.value = "";
         elKey.placeholder = "••••••••  (saved)";
+        // The main process reads the key from saved settings, so the model list
+        // can only be fetched once this save has finished.
+        await settingsAPI.saveSettings({ aiApiKey: val });
         if (providerUsesModelList(elProvider.value)) populateModelDropdown();
       }
     });
