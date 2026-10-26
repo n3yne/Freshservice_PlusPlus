@@ -281,6 +281,15 @@ describe("ai-features validateSettings", () => {
     expect(validateAi({ aiAzureEndpoint: 5 })).toBe(false);
   });
 
+  // aiAzureDeployment / aiApiKeyProvider
+  test("validates the Azure deployment name and key provider", () => {
+    expect(validateAi({ aiAzureDeployment: "my-gpt4o" })).toBe(true);
+    expect(validateAi({ aiAzureDeployment: "a".repeat(101) })).toBe(false);
+    expect(validateAi({ aiApiKeyProvider: "" })).toBe(true);
+    expect(validateAi({ aiApiKeyProvider: "azure" })).toBe(true);
+    expect(validateAi({ aiApiKeyProvider: "gemini" })).toBe(false);
+  });
+
   // aiM365TenantId / aiM365ClientId
   test("accepts tenant GUIDs and domains", () => {
     expect(validateAi({ aiM365TenantId: "" })).toBe(true);
@@ -315,7 +324,9 @@ describe("ai-features providers", () => {
   let settings;
   let realFetch;
 
-  function initPlugin() {
+  let transformer;
+
+  function initPlugin(extraApi) {
     handlers = {};
     aiFeatures.init({
       handle: (name, fn) => { handlers[name] = fn; },
@@ -324,8 +335,9 @@ describe("ai-features providers", () => {
       // Identity "encryption" keeps the test independent of the OS keychain.
       encryptCredential: (v) => v,
       decryptCredential: (v) => v,
-      registerSettingsTransformer: () => {},
+      registerSettingsTransformer: (fn) => { transformer = fn; },
       log: () => {},
+      ...extraApi,
     });
   }
 
@@ -344,7 +356,7 @@ describe("ai-features providers", () => {
   });
 
   test("Azure OpenAI calls the v1 chat endpoint with the deployment as model", async () => {
-    settings = { aiProvider: "azure", aiApiKey: "azkey", aiModelName: "my-gpt4o", aiAzureEndpoint: "https://contoso.openai.azure.com/openai/v1/" };
+    settings = { aiProvider: "azure", aiApiKey: "azkey", aiApiKeyProvider: "azure", aiModelName: "gpt-4o", aiAzureDeployment: "my-gpt4o", aiAzureEndpoint: "https://contoso.openai.azure.com/openai/v1/" };
     initPlugin();
     const calls = [];
     global.fetch = jest.fn(async (url, opts) => {
@@ -352,7 +364,7 @@ describe("ai-features providers", () => {
       return jsonResponse({ choices: [{ message: { content: "Improved." } }] });
     });
 
-    const res = await handlers.suggest({ text: "fix printer", settings: { aiProvider: "azure", aiModelName: "my-gpt4o" } });
+    const res = await handlers.suggest({ text: "fix printer", settings: { aiProvider: "azure", aiModelName: "gpt-4o" } });
 
     expect(res).toEqual({ result: "Improved." });
     expect(calls[0].url).toBe("https://contoso.openai.azure.com/openai/v1/chat/completions");
@@ -361,16 +373,71 @@ describe("ai-features providers", () => {
   });
 
   test("Azure OpenAI reports a missing endpoint or deployment", async () => {
-    settings = { aiProvider: "azure", aiApiKey: "azkey", aiModelName: "", aiAzureEndpoint: "https://contoso.openai.azure.com" };
+    settings = { aiProvider: "azure", aiApiKey: "azkey", aiApiKeyProvider: "azure", aiAzureDeployment: "", aiAzureEndpoint: "https://contoso.openai.azure.com" };
     initPlugin();
     global.fetch = jest.fn();
     const noDeployment = await handlers.summarize({ text: "x", settings: { aiProvider: "azure" } });
     expect(noDeployment.error).toMatch(/deployment name/);
 
-    settings = { ...settings, aiModelName: "dep", aiAzureEndpoint: "" };
+    settings = { ...settings, aiAzureDeployment: "dep", aiAzureEndpoint: "" };
     const noEndpoint = await handlers.summarize({ text: "x", settings: { aiProvider: "azure" } });
     expect(noEndpoint.error).toMatch(/endpoint/);
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("a key saved for one provider is never sent to another", async () => {
+    settings = { aiProvider: "azure", aiApiKey: "sk-openai", aiApiKeyProvider: "openai", aiAzureDeployment: "dep", aiAzureEndpoint: "https://contoso.openai.azure.com" };
+    initPlugin();
+    global.fetch = jest.fn();
+    const res = await handlers.suggest({ text: "x", settings: { aiProvider: "azure" } });
+    expect(res.error).toMatch(/API key/);
+    expect((await handlers["get-models"]({ aiProvider: "anthropic" })).error).toBeTruthy();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("keys saved before provider binding still work for the original providers only", async () => {
+    settings = { aiProvider: "openai", aiApiKey: "sk-old", aiAzureDeployment: "dep", aiAzureEndpoint: "https://contoso.openai.azure.com" };
+    initPlugin();
+    global.fetch = jest.fn(async () => jsonResponse({ choices: [{ message: { content: "ok" } }] }));
+    expect(await handlers.summarize({ text: "x", settings: { aiProvider: "openai" } })).toEqual({ result: "ok" });
+    const azure = await handlers.summarize({ text: "x", settings: { aiProvider: "azure" } });
+    expect(azure.error).toMatch(/API key/);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("the settings transformer binds a new key to the selected provider and keeps the binding on resend", () => {
+    settings = { aiProvider: "openai", aiApiKeyEncrypted: "sk-openai", aiApiKeyProvider: "openai" };
+    initPlugin();
+    // A new key entered while Azure is selected belongs to Azure.
+    const fresh = transformer({ aiProvider: "azure", aiApiKey: "az-key", aiApiKeyProvider: "openai" });
+    expect(fresh).toMatchObject({ aiApiKeyEncrypted: "az-key", aiApiKeyProvider: "azure" });
+    expect(fresh.aiApiKey).toBeUndefined();
+    // The settings window resending the already-saved key after a provider switch doesn't move it.
+    const resent = transformer({ aiProvider: "anthropic", aiApiKey: "sk-openai", aiApiKeyProvider: "anthropic" });
+    expect(resent.aiApiKeyProvider).toBe("openai");
+    // A save without a key can't rebind it either.
+    expect(transformer({ aiProvider: "hatz", aiApiKeyProvider: "hatz" }).aiApiKeyProvider).toBe("openai");
+  });
+
+  test("an empty reply is reported as an error", async () => {
+    settings = { aiProvider: "openai", aiApiKey: "sk", aiApiKeyProvider: "openai" };
+    initPlugin();
+    global.fetch = jest.fn(async () => jsonResponse({ choices: [{ message: { content: "  " } }] }));
+    const res = await handlers.suggest({ text: "x", settings: { aiProvider: "openai" } });
+    expect(res.error).toMatch(/empty reply/);
+  });
+
+  test("requests that never answer time out with a readable error", async () => {
+    settings = { aiProvider: "openai", aiApiKey: "sk", aiApiKeyProvider: "openai" };
+    initPlugin();
+    global.fetch = jest.fn(async (url, opts) => {
+      expect(opts.signal).toBeDefined();
+      const err = new Error("The operation was aborted due to timeout");
+      err.name = "TimeoutError";
+      throw err;
+    });
+    const res = await handlers.summarize({ text: "x", settings: { aiProvider: "openai" } });
+    expect(res.error).toBe("OpenAI did not respond within 60 seconds");
   });
 
   test("Microsoft 365 Copilot requires sign-in", async () => {
@@ -426,6 +493,41 @@ describe("ai-features providers", () => {
     expect(stored.accessToken).toBeUndefined();
   });
 
+  test("Microsoft 365 Copilot refreshes and retries once when Graph rejects the access token", async () => {
+    settings = { aiProvider: "m365copilot", aiM365TenantId: TENANT, aiM365ClientId: CLIENT };
+    fs.writeFileSync(path.join(dataDir, "m365-token.dat"),
+      JSON.stringify({ tenant: TENANT, clientId: CLIENT, refreshToken: "rt-1", account: "a" }));
+    initPlugin();
+    let tokens = 0;
+    let rejected = false;
+    const auth = [];
+    global.fetch = jest.fn(async (url, opts) => {
+      if (url.includes("/oauth2/v2.0/token")) { tokens++; return jsonResponse({ access_token: "at-" + tokens, expires_in: 3600 }); }
+      auth.push(opts.headers.Authorization);
+      if (!rejected) { rejected = true; return jsonResponse({ error: { message: "expired" } }, 401); }
+      if (url.endsWith("/conversations")) return jsonResponse({ id: "c" });
+      return jsonResponse({ messages: [{ text: "q" }, { text: "Answer" }] });
+    });
+    const res = await handlers.summarize({ text: "x", settings: { aiProvider: "m365copilot" } });
+    expect(res).toEqual({ result: "Answer" });
+    expect(tokens).toBe(2);
+    expect(auth).toEqual(["Bearer at-1", "Bearer at-2", "Bearer at-2"]);
+  });
+
+  test("Microsoft 365 Copilot reports an empty reply as an error", async () => {
+    settings = { aiProvider: "m365copilot", aiM365TenantId: TENANT, aiM365ClientId: CLIENT };
+    fs.writeFileSync(path.join(dataDir, "m365-token.dat"),
+      JSON.stringify({ tenant: TENANT, clientId: CLIENT, refreshToken: "rt-1", account: "a" }));
+    initPlugin();
+    global.fetch = jest.fn(async (url) => {
+      if (url.includes("/oauth2/v2.0/token")) return jsonResponse({ access_token: "at", expires_in: 3600 });
+      if (url.endsWith("/conversations")) return jsonResponse({ id: "c" });
+      return jsonResponse({ messages: [{ text: "q" }, { text: "[^1^]" }] });
+    });
+    const res = await handlers.summarize({ text: "x", settings: { aiProvider: "m365copilot" } });
+    expect(res.error).toMatch(/empty reply/);
+  });
+
   test("a stored sign-in for a different app registration doesn't count", async () => {
     settings = { aiProvider: "m365copilot", aiM365TenantId: TENANT, aiM365ClientId: "99999999-2222-3333-4444-555555555555" };
     fs.writeFileSync(path.join(dataDir, "m365-token.dat"),
@@ -434,14 +536,21 @@ describe("ai-features providers", () => {
     expect(await handlers["m365-status"]()).toEqual({ account: null });
   });
 
-  test("sign-out deletes the stored token", async () => {
+  test("sign-out deletes the stored token and clears the sign-in window's cookies", async () => {
     settings = { aiProvider: "m365copilot", aiM365TenantId: TENANT, aiM365ClientId: CLIENT };
     const file = path.join(dataDir, "m365-token.dat");
     fs.writeFileSync(file, JSON.stringify({ tenant: TENANT, clientId: CLIENT, refreshToken: "rt-1", account: "a" }));
+    const clearStorageData = jest.fn(async () => {});
+    const fromPartition = jest.fn(() => ({ clearStorageData }));
+    jest.resetModules(); // drop any electron mock cached by an earlier test
+    jest.doMock("electron", () => ({ session: { fromPartition } }), { virtual: true });
     initPlugin();
     await handlers["m365-sign-out"]();
     expect(fs.existsSync(file)).toBe(false);
     expect(await handlers["m365-status"]()).toEqual({ account: null });
+    expect(fromPartition).toHaveBeenCalledWith("persist:fspp-m365-auth");
+    expect(clearStorageData).toHaveBeenCalled();
+    jest.dontMock("electron");
   });
 
   test("sign-in opens Microsoft login with PKCE and exchanges the returned code", async () => {

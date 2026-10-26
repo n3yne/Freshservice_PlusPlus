@@ -1,12 +1,14 @@
 "use strict";
 
 const { createM365Client, TENANT_PATTERN, CLIENT_ID_PATTERN } = require("./m365");
+const { fetchWithTimeout } = require("./http");
 
 const PROVIDERS = ["hatz", "openai", "anthropic", "azure", "m365copilot"];
 
 const MAX_NOTES_CHARS        = 8000;
 const MAX_CONTEXT_CHARS      = 4000;
 const MAX_INSTRUCTIONS_CHARS = 500;
+const REQUEST_TIMEOUT_MS     = 60000;
 
 module.exports = {
 
@@ -15,6 +17,7 @@ module.exports = {
     aiProvider: "hatz",
     aiModelName: "",
     aiAzureEndpoint: "",
+    aiAzureDeployment: "",
     aiM365TenantId: "",
     aiM365ClientId: "",
   },
@@ -25,6 +28,8 @@ module.exports = {
     if (s.aiModelName !== undefined && (typeof s.aiModelName !== "string" || s.aiModelName.length > 100)) return false;
     if (s.aiApiKey !== undefined && (typeof s.aiApiKey !== "string" || s.aiApiKey.length > 500)) return false;
     if (s.aiApiKeyEncrypted !== undefined && (typeof s.aiApiKeyEncrypted !== "string" || s.aiApiKeyEncrypted.length > 2000)) return false;
+    if (s.aiApiKeyProvider !== undefined && !["", ...PROVIDERS].includes(s.aiApiKeyProvider)) return false;
+    if (s.aiAzureDeployment !== undefined && (typeof s.aiAzureDeployment !== "string" || s.aiAzureDeployment.length > 100)) return false;
     if (s.aiAzureEndpoint !== undefined) {
       if (typeof s.aiAzureEndpoint !== "string" || s.aiAzureEndpoint.length > 300) return false;
       if (s.aiAzureEndpoint && normalizeAzureEndpoint(s.aiAzureEndpoint) === null) return false;
@@ -40,6 +45,14 @@ module.exports = {
 
     // Encrypt any plaintext aiApiKey before it reaches disk; never write plaintext credentials.
     api.registerSettingsTransformer(function (settings) {
+      // A new key is tied to the provider selected when it was entered (see keyForProvider).
+      // The settings window can resend a key it already saved, so only a changed key
+      // moves the binding; otherwise the stored binding is kept, whatever the caller sent.
+      const current = api.getSettings();
+      const isNewKey = Boolean(settings.aiApiKey) && settings.aiApiKey !== getApiKey(current);
+      settings.aiApiKeyProvider = isNewKey
+        ? (PROVIDERS.includes(settings.aiProvider) ? settings.aiProvider : "")
+        : (current.aiApiKeyProvider || "");
       if (settings.aiApiKey) {
         const encrypted = api.encryptCredential(settings.aiApiKey);
         if (encrypted) settings.aiApiKeyEncrypted = encrypted;
@@ -55,6 +68,13 @@ module.exports = {
       return "";
     }
 
+    // Returns the saved key only if it was entered for this provider, so switching
+    // providers never sends one provider's key to another provider's server.
+    function keyForProvider(settings, provider) {
+      if (!keyBelongsTo(settings, provider)) return "";
+      return getApiKey(settings);
+    }
+
     async function callAiChat(prompt, aiSettings) {
       const { aiProvider, aiApiKey, aiModelName } = aiSettings;
 
@@ -65,12 +85,13 @@ module.exports = {
 
       if (aiProvider === "azure") {
         // Azure OpenAI v1 API: the "model" is the name of your deployment.
-        const endpoint = normalizeAzureEndpoint(api.getSettings().aiAzureEndpoint || "");
-        const resp = await fetch(endpoint + "/openai/v1/chat/completions", {
+        const s = api.getSettings();
+        const endpoint = normalizeAzureEndpoint(s.aiAzureEndpoint || "");
+        const resp = await fetchWithTimeout(endpoint + "/openai/v1/chat/completions", {
           method: "POST",
           headers: { "api-key": aiApiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: aiModelName, messages: [{ role: "user", content: prompt }] }),
-        });
+          body: JSON.stringify({ model: s.aiAzureDeployment, messages: [{ role: "user", content: prompt }] }),
+        }, REQUEST_TIMEOUT_MS, "Azure OpenAI");
         if (!resp.ok) {
           const body = await resp.text().catch(() => "");
           throw new Error(`Azure OpenAI error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
@@ -81,7 +102,7 @@ module.exports = {
 
       if (aiProvider === "anthropic") {
         const model = aiModelName || "claude-opus-4-6";
-        const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        const resp = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
             "x-api-key": aiApiKey,
@@ -89,7 +110,7 @@ module.exports = {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ model, max_tokens: 4096, messages: [{ role: "user", content: prompt }] }),
-        });
+        }, REQUEST_TIMEOUT_MS, "Anthropic");
         if (!resp.ok) {
           const body = await resp.text().catch(() => "");
           throw new Error(`Anthropic API error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
@@ -100,11 +121,11 @@ module.exports = {
 
       if (aiProvider === "openai") {
         const model = aiModelName || "gpt-4o";
-        const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+        const resp = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: { "Authorization": `Bearer ${aiApiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }] }),
-        });
+        }, REQUEST_TIMEOUT_MS, "OpenAI");
         if (!resp.ok) {
           const body = await resp.text().catch(() => "");
           throw new Error(`OpenAI API error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
@@ -115,11 +136,11 @@ module.exports = {
 
       // Hatz AI (OpenAI-compatible)
       const model = aiModelName || "gpt-4o";
-      const resp = await fetch("https://ai.hatz.ai/v1/chat/completions", {
+      const resp = await fetchWithTimeout("https://ai.hatz.ai/v1/chat/completions", {
         method: "POST",
         headers: { "X-API-Key": aiApiKey, "Content-Type": "application/json" },
         body: JSON.stringify({ messages: [{ role: "user", content: prompt }], model }),
-      });
+      }, REQUEST_TIMEOUT_MS, "Hatz AI");
       if (!resp.ok) {
         const body = await resp.text().catch(() => "");
         throw new Error(`Hatz AI error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
@@ -130,9 +151,9 @@ module.exports = {
 
     async function fetchAiModels(aiProvider, aiApiKey) {
       if (aiProvider === "openai") {
-        const resp = await fetch("https://api.openai.com/v1/models", {
+        const resp = await fetchWithTimeout("https://api.openai.com/v1/models", {
           headers: { "Authorization": `Bearer ${aiApiKey}` },
-        });
+        }, REQUEST_TIMEOUT_MS, "OpenAI");
         if (!resp.ok) {
           const body = await resp.text().catch(() => "");
           throw new Error(`OpenAI API error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
@@ -145,9 +166,9 @@ module.exports = {
       }
 
       if (aiProvider === "anthropic") {
-        const resp = await fetch("https://api.anthropic.com/v1/models", {
+        const resp = await fetchWithTimeout("https://api.anthropic.com/v1/models", {
           headers: { "x-api-key": aiApiKey, "anthropic-version": "2023-06-01" },
-        });
+        }, REQUEST_TIMEOUT_MS, "Anthropic");
         if (!resp.ok) {
           const body = await resp.text().catch(() => "");
           throw new Error(`Anthropic API error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
@@ -160,9 +181,9 @@ module.exports = {
       }
 
       // Hatz AI
-      const resp = await fetch("https://ai.hatz.ai/v1/chat/models", {
+      const resp = await fetchWithTimeout("https://ai.hatz.ai/v1/chat/models", {
         headers: { "X-API-Key": aiApiKey },
-      });
+      }, REQUEST_TIMEOUT_MS, "Hatz AI");
       if (!resp.ok) {
         const body = await resp.text().catch(() => "");
         throw new Error(`API error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
@@ -192,15 +213,23 @@ module.exports = {
       if (!aiApiKey) return notConfigured;
       if (provider === "azure") {
         if (!normalizeAzureEndpoint(settings.aiAzureEndpoint || "")) return "Enter your Azure OpenAI endpoint in Settings → AI Features.";
-        if (!settings.aiModelName) return "Enter your Azure OpenAI deployment name in Settings → AI Features.";
+        if (!settings.aiAzureDeployment) return "Enter your Azure OpenAI deployment name in Settings → AI Features.";
       }
       return null;
+    }
+
+    // Runs a prompt and treats a blank answer as an error, so an empty reply
+    // never silently replaces the user's text.
+    async function runPrompt(prompt, aiSettings, aiApiKey) {
+      const text = await callAiChat(prompt, Object.assign({}, aiSettings, { aiApiKey }));
+      if (typeof text !== "string" || !text.trim()) throw new Error("The AI provider returned an empty reply. Try again.");
+      return text;
     }
 
     api.handle("suggest", async function ({ text, ticketContext, customInstructions, settings: aiSettings }) {
       const provider = aiSettings?.aiProvider;
       const current = api.getSettings();
-      const aiApiKey = getApiKey(current);
+      const aiApiKey = keyForProvider(current, provider);
       const notReady = aiSettings ? configError(provider, current, aiApiKey) : "No AI provider configured.";
       if (notReady) return { error: notReady };
       const safeText = (text || "").substring(0, MAX_NOTES_CHARS);
@@ -227,7 +256,7 @@ module.exports = {
         contextSection +
         "\n\nText to improve:\n\n" + safeText;
       try {
-        return { result: await callAiChat(prompt, Object.assign({}, aiSettings, { aiApiKey })) };
+        return { result: await runPrompt(prompt, aiSettings, aiApiKey) };
       } catch (err) {
         return { error: err.message || String(err) };
       }
@@ -236,7 +265,7 @@ module.exports = {
     api.handle("summarize", async function ({ text, settings: aiSettings }) {
       const provider = aiSettings?.aiProvider;
       const current = api.getSettings();
-      const aiApiKey = getApiKey(current);
+      const aiApiKey = keyForProvider(current, provider);
       const notReady = aiSettings ? configError(provider, current, aiApiKey) : "No AI provider configured.";
       if (notReady) return { error: notReady };
       const safeText = (text || "").substring(0, MAX_NOTES_CHARS + MAX_CONTEXT_CHARS);
@@ -246,7 +275,7 @@ module.exports = {
         "Do not use em-dashes or en-dashes in your response — use commas, periods, or hyphens instead. " +
         "Reply with only the summary, no preamble:\n\n" + safeText;
       try {
-        return { result: await callAiChat(prompt, Object.assign({}, aiSettings, { aiApiKey })) };
+        return { result: await runPrompt(prompt, aiSettings, aiApiKey) };
       } catch (err) {
         return { error: err.message || String(err) };
       }
@@ -269,12 +298,12 @@ module.exports = {
     });
 
     api.handle("m365-sign-out", async function () {
-      m365.signOut();
+      await m365.signOut();
       return { ok: true };
     });
 
     api.handle("get-models", async function ({ aiProvider }) {
-      const aiApiKey = getApiKey(api.getSettings());
+      const aiApiKey = keyForProvider(api.getSettings(), aiProvider);
       // Azure deployments and Microsoft 365 Copilot have no model list to choose from.
       if (!["hatz", "openai", "anthropic"].includes(aiProvider) || !aiApiKey) {
         return { error: "No provider configured" };
@@ -290,6 +319,13 @@ module.exports = {
     });
   },
 };
+
+// True if the saved API key was entered for this provider. Keys saved before keys
+// were tied to a provider are treated as belonging to the original three providers.
+function keyBelongsTo(settings, provider) {
+  if (settings.aiApiKeyProvider) return settings.aiApiKeyProvider === provider;
+  return ["hatz", "openai", "anthropic"].includes(provider);
+}
 
 // Accepts an Azure OpenAI / Foundry resource URL with or without a trailing path
 // (e.g. https://contoso.openai.azure.com/ or .../openai/v1/) and returns its origin,

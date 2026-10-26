@@ -15,9 +15,14 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { fetchWithTimeout } = require("./http");
 
 const REDIRECT_URI = "https://login.microsoftonline.com/common/oauth2/nativeclient";
 const GRAPH = "https://graph.microsoft.com";
+const AUTH_PARTITION = "persist:fspp-m365-auth";
+const TOKEN_TIMEOUT_MS = 30000;
+// Copilot grounds each answer in the user's Microsoft 365 data and can be slow.
+const CHAT_TIMEOUT_MS = 120000;
 
 // The Chat API requires all seven Graph read permissions, even for prompts that
 // don't touch that data. openid/profile give us the account name; offline_access
@@ -110,11 +115,11 @@ function createM365Client(api) {
   }
 
   async function requestToken(tenant, params) {
-    const resp = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
+    const resp = await fetchWithTimeout(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams(params).toString(),
-    });
+    }, TOKEN_TIMEOUT_MS, "Microsoft sign-in");
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok || !json.access_token) {
       const detail = json.error_description || json.error || `HTTP ${resp.status}`;
@@ -163,7 +168,7 @@ function createM365Client(api) {
         webPreferences: {
           contextIsolation: true,
           nodeIntegration: false,
-          partition: "persist:fspp-m365-auth",
+          partition: AUTH_PARTITION,
         },
       });
       let settled = false;
@@ -216,8 +221,16 @@ function createM365Client(api) {
     return { account: memory.account };
   }
 
-  function signOut() {
+  // Forgets the stored token and the sign-in window's Microsoft session cookies,
+  // so the next sign-in has to authenticate again.
+  async function signOut() {
     clearStored();
+    try {
+      const { session } = require("electron");
+      if (session) await session.fromPartition(AUTH_PARTITION).clearStorageData();
+    } catch (err) {
+      api.log("Could not clear Microsoft sign-in session:", err.message);
+    }
   }
 
   // Returns the signed-in account for the given configuration, or null. A sign-in
@@ -229,13 +242,13 @@ function createM365Client(api) {
     return { account: stored.account || "" };
   }
 
-  async function getAccessToken(tenant, clientId) {
+  async function getAccessToken(tenant, clientId, forceRefresh) {
     validateConfig(tenant, clientId);
     const stored = loadStored();
     if (!stored || stored.tenant !== tenant || stored.clientId !== clientId || !stored.refreshToken) {
       throw new Error("Not signed in to Microsoft 365. Click Sign in under Settings → AI Features.");
     }
-    if (stored.accessToken && stored.expiresAt > Date.now() + 60000) return stored.accessToken;
+    if (!forceRefresh && stored.accessToken && stored.expiresAt > Date.now() + 60000) return stored.accessToken;
     let json;
     try {
       json = await requestToken(tenant, {
@@ -252,11 +265,16 @@ function createM365Client(api) {
   }
 
   async function graphPost(token, urlPath, body) {
-    const resp = await fetch(GRAPH + urlPath, {
+    const resp = await fetchWithTimeout(GRAPH + urlPath, {
       method: "POST",
       headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    });
+    }, CHAT_TIMEOUT_MS, "Microsoft 365 Copilot");
+    if (resp.status === 401) {
+      const err = new Error("Microsoft 365 Copilot error 401: access token rejected");
+      err.unauthorized = true;
+      throw err;
+    }
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
       let detail = text;
@@ -273,7 +291,16 @@ function createM365Client(api) {
   // Web grounding is turned off so answers come from the prompt and the user's
   // own Microsoft 365 data only.
   async function chat(prompt, tenant, clientId) {
-    const token = await getAccessToken(tenant, clientId);
+    try {
+      return await chatOnce(prompt, await getAccessToken(tenant, clientId));
+    } catch (err) {
+      // The cached access token can be revoked before it expires; refresh once and retry.
+      if (!err.unauthorized) throw err;
+      return chatOnce(prompt, await getAccessToken(tenant, clientId, true));
+    }
+  }
+
+  async function chatOnce(prompt, token) {
     const conversation = await graphPost(token, "/beta/copilot/conversations", {});
     if (!conversation || !conversation.id) throw new Error("Microsoft 365 Copilot did not return a conversation");
     const result = await graphPost(token, `/beta/copilot/conversations/${encodeURIComponent(conversation.id)}/chat`, {
@@ -283,7 +310,9 @@ function createM365Client(api) {
     });
     const messages = Array.isArray(result && result.messages) ? result.messages : [];
     const reply = messages.length > 1 ? messages[messages.length - 1] : null;
-    return cleanCopilotText(reply && reply.text);
+    const text = cleanCopilotText(reply && reply.text);
+    if (!text) throw new Error("Microsoft 365 Copilot returned an empty reply. Try again.");
+    return text;
   }
 
   return { signIn, signOut, status, chat };

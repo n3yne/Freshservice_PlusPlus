@@ -183,6 +183,8 @@ The AI Assistant is a bundled plugin. Make sure it is enabled in **Settings → 
 
 The ✨ Suggest and 📋 Summarize buttons appear in the note panel once a provider and API key are configured.
 
+A saved API key only works with the provider it was entered for. If you switch providers, paste that provider's key; the old key is never sent to the new provider.
+
 ### Azure OpenAI
 
 Uses Microsoft-hosted OpenAI models in your own Azure OpenAI or Azure AI Foundry resource.

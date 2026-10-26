@@ -143,9 +143,20 @@
       }
     });
 
+    // Mirrors keyBelongsTo in main.js: a saved key only counts for the provider it
+    // was entered for (older keys count for Hatz, OpenAI and Anthropic).
+    let keyEnteredFor = null; // provider of a key typed in this window, before the saved flags catch up
+
+    function hasKeyFor(s, provider) {
+      if (keyEnteredFor) return keyEnteredFor === provider;
+      if (!s.aiApiKeySet) return false;
+      if (s.aiApiKeyProvider) return s.aiApiKeyProvider === provider;
+      return providerUsesModelList(provider);
+    }
+
     async function populateModelDropdown() {
       const s = settingsAPI.getSettings();
-      if (!s.aiApiKeySet) {
+      if (!hasKeyFor(s, s.aiProvider || "hatz")) {
         elModel.innerHTML = '<option value="" disabled selected>Enter API key first</option>';
         elModel.disabled = true;
         return;
@@ -200,17 +211,17 @@
       elProvider.value = provider;
       showProviderFields(provider);
       elKey.value = "";
-      elKey.placeholder = s.aiApiKeySet ? "••••••••  (saved)" : "Paste your API key here";
+      elKey.placeholder = hasKeyFor(s, provider) ? "••••••••  (saved)" : "Paste your API key here";
       // Don't overwrite a field the user is in the middle of editing.
       if (document.activeElement !== elEndpoint)   elEndpoint.value   = s.aiAzureEndpoint || "";
-      if (document.activeElement !== elDeployment) elDeployment.value = s.aiModelName || "";
+      if (document.activeElement !== elDeployment) elDeployment.value = s.aiAzureDeployment || "";
       if (document.activeElement !== elTenant)     elTenant.value     = s.aiM365TenantId || "";
       if (document.activeElement !== elClient)     elClient.value     = s.aiM365ClientId || "";
     }
 
     applyForm(settingsAPI.getSettings());
     const initial = settingsAPI.getSettings();
-    if (initial.aiApiKeySet && providerUsesModelList(initial.aiProvider || "hatz")) populateModelDropdown();
+    if (providerUsesModelList(initial.aiProvider || "hatz") && hasKeyFor(initial, initial.aiProvider || "hatz")) populateModelDropdown();
     refreshM365Status();
 
     settingsAPI.onSettingsChanged(function (s) {
@@ -248,7 +259,7 @@
     bindTextSetting(elEndpoint, "aiAzureEndpoint", function (v) {
       try { return new URL(v).protocol === "https:"; } catch { return false; }
     }, "Enter an https:// URL, e.g. https://your-resource.openai.azure.com/");
-    bindTextSetting(elDeployment, "aiModelName", function (v) { return v.length <= 100; }, "Too long");
+    bindTextSetting(elDeployment, "aiAzureDeployment", function (v) { return v.length <= 100; }, "Too long");
     bindTextSetting(elTenant, "aiM365TenantId", function (v) {
       return /^[a-zA-Z0-9.-]{1,100}$/.test(v);
     }, "Enter a tenant GUID or domain, e.g. contoso.onmicrosoft.com");
@@ -264,6 +275,7 @@
       const val = elKey.value.trim();
       if (val) {
         settingsAPI.saveSettings({ aiApiKey: val });
+        keyEnteredFor = elProvider.value;
         elKey.value = "";
         elKey.placeholder = "••••••••  (saved)";
         if (providerUsesModelList(elProvider.value)) populateModelDropdown();
