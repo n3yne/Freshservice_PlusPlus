@@ -2,28 +2,25 @@
   const api = window.pluginAPI;
   if (!api) return;
 
-  const CW_NOTES_SCRAPE_SCRIPT = "(function() {" +
+  // Collects the ticket description and conversation (replies + notes) from the
+  // open Freshservice record. Freshservice renders stored rich text with Froala's
+  // read-only ".fr-view" class, so those blocks are gathered first (skipping any
+  // open editors). If none are found, falls back to the main content area's text.
+  const FS_NOTES_SCRAPE_SCRIPT = "(function() {" +
     "var parts = [];" +
-    "document.querySelectorAll('.TicketNote-noteLabel').forEach(function(label) {" +
-    "  var text = (label.innerText || label.textContent || '').trim();" +
+    "var seen = [];" +
+    "document.querySelectorAll('.fr-view').forEach(function(el) {" +
+    "  if (el.isContentEditable || el.closest('[contenteditable=\"true\"]')) return;" +
+    "  if (seen.some(function(s) { return s.contains(el); })) return;" +
+    "  var text = (el.innerText || el.textContent || '').trim();" +
     "  if (!text) return;" +
-    "  var row = label.closest('.TicketNote-rowWrap') || label.closest('.TicketNote-row');" +
-    "  var author = '';" +
-    "  var date = '';" +
-    "  if (row) {" +
-    "    var authorEl = row.querySelector('.TicketNote-clickableName') || row.querySelector('.TicketNote-basicName');" +
-    "    if (authorEl) author = (authorEl.innerText || '').trim();" +
-    "    var dateEl = row.querySelector('.TimeText-date');" +
-    "    if (dateEl) {" +
-    "      date = Array.from(dateEl.childNodes)" +
-    "        .filter(function(n) { return n.nodeType === 3; })" +
-    "        .map(function(n) { return n.textContent.trim(); })" +
-    "        .join(' ').trim();" +
-    "    }" +
-    "  }" +
-    "  var header = [author, date].filter(Boolean).join(' — ');" +
-    "  parts.push((header ? '[' + header + ']\\n' : '') + text);" +
+    "  seen.push(el);" +
+    "  parts.push(text);" +
     "});" +
+    "if (!parts.length) {" +
+    "  var main = document.querySelector('main, [role=main], #main-content, .page-content') || document.body;" +
+    "  parts.push((main.innerText || '').trim());" +
+    "}" +
     "return parts.join('\\n\\n---\\n\\n').substring(0, 15000);" +
     "})()";
 
@@ -83,15 +80,15 @@
   btnSummarize.type = "button";
   btnSummarize.id = "btn-ai-summarize";
   btnSummarize.className = "btn btn-small btn-ai";
-  btnSummarize.title = "Summarize all ticket notes from the current CW page";
+  btnSummarize.title = "Summarize the conversation and notes on the open Freshservice ticket";
   btnSummarize.textContent = "📋 Summarize";
 
   aiButtons.appendChild(btnSuggest);
   aiButtons.appendChild(btnSummarize);
 
-  const cwSyncButtons = document.getElementById("cw-sync-buttons");
-  if (cwSyncButtons && cwSyncButtons.parentNode) {
-    cwSyncButtons.parentNode.insertBefore(aiButtons, cwSyncButtons.nextSibling);
+  const fsSyncButtons = document.getElementById("fs-sync-buttons");
+  if (fsSyncButtons && fsSyncButtons.parentNode) {
+    fsSyncButtons.parentNode.insertBefore(aiButtons, fsSyncButtons.nextSibling);
   }
 
   // --- Build ai-overlay ---
@@ -218,7 +215,7 @@
 
     let ticketContext = "";
     try {
-      ticketContext = await api.browser.executeInActiveTab(CW_NOTES_SCRAPE_SCRIPT) || "";
+      ticketContext = await api.browser.executeInActiveTab(FS_NOTES_SCRAPE_SCRIPT) || "";
     } catch { /* non-fatal — context is optional */ }
 
     const invokeSettings = { aiProvider: settings.aiProvider, aiModelName: settings.aiModelName };
@@ -294,7 +291,7 @@
 
     let pageText;
     try {
-      pageText = await api.browser.executeInActiveTab(CW_NOTES_SCRAPE_SCRIPT);
+      pageText = await api.browser.executeInActiveTab(FS_NOTES_SCRAPE_SCRIPT);
     } catch {
       aiDialogBody.innerHTML = '<p class="ai-error">Could not read the ticket page.</p>';
       return;

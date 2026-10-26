@@ -1,5 +1,5 @@
 ﻿// ===================================================
-// ConnectWise Backup - Renderer (UI Logic)
+// Freshservice++ - Renderer (UI Logic)
 // ===================================================
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -14,8 +14,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnSave = document.getElementById("btn-save");
   const btnClear = document.getElementById("btn-clear");
   const btnCopy = document.getElementById("btn-copy");
-  const btnPullFromCw = document.getElementById("btn-pull-from-cw");
-  const btnPushToCw = document.getElementById("btn-push-to-cw");
+  const btnPullFromFs = document.getElementById("btn-pull-from-fs");
+  const btnPushToFs = document.getElementById("btn-push-to-fs");
   const btnOpenFolder = document.getElementById("btn-open-folder");
   const ticketSelect = document.getElementById("ticket-select");
   const btnLoadHistory = document.getElementById("btn-load-history");
@@ -117,7 +117,7 @@ document.addEventListener("DOMContentLoaded", function () {
     ticketSortField: "lastUpdated",
     ticketSortDirection: "desc",
     panelCollapsed: false,
-    defaultUrl: "https://na.myconnectwise.net/",
+    defaultUrl: "https://freshservice.com/login",
     theme: "dark",
     noteTemplates: [],
     liveSyncEnabled: true,
@@ -476,115 +476,111 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // ==================== CW Notes Sync ====================
+  // ==================== Freshservice Notes Sync ====================
   //
-  // Reads from / writes to whichever CW notes field is currently on screen.
+  // Reads from / writes to whichever Freshservice notes field is currently on screen.
   // Supported field types:
-  //   - Draft.js contenteditable (.public-DraftEditor-content) — time-entry notes
-  //   - GWT textarea (.cw_PsaResizableTextArea)                — stopwatch notes
+  //   - 'editor'   — rich-text contenteditable (Froala .fr-element, used for ticket
+  //                  notes and replies; legacy Redactor and other editors as fallbacks)
+  //   - 'textarea' — plain textarea whose name/id/placeholder/label mentions "note"
+  //                  (e.g. the note field on the Add Time Entry form)
   //
-  // Pull: CW field → panel (asks for confirmation if panel already has content)
-  // Push: panel → CW field (plain text; uses execCommand for Draft.js so that
-  //        React's event handlers recognise the change)
+  // When several fields are visible, the focused one wins, then the one the user
+  // last focused (tagged with data-fspp-sync by the watcher), then the first visible.
+  //
+  // Pull: FS field → panel (asks for confirmation if panel already has content)
+  // Push: panel → FS field (plain text; uses the Froala API when available so the
+  //        editor's model and Freshservice's form bindings see the change)
 
-  const CW_NOTES_READ_SCRIPT = `(async function() {
-    // GWT hides components with inline style.display='none'. Temporarily reveal
-    // any such ancestors so innerText and focus() work correctly, then restore.
-    function withVisible(el, fn) {
-      var chain = [];
-      var p = el;
-      while (p && p !== document.documentElement) {
-        if (p.style.display === 'none') { chain.push(p); p.style.display = 'block'; }
-        p = p.parentElement;
-      }
-      try { return fn(); } finally {
-        chain.forEach(function(n) { n.style.display = 'none'; });
-      }
+  // Shared helpers injected into every script that touches the page's notes field.
+  const FS_FIELD_HELPERS = `
+    var FS_RICH_SELECTORS = [
+      '.fr-element[contenteditable="true"]',
+      '.redactor-editor[contenteditable="true"]',
+      '.redactor_editor[contenteditable="true"]',
+      '.ql-editor[contenteditable="true"]',
+      '.ProseMirror[contenteditable="true"]'
+    ];
+
+    function fsIsVisible(el) {
+      return !!(el && el.isConnected && el.getClientRects().length > 0);
     }
 
-    // Build a reusable click function for a toggle element.
-    function makeClickFn(el) {
-      var rect = el.getBoundingClientRect();
-      var mx = rect.left + rect.width / 2, my = rect.top + rect.height / 2;
-      return function() {
-        ['mousedown', 'mouseup', 'click'].forEach(function(type) {
-          el.dispatchEvent(new MouseEvent(type, {
-            bubbles: true, cancelable: true, view: window, clientX: mx, clientY: my
-          }));
-        });
-      };
+    function fsIsRichEditor(el) {
+      if (!el || el.nodeType !== 1) return false;
+      for (var i = 0; i < FS_RICH_SELECTORS.length; i++) {
+        if (el.matches(FS_RICH_SELECTORS[i])) return true;
+      }
+      return false;
     }
 
-    // Ensure the stopwatch textarea is in the DOM.
-    // Injects a CSS rule with !important so GWT's own show() cannot override
-    // our hiding after the popup is inserted. Restores visibility before
-    // clicking close buttons so GWT processes those events normally.
-    async function ensureTextarea() {
-      var ta = document.querySelector('textarea.cw_PsaResizableTextArea');
-      if (ta) return { ta: ta, wasHidden: false };
-      var stopwatch = document.querySelector('.mm_stopwatch');
-      if (!stopwatch) return null;
-      var firstCwsvg = stopwatch.querySelector('div.cwsvg');
-      var toggle = firstCwsvg ? firstCwsvg.parentElement : null;
-      if (!toggle) return null;
-      // !important rule beats any inline style GWT sets during popup initialisation.
-      var styleTag = document.createElement('style');
-      styleTag.textContent = '.cw-gxt-wnd.cw-sync-hidden { visibility: hidden !important; }';
-      document.head.appendChild(styleTag);
-      var popup = null;
-      var obs = new MutationObserver(function(muts) {
-        for (var mi = 0; mi < muts.length; mi++) {
-          for (var ni = 0; ni < muts[mi].addedNodes.length; ni++) {
-            var n = muts[mi].addedNodes[ni];
-            if (n.nodeType !== 1) continue;
-            var w = n.classList.contains('cw-gxt-wnd') ? n
-                  : (n.querySelector && n.querySelector('.cw-gxt-wnd'));
-            if (w) { w.classList.add('cw-sync-hidden'); popup = w; obs.disconnect(); return; }
-          }
+    function fsIsNoteTextarea(el) {
+      if (!el || el.tagName !== 'TEXTAREA' || el.disabled || el.readOnly) return false;
+      var hint = [el.name, el.id, el.placeholder, el.getAttribute('aria-label')].join(' ');
+      return /note/i.test(hint);
+    }
+
+    function fsIsField(el) {
+      return fsIsRichEditor(el) || fsIsNoteTextarea(el);
+    }
+
+    // Resolve an arbitrary node (e.g. an event target inside an editor) to its field.
+    function fsFieldFor(node) {
+      var el = node && node.nodeType === 1 ? node : (node && node.parentElement);
+      if (!el) return null;
+      if (fsIsNoteTextarea(el)) return el;
+      var rich = el.closest(FS_RICH_SELECTORS.join(','));
+      return rich || null;
+    }
+
+    function fsFindField() {
+      var active = fsFieldFor(document.activeElement);
+      if (active && fsIsVisible(active)) return active;
+      var marked = document.querySelector('[data-fspp-sync]');
+      if (marked && fsIsField(marked) && fsIsVisible(marked)) return marked;
+      for (var i = 0; i < FS_RICH_SELECTORS.length; i++) {
+        var els = document.querySelectorAll(FS_RICH_SELECTORS[i]);
+        for (var j = 0; j < els.length; j++) {
+          if (fsIsVisible(els[j])) return els[j];
         }
-      });
-      obs.observe(document.body, { childList: true, subtree: true });
-      makeClickFn(toggle)();
-      for (var i = 0; i < 10; i++) {
-        await new Promise(function(r) { setTimeout(r, 200); });
-        ta = document.querySelector('textarea.cw_PsaResizableTextArea');
-        if (ta) break;
       }
-      obs.disconnect();
-      if (!ta) { styleTag.remove(); return null; }
-      if (!popup) { popup = ta.closest('.cw-gxt-wnd'); if (popup) popup.classList.add('cw-sync-hidden'); }
-      return { ta: ta, wasHidden: true, popup: popup, styleTag: styleTag };
+      var tas = document.querySelectorAll('textarea');
+      for (var k = 0; k < tas.length; k++) {
+        if (fsIsNoteTextarea(tas[k]) && fsIsVisible(tas[k])) return tas[k];
+      }
+      return null;
     }
 
-    // Remove the hiding class FIRST (so GWT processes button events normally),
-    // then click Save as Draft → X to dismiss the popup cleanly.
-    function restoreState(info) {
-      if (!info.wasHidden || !info.popup) return;
-      info.popup.classList.remove('cw-sync-hidden');
-      if (info.styleTag) info.styleTag.remove();
-      var saveBtn = info.popup.querySelector('.cw_confirmButton .mm_button');
-      var closeBtn = info.popup.querySelector('.cwsvg.mm_icon');
-      if (saveBtn) makeClickFn(saveBtn)();
-      if (closeBtn) makeClickFn(closeBtn)();
+    function fsFieldType(el) {
+      return el.tagName === 'TEXTAREA' ? 'textarea' : 'editor';
     }
 
-    // Draft.js editor (time-entry notes)
-    // innerText returns "" on hidden elements, so reveal before reading.
-    var draftEl = document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
-    if (draftEl) {
-      var text = withVisible(draftEl, function() { return draftEl.innerText.replace(/\\n$/, ''); });
-      return { type: 'draft', text: text };
+    function fsNormalize(text) {
+      return (text || '').replace(/\\u00a0/g, ' ').trim().replace(/\\n{3,}/g, '\\n\\n');
     }
 
-    // GWT textarea (stopwatch notes)
-    var info = await ensureTextarea();
-    if (!info) return null;
-    var text = info.ta.value;
-    restoreState(info);
-    return { type: 'textarea', text: text };
+    function fsReadField(el) {
+      return fsNormalize(el.tagName === 'TEXTAREA' ? el.value : el.innerText);
+    }
+  `;
+
+  const FS_NOTES_READ_SCRIPT = `(function() {
+    ${FS_FIELD_HELPERS}
+    var el = fsFindField();
+    if (!el) return null;
+    return { type: fsFieldType(el), text: fsReadField(el) };
   })()`;
 
-  btnPullFromCw.addEventListener("click", async function () {
+  // Matches fsNormalize() in FS_FIELD_HELPERS so panel text and page text compare equal.
+  function normalizeSyncText(text) {
+    return (text || "").replace(/\u00a0/g, " ").trim().replace(/\n{3,}/g, "\n\n");
+  }
+
+  function fieldTypeLabel(type) {
+    return type === "editor" ? "note editor" : "notes field";
+  }
+
+  btnPullFromFs.addEventListener("click", async function () {
     const webview = getActiveWebview();
     if (!webview) {
       autosaveStatus.textContent = "No active tab";
@@ -594,29 +590,29 @@ document.addEventListener("DOMContentLoaded", function () {
 
     let result;
     try {
-      result = await webview.executeJavaScript(CW_NOTES_READ_SCRIPT);
+      result = await webview.executeJavaScript(FS_NOTES_READ_SCRIPT);
     } catch (err) {
-      autosaveStatus.textContent = "Error reading CW notes field";
+      autosaveStatus.textContent = "Error reading Freshservice notes field";
       autosaveStatus.className = "";
-      console.error("[CW Sync] Pull error:", err);
+      console.error("[FS Sync] Pull error:", err);
       return;
     }
 
     if (!result) {
-      autosaveStatus.textContent = "No CW notes field found on this page";
+      autosaveStatus.textContent = "No Freshservice notes field found — open a note or reply first";
       autosaveStatus.className = "";
       return;
     }
 
     if (result.text.trim() === "") {
-      autosaveStatus.textContent = "CW notes field is empty";
+      autosaveStatus.textContent = "Freshservice notes field is empty";
       autosaveStatus.className = "";
       return;
     }
 
     if (!isEditorEmpty()) {
       const confirmed = await showConfirm(
-        "Replace the current panel notes with content pulled from CW?"
+        "Replace the current panel notes with content pulled from Freshservice?"
       );
       if (!confirmed) return;
     }
@@ -643,8 +639,7 @@ document.addEventListener("DOMContentLoaded", function () {
       } catch { /* grab failure is non-fatal */ }
     }
 
-    autosaveStatus.textContent =
-      "Pulled from CW (" + (result.type === "draft" ? "time entry" : "stopwatch") + ")";
+    autosaveStatus.textContent = "Pulled from Freshservice (" + fieldTypeLabel(result.type) + ")";
     autosaveStatus.className = "saved";
 
     // Queue an autosave so the pulled content is persisted
@@ -652,7 +647,7 @@ document.addEventListener("DOMContentLoaded", function () {
     autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
   });
 
-  btnPushToCw.addEventListener("click", async function () {
+  btnPushToFs.addEventListener("click", async function () {
     const webview = getActiveWebview();
     if (!webview) {
       autosaveStatus.textContent = "No active tab";
@@ -666,7 +661,7 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    // Strip HTML formatting — CW notes fields accept plain text only
+    // Strip HTML formatting — pushed as plain text with line breaks preserved
     const plainText = getEditorPlainText();
 
     // Suppress the live sync echo for this push: mark the text as already-pushed
@@ -679,106 +674,103 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     try {
-      const result = await webview.executeJavaScript(buildCwPushScript(plainText));
+      const result = await webview.executeJavaScript(buildFsPushScript(plainText));
       if (!result) {
-        autosaveStatus.textContent = "No CW notes field found on this page";
+        autosaveStatus.textContent = "No Freshservice notes field found — open a note or reply first";
         autosaveStatus.className = "";
         return;
       }
-      autosaveStatus.textContent =
-        "Pushed to CW (" + (result.type === "draft" ? "time entry" : "stopwatch") + ")";
+      autosaveStatus.textContent = "Pushed to Freshservice (" + fieldTypeLabel(result.type) + ")";
       autosaveStatus.className = "saved";
     } catch (err) {
-      autosaveStatus.textContent = "Error pushing to CW notes field";
+      autosaveStatus.textContent = "Error pushing to Freshservice notes field";
       autosaveStatus.className = "";
-      console.error("[CW Push] manual push error:", err);
+      console.error("[FS Push] manual push error:", err);
     }
   });
 
-  // ==================== CW Live Sync Engine ====================
+  // ==================== Freshservice Live Sync Engine ====================
   //
   // Three subsystems:
-  //   1. CW_WATCHER_SCRIPT — injected into each webview to emit focus/input/popup events
-  //   2. syncEngine        — per-tab state machine driving push (panel→CW) and pull (CW→panel)
+  //   1. FS_WATCHER_SCRIPT — injected into each webview to emit field/focus/input events
+  //   2. syncEngine        — per-tab state machine driving push (panel→FS) and pull (FS→panel)
   //   3. ticketSwapper     — auto-loads content when the detected ticket changes
 
-  const SYNC_PUSH_DRAFT = 500;           // ms — Draft.js push debounce
-  const SYNC_PUSH_TA_VISIBLE = 100;      // ms — stopwatch popup visible
-  const SYNC_PUSH_TA_HIDDEN = 2000;      // ms — stopwatch hidden (longer debounce avoids rapid popup open/hide)
-  const SYNC_PULL_DEBOUNCE = 300;        // ms — incoming CW change pull
+  const SYNC_PUSH_EDITOR = 500;          // ms — rich-text editor push debounce
+  const SYNC_PUSH_TEXTAREA = 300;        // ms — plain textarea push debounce
+  const SYNC_PULL_DEBOUNCE = 300;        // ms — incoming FS change pull
   const SYNC_WATCHER_MIN_INTERVAL = 50;  // ms — minimum gap between processed watcher messages per tab
 
   // Injected once per page load. Uses console.log as the outbound channel so it
-  // works without an extra IPC registration — the renderer filters by the [CW-SYNC]
-  // prefix in the webview console-message event.
-  const CW_WATCHER_SCRIPT = `(function() {
-    if (window.__cwSyncWatcherInstalled) return;
-    window.__cwSyncWatcherInstalled = true;
+  // works without an extra IPC registration — the renderer filters by the [FS-SYNC]
+  // prefix in the webview console-message event. Freshservice is a single-page
+  // app, so the watcher stays installed across in-page navigation and keeps
+  // re-detecting fields as editors open and close.
+  const FS_WATCHER_SCRIPT = `(function() {
+    if (window.__fsSyncWatcherInstalled) return;
+    window.__fsSyncWatcherInstalled = true;
+    ${FS_FIELD_HELPERS}
 
     function emit(payload) {
-      console.log('[CW-SYNC] ' + JSON.stringify(payload));
+      console.log('[FS-SYNC] ' + JSON.stringify(payload));
     }
 
-    var draftEl = null;
-    var textareaEl = null;
-    var popupVisible = false;
+    var currentField = null;
+    var currentType = null;
     var inputDebounce = null;
+    var scanTimer = null;
 
-    function onDraftInput() {
-      clearTimeout(inputDebounce);
-      inputDebounce = setTimeout(function() {
-        if (draftEl) emit({ kind: 'input', field: 'draft', text: (draftEl.innerText || '').replace(/\\n$/, '') });
-      }, 150);
+    function mark(el) {
+      var prev = document.querySelectorAll('[data-fspp-sync]');
+      for (var i = 0; i < prev.length; i++) {
+        if (prev[i] !== el) prev[i].removeAttribute('data-fspp-sync');
+      }
+      if (el) el.setAttribute('data-fspp-sync', '1');
     }
 
-    function onTextareaInput() {
-      clearTimeout(inputDebounce);
-      inputDebounce = setTimeout(function() {
-        if (textareaEl) emit({ kind: 'input', field: 'textarea', text: textareaEl.value || '' });
-      }, 150);
-    }
-
-    function attachDraft(el) {
-      if (draftEl === el) return;
-      draftEl = el;
-      el.addEventListener('focus', function() { emit({ kind: 'focus', field: 'draft', focused: true }); });
-      el.addEventListener('blur',  function() { emit({ kind: 'focus', field: 'draft', focused: false }); });
-      el.addEventListener('input', onDraftInput);
-      emit({ kind: 'fields', draft: true, textarea: !!textareaEl });
-    }
-
-    function attachTextarea(el) {
-      if (textareaEl === el) return;
-      textareaEl = el;
-      el.addEventListener('focus', function() { emit({ kind: 'focus', field: 'textarea', focused: true }); });
-      el.addEventListener('blur',  function() { emit({ kind: 'focus', field: 'textarea', focused: false }); });
-      el.addEventListener('input', onTextareaInput);
-      emit({ kind: 'fields', draft: !!draftEl, textarea: true });
-    }
-
-    function checkPopupVisibility() {
-      var popup = document.querySelector('.cw-gxt-wnd');
-      var visible = !!(popup && popup.offsetParent !== null && !popup.classList.contains('cw-sync-hidden'));
-      if (visible !== popupVisible) {
-        popupVisible = visible;
-        emit({ kind: 'popup', visible: visible });
+    function scan() {
+      scanTimer = null;
+      var el = fsFindField();
+      var type = el ? fsFieldType(el) : null;
+      if (el !== currentField || type !== currentType) {
+        currentField = el;
+        currentType = type;
+        if (el) mark(el);
+        emit({ kind: 'fields', type: type });
       }
     }
 
-    function scanAndAttach() {
-      var draft = document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
-      if (draft && draft !== draftEl) attachDraft(draft);
-      var ta = document.querySelector('textarea.cw_PsaResizableTextArea');
-      if (ta && ta !== textareaEl) attachTextarea(ta);
-      checkPopupVisibility();
+    function scheduleScan() {
+      if (!scanTimer) scanTimer = setTimeout(scan, 250);
     }
 
-    scanAndAttach();
+    document.addEventListener('focusin', function(e) {
+      var field = fsFieldFor(e.target);
+      if (!field) return;
+      mark(field);
+      scan();
+      emit({ kind: 'focus', focused: true });
+    }, true);
 
-    var obs = new MutationObserver(function() { scanAndAttach(); });
+    document.addEventListener('focusout', function(e) {
+      if (fsFieldFor(e.target)) emit({ kind: 'focus', focused: false });
+    }, true);
+
+    document.addEventListener('input', function(e) {
+      var field = fsFieldFor(e.target);
+      if (!field) return;
+      clearTimeout(inputDebounce);
+      inputDebounce = setTimeout(function() {
+        emit({ kind: 'input', field: fsFieldType(field), text: fsReadField(field) });
+      }, 150);
+    }, true);
+
+    scan();
+
+    var obs = new MutationObserver(scheduleScan);
     obs.observe(document.body, {
       childList: true, subtree: true,
-      attributes: true, attributeFilter: ['style', 'class']
+      attributes: true, attributeFilter: ['style', 'class', 'contenteditable']
     });
   })()`;
 
@@ -787,12 +779,11 @@ document.addEventListener("DOMContentLoaded", function () {
   function getSyncState(tabId) {
     if (!syncStates.has(tabId)) {
       syncStates.set(tabId, {
-        cwFieldType: null,     // 'draft' | 'textarea' | null
-        cwPopupVisible: false,
-        cwFocused: false,
+        fsFieldType: null,     // 'editor' | 'textarea' | null
+        fsFocused: false,
         panelFocused: false,
-        lastPushedText: null,  // echo suppression: text we last wrote to CW
-        lastPulledText: null,  // change detection: text we last read from CW
+        lastPushedText: null,  // echo suppression: text we last wrote to FS
+        lastPulledText: null,  // change detection: text we last read from FS
         pushTimer: null,
         pullTimer: null,
         pushInFlight: false,
@@ -821,8 +812,8 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
     const state = activeTabId ? syncStates.get(activeTabId) : null;
-    if (!state || !state.cwFieldType) {
-      syncStatus.textContent = "⇅ No CW field";
+    if (!state || !state.fsFieldType) {
+      syncStatus.textContent = "⇅ No FS field";
       syncStatus.className = "sync-status sync-off";
     } else if (state.pushInFlight) {
       syncStatus.textContent = "⇅ Pushing…";
@@ -841,21 +832,22 @@ document.addEventListener("DOMContentLoaded", function () {
 
     switch (msg.kind) {
       case "fields":
-        state.cwFieldType = msg.draft ? "draft" : (msg.textarea ? "textarea" : null);
+        state.fsFieldType = msg.type === "editor" || msg.type === "textarea" ? msg.type : null;
+        // A different field (or none) is now the target — forget what we last wrote/read
+        // so the next push isn't skipped as a duplicate of text sent to the old field.
+        state.lastPushedText = null;
+        state.lastPulledText = null;
         updateSyncPill();
         break;
       case "focus":
-        state.cwFocused = msg.focused;
-        break;
-      case "popup":
-        state.cwPopupVisible = msg.visible;
+        state.fsFocused = msg.focused;
         break;
       case "input":
-        // CW field changed while panel is not focused → schedule a pull
+        // FS field changed while panel is not focused → schedule a pull
         if (!state.panelFocused) {
           clearTimeout(state.pullTimer);
           state.pullTimer = setTimeout(function () {
-            executePull(tabId, msg.text, msg.field);
+            executePull(tabId, normalizeSyncText(msg.text), msg.field);
           }, SYNC_PULL_DEBOUNCE);
         }
         break;
@@ -882,7 +874,7 @@ document.addEventListener("DOMContentLoaded", function () {
       setEditorContent(html);
 
       if (syncStatus) {
-        syncStatus.textContent = field === "draft" ? "⇅ Pulled (time entry)" : "⇅ Pulled (stopwatch)";
+        syncStatus.textContent = "⇅ Pulled (" + fieldTypeLabel(field) + ")";
         syncStatus.className = "sync-status sync-active";
         setTimeout(updateSyncPill, 1500);
       }
@@ -898,16 +890,9 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!appSettings.liveSyncEnabled) return;
     if (tabId !== activeTabId) return;
     const state = getSyncState(tabId);
-    if (!state.cwFieldType) return;
+    if (!state.fsFieldType) return;
 
-    let delay;
-    if (state.cwFieldType === "draft") {
-      delay = SYNC_PUSH_DRAFT;
-    } else if (state.cwPopupVisible) {
-      delay = SYNC_PUSH_TA_VISIBLE;
-    } else {
-      delay = SYNC_PUSH_TA_HIDDEN;
-    }
+    const delay = state.fsFieldType === "editor" ? SYNC_PUSH_EDITOR : SYNC_PUSH_TEXTAREA;
 
     clearTimeout(state.pushTimer);
     state.pushTimer = setTimeout(function () { executePush(tabId); }, delay);
@@ -928,7 +913,7 @@ document.addEventListener("DOMContentLoaded", function () {
     state.pushInFlight = true;
     updateSyncPill();
 
-    const pushScript = buildCwPushScript(plainText);
+    const pushScript = buildFsPushScript(plainText);
     try {
       const result = await webview.executeJavaScript(pushScript);
       if (result) {
@@ -940,14 +925,14 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
     } catch (pushErr) {
-      console.error("[CW Push] auto push error:", pushErr);
+      console.error("[FS Push] auto push error:", pushErr);
       state.consecutivePushFailures = (state.consecutivePushFailures || 0) + 1;
       if (state.consecutivePushFailures === 1) {
         addUniqueNotification({
           id: notifNextId++,
           type: "sync-failure",
           title: "Live Sync Push Failed",
-          desc: "Could not write notes to the CW notes field. Your ConnectWise session may have expired or the notes field is not available on this page.",
+          desc: "Could not write notes to the Freshservice notes field. Your Freshservice session may have expired or the note editor is no longer open on this page.",
         });
       }
     } finally {
@@ -956,198 +941,76 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  function buildCwPushScript(plainText) {
-    return `(async function() {
+  function buildFsPushScript(plainText) {
+    return `(function() {
       var text = ${JSON.stringify(plainText)};
+      ${FS_FIELD_HELPERS}
 
-      function withVisible(el, fn) {
-        var chain = [];
-        var p = el;
-        while (p && p !== document.documentElement) {
-          if (p.style.display === 'none') { chain.push(p); p.style.display = 'block'; }
-          p = p.parentElement;
-        }
-        try { return fn(); } finally {
-          chain.forEach(function(n) { n.style.display = 'none'; });
-        }
-      }
+      var el = fsFindField();
+      if (!el) return null;
 
-      function makeClickFn(el) {
-        var rect = el.getBoundingClientRect();
-        var mx = rect.left + rect.width / 2, my = rect.top + rect.height / 2;
-        return function() {
-          ['mousedown', 'mouseup', 'click'].forEach(function(type) {
-            el.dispatchEvent(new MouseEvent(type, {
-              bubbles: true, cancelable: true, view: window, clientX: mx, clientY: my
-            }));
-          });
-        };
-      }
-
-      async function ensureTextarea() {
-        var ta = document.querySelector('textarea.cw_PsaResizableTextArea');
-        if (ta) return { ta: ta, wasHidden: false };
-        var stopwatch = document.querySelector('.mm_stopwatch');
-        if (!stopwatch) return null;
-        var firstCwsvg = stopwatch.querySelector('div.cwsvg');
-        var toggle = firstCwsvg ? firstCwsvg.parentElement : null;
-        if (!toggle) return null;
-        var styleTag = document.createElement('style');
-        styleTag.textContent = '.cw-gxt-wnd.cw-sync-hidden { visibility: hidden !important; }';
-        document.head.appendChild(styleTag);
-        var popup = null;
-        var obs = new MutationObserver(function(muts) {
-          for (var mi = 0; mi < muts.length; mi++) {
-            for (var ni = 0; ni < muts[mi].addedNodes.length; ni++) {
-              var n = muts[mi].addedNodes[ni];
-              if (n.nodeType !== 1) continue;
-              var w = n.classList.contains('cw-gxt-wnd') ? n
-                    : (n.querySelector && n.querySelector('.cw-gxt-wnd'));
-              if (w) { w.classList.add('cw-sync-hidden'); popup = w; obs.disconnect(); return; }
-            }
-          }
-        });
-        obs.observe(document.body, { childList: true, subtree: true });
-        makeClickFn(toggle)();
-        for (var i = 0; i < 10; i++) {
-          await new Promise(function(r) { setTimeout(r, 200); });
-          ta = document.querySelector('textarea.cw_PsaResizableTextArea');
-          if (ta) break;
-        }
-        obs.disconnect();
-        if (!ta) { styleTag.remove(); return null; }
-        if (!popup) {
-          popup = ta.closest('.cw-gxt-wnd');
-          if (popup) popup.classList.add('cw-sync-hidden');
-        }
-        return { ta: ta, wasHidden: true, popup: popup, styleTag: styleTag };
-      }
-
-      function restoreState(info) {
-        if (!info.wasHidden || !info.popup) return;
-        info.popup.classList.remove('cw-sync-hidden');
-        if (info.styleTag) info.styleTag.remove();
-        var saveBtn = info.popup.querySelector('.cw_confirmButton .mm_button');
-        var closeBtn = info.popup.querySelector('.cwsvg.mm_icon');
-        if (saveBtn) makeClickFn(saveBtn)();
-        if (closeBtn) makeClickFn(closeBtn)();
-      }
-
-      var draftEl = document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
-      if (draftEl) {
-        withVisible(draftEl, function() { draftEl.focus(); });
-
-        // DOM-based selection (execCommand selectAll, Selection API, synthetic Ctrl+A)
-        // all fail to update _latestEditorState before the paste fires because Draft.js
-        // debounces selectionchange asynchronously. Instead, reach into the React fiber
-        // to set _latestEditorState to an all-blocks selection via a Proxy. Draft.js's
-        // paste handler reads _latestEditorState.getSelection() synchronously, so the
-        // paste replaces all existing content rather than inserting at the cursor.
-        try {
-          var fiberKey = Object.keys(draftEl).find(function(k) {
-            return k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance');
-          });
-          var draftEditorInst = null;
-          if (fiberKey) {
-            var f = draftEl[fiberKey];
-            while (f) {
-              if (f.stateNode && f.stateNode._latestEditorState) {
-                draftEditorInst = f.stateNode;
-                break;
-              }
-              f = f.return;
-            }
-          }
-          if (draftEditorInst) {
-            var es = draftEditorInst._latestEditorState;
-            var curSel = es.getSelection();
-            // Block keys are encoded in data-offset-key="blockKey-decoratorIdx-leafIdx".
-            var blockEls = draftEl.querySelectorAll('[data-block="true"]');
-            var keyRe = /^(.+)-\\d+-\\d+$/;
-            var firstBlockKey = blockEls.length > 0
-              && (keyRe.exec(blockEls[0].getAttribute('data-offset-key') || '') || [])[1];
-            var lastBlockEl = blockEls[blockEls.length - 1];
-            var lastBlockKey = lastBlockEl
-              && (keyRe.exec(lastBlockEl.getAttribute('data-offset-key') || '') || [])[1];
-            var lastBlockLen = lastBlockEl ? lastBlockEl.textContent.length : 0;
-            if (curSel && firstBlockKey && lastBlockKey) {
-              var newSel;
-              try {
-                newSel = new curSel.constructor({
-                  anchorKey: firstBlockKey,
-                  anchorOffset: 0,
-                  focusKey: lastBlockKey,
-                  focusOffset: lastBlockLen,
-                  isBackward: false,
-                  hasFocus: true,
-                });
-              } catch (selConsErr) {
-                newSel = {
-                  anchorKey: firstBlockKey, anchorOffset: 0,
-                  focusKey: lastBlockKey, focusOffset: lastBlockLen,
-                  isBackward: false, hasFocus: true,
-                };
-              }
-              // Wrap _latestEditorState in a Proxy. getSelection() is not minified in
-              // this build, so intercept it directly. Also swap curSel → newSel on any
-              // other access path that returns it, as a safety net.
-              draftEditorInst._latestEditorState = new Proxy(es, {
-                get: function(target, prop) {
-                  if (prop === 'getSelection') return function() { return newSel; };
-                  var val = target[prop];
-                  if (val === curSel) return newSel;
-                  if (typeof val === 'function') {
-                    return function() {
-                      var r = val.apply(target, arguments);
-                      return r === curSel ? newSel : r;
-                    };
-                  }
-                  return val;
-                },
-              });
-            }
-          }
-        } catch (fiberErr) { /* selection update failed — paste will insert at cursor */ }
-
-        // Dispatch paste event. The paste pathway (insertFragment) does not trigger
-        // the CW NoteRichTextEditor unmount that execCommand('insertText') caused.
-        try {
-          var dt = new DataTransfer();
-          dt.setData('text/plain', text);
-          draftEl.dispatchEvent(new ClipboardEvent('paste', {
-            bubbles: true,
-            cancelable: true,
-            clipboardData: dt,
-          }));
-        } catch (pasteErr) {
-          // DataTransfer or ClipboardEvent unavailable — fall back to execCommand.
-          withVisible(draftEl, function() {
-            document.execCommand('selectAll', false, null);
-            document.execCommand('insertText', false, text);
-          });
-        }
-
-        if (!draftEl.isConnected) {
-          var freshDraftEl = document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
-          if (freshDraftEl) freshDraftEl.focus();
-        }
-
-        return { type: 'draft' };
-      }
-
-      var info = await ensureTextarea();
-      if (!info) return null;
-      withVisible(info.ta, function() {
-        info.ta.focus();
+      if (el.tagName === 'TEXTAREA') {
+        el.focus();
+        // Use the native setter so framework bindings (Ember/React) see a real change.
         var setter = Object.getOwnPropertyDescriptor(
           window.HTMLTextAreaElement.prototype, 'value'
         ).set;
-        setter.call(info.ta, text);
-        info.ta.dispatchEvent(new Event('input',  { bubbles: true }));
-        info.ta.dispatchEvent(new Event('change', { bubbles: true }));
-      });
-      restoreState(info);
-      return { type: 'textarea' };
+        setter.call(el, text);
+        el.dispatchEvent(new Event('input',  { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return { type: 'textarea' };
+      }
+
+      // Single paragraph with <br> line breaks: its innerText round-trips to the
+      // same plain text, so live-sync echo detection stays stable.
+      var html = '<p>' + (text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\\n/g, '<br>') || '<br>') + '</p>';
+
+      // Prefer the Froala API (v3/v4 global, then the v2 jQuery plugin) so Froala's
+      // model, undo stack, and Freshservice's contentChanged bindings all update.
+      try {
+        var inst = null;
+        if (window.FroalaEditor && Array.isArray(window.FroalaEditor.INSTANCES)) {
+          inst = window.FroalaEditor.INSTANCES.find(function(i) {
+            return i && i.el === el;
+          }) || null;
+        }
+        if (!inst && window.jQuery) {
+          var box = window.jQuery(el).closest('.fr-box').prev();
+          var data = box.length ? box.data('froala.editor') : null;
+          if (data && data.html) inst = data;
+        }
+        if (inst && inst.html && typeof inst.html.set === 'function') {
+          inst.html.set(html);
+          if (inst.undo && typeof inst.undo.saveStep === 'function') inst.undo.saveStep();
+          if (inst.events && typeof inst.events.trigger === 'function') {
+            inst.events.trigger('contentChanged');
+          }
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          return { type: 'editor' };
+        }
+      } catch (froalaErr) { /* fall through to the DOM path */ }
+
+      // Generic contenteditable path: select everything inside the editor and
+      // replace it via execCommand so the browser fires native input events.
+      el.focus();
+      var range = document.createRange();
+      range.selectNodeContents(el);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      var ok = false;
+      try { ok = document.execCommand('insertHTML', false, html); } catch (cmdErr) { ok = false; }
+      if (!ok) {
+        el.innerHTML = html;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      // Some editors only sync their model on key events.
+      el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+      return { type: 'editor' };
     })()`;
   }
 
@@ -1155,7 +1018,8 @@ document.addEventListener("DOMContentLoaded", function () {
   //
   // Runs on tab activation and did-finish-load. When the detected ticket differs
   // from currentPanelTicket: snapshot the outgoing content (if changed), then
-  // load the incoming ticket from CW first, falling back to local backup.
+  // load the incoming ticket from the open Freshservice notes field first, falling
+  // back to local backup.
 
   let currentPanelTicket = null;  // ticket currently bound to the panel
   let userTypedTicket = false;    // set when the user types in ticketIdInput — suppresses auto-swap
@@ -1205,31 +1069,31 @@ document.addEventListener("DOMContentLoaded", function () {
 
     let loadedFromCw = false;
     try {
-      const cwResult = await tab.webview.executeJavaScript(CW_NOTES_READ_SCRIPT);
-      if (cwResult && cwResult.text && cwResult.text.trim()) {
-        await snapshotBeforeBulkImport(cwResult.text);
-        const html = cwResult.text
+      const fsResult = await tab.webview.executeJavaScript(FS_NOTES_READ_SCRIPT);
+      if (fsResult && fsResult.text && fsResult.text.trim()) {
+        await snapshotBeforeBulkImport(fsResult.text);
+        const html = fsResult.text
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
           .replace(/\n/g, "<br>");
         setEditorContent(html);
         const state = getSyncState(tabId);
-        state.cwFieldType = cwResult.type;
-        state.lastPulledText = cwResult.text;
+        state.fsFieldType = fsResult.type;
+        state.lastPulledText = fsResult.text;
         state.lastPushedText = null;
         loadedFromCw = true;
       }
-    } catch { /* CW read failed — fall through to local */ }
+    } catch { /* FS read failed — fall through to local */ }
 
     if (!loadedFromCw) {
       await loadLocalTicketContent(newTicket);
-      // Still detect field type for sync even if CW was empty
+      // Still detect field type for sync even if the FS field was empty
       try {
-        const probe = await tab.webview.executeJavaScript(CW_NOTES_READ_SCRIPT);
+        const probe = await tab.webview.executeJavaScript(FS_NOTES_READ_SCRIPT);
         if (probe) {
           const state = getSyncState(tabId);
-          state.cwFieldType = probe.type;
+          state.fsFieldType = probe.type;
         }
       } catch { /* ignore */ }
     }
@@ -1743,10 +1607,10 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
-    // Messages emitted by the injected CW watcher arrive here.
+    // Messages emitted by the injected FS watcher arrive here.
     on(webview, "console-message", function (e) {
       const msg = e.message || "";
-      if (!msg.startsWith("[CW-SYNC] ")) return;
+      if (!msg.startsWith("[FS-SYNC] ")) return;
       const wState = getSyncState(id);
       const now = Date.now();
       if (now - wState.lastWatcherMsgAt < SYNC_WATCHER_MIN_INTERVAL) return;
@@ -1781,16 +1645,15 @@ document.addEventListener("DOMContentLoaded", function () {
       // Reset sync state so the watcher re-detects the fields on the new page.
       const navState = syncStates.get(id);
       if (navState) {
-        navState.cwFieldType = null;
+        navState.fsFieldType = null;
         navState.lastPushedText = null;
         navState.lastPulledText = null;
-        navState.cwFocused = false;
-        navState.cwPopupVisible = false;
+        navState.fsFocused = false;
       }
     });
 
     on(webview, "did-finish-load", function () {
-      webview.executeJavaScript(CW_WATCHER_SCRIPT).catch(function () {});
+      webview.executeJavaScript(FS_WATCHER_SCRIPT).catch(function () {});
       if (activeTabId === id) ticketSwapRun(id);
     });
 
@@ -1815,28 +1678,10 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
-    // CW's "Save and Return" button calls window.close() on the child page.
-    // After closing that tab, click the refresh button on the parent so CW reloads its list.
-    // The refresh button is identified by its SVG path data — no stable class or ID is available.
+    // Pages that call window.close() (e.g. a popped-out record) close their tab.
     on(webview, "close", function () {
       console.log("[Tab] Webview requested close for tab:", id);
       closeTab(id);
-      const returnedWebview = getActiveWebview();
-      if (returnedWebview) {
-        returnedWebview
-          .executeJavaScript(
-            `(function() {
-              const paths = document.querySelectorAll('.mm_button svg path');
-              for (const p of paths) {
-                if ((p.getAttribute('d') || '').startsWith('M43.4 24.4')) {
-                  const btn = p.closest('.mm_button');
-                  if (btn) { btn.click(); break; }
-                }
-              }
-            })();`,
-          )
-          .catch(function () {});
-      }
     });
 
     if (activate) {
@@ -2574,76 +2419,62 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  // ==================== Grab Ticket from ConnectWise ====================
+  // ==================== Grab Ticket from Freshservice ====================
+  //
+  // Freshservice is a single-page app whose record URLs carry the numeric ID:
+  //   /a/tickets/123   (/helpdesk/tickets/123 on the legacy UI) → "123"
+  //   /a/changes/45    (/itil/changes/45)                        → "CHN-45"
+  //   /a/problems/67   (/itil/problems/67)                       → "PRB-67"
+  //   /a/releases/89   (/itil/releases/89)                       → "RL-89"
+  // Tickets (incidents and service requests share one number sequence) keep a
+  // bare number so "Ticket Number" sorting works; other modules are prefixed so
+  // they can't collide with ticket numbers. If the URL doesn't match (custom
+  // portal routes, etc.) the page title and record header are checked for a
+  // display ID such as "INC-123" or "SR-123". List pages intentionally return
+  // nothing — they show many IDs and none of them is "the" open record.
 
   const TICKET_GRAB_SCRIPT = `(function() {
-  var selectors = [
-    ".cw-header-ticket-number",
-    ".ticket-number",
-    "[class*=ticketNumber]",
-    "[class*=ticket-number]",
-    "[class*=TicketNumber]",
-    "[data-testid*=ticket]",
-    ".sr-number",
-    "[class*=srNumber]",
-    "[class*=recordId]",
-    "[class*=record-id]",
-    ".cw-breadcrumb",
-    ".breadcrumb",
-    ".tab-label.active",
-    ".cw-tab.active",
-    "[class*=activeTab]",
-    ".selected-tab",
-    ".panel-title",
-    ".card-header",
-    "h1", "h2", "h3"
+  var routes = [
+    { re: /\\/(?:a|helpdesk)\\/tickets\\/(\\d+)(?:[/?#]|$)/i, prefix: "" },
+    { re: /\\/(?:a|itil)\\/changes\\/(\\d+)(?:[/?#]|$)/i, prefix: "CHN-" },
+    { re: /\\/(?:a|itil)\\/problems\\/(\\d+)(?:[/?#]|$)/i, prefix: "PRB-" },
+    { re: /\\/(?:a|itil)\\/releases\\/(\\d+)(?:[/?#]|$)/i, prefix: "RL-" }
   ];
-  for (var i = 0; i < selectors.length; i++) {
-    var els = document.querySelectorAll(selectors[i]);
-    for (var j = 0; j < els.length; j++) {
-      var text = els[j].innerText || els[j].textContent || "";
-      var match = text.match(/#\\s*([0-9]{4,})/);
-      if (match) return { ticket: match[1], source: selectors[i], text: text.substring(0, 100) };
+  var path = window.location.pathname + window.location.hash.replace(/^#/, "");
+  for (var i = 0; i < routes.length; i++) {
+    var m = path.match(routes[i].re);
+    if (m) return { ticket: routes[i].prefix + m[1], source: "url", text: path.substring(0, 100) };
+  }
+
+  function fromDisplayId(text) {
+    var t = (text || "").match(/\\b(INC|SR)-(\\d+)\\b/);
+    if (t) return t[2];
+    var o = (text || "").match(/\\b(CHN|PRB|RL)-(\\d+)\\b/);
+    if (o) return o[1] + "-" + o[2];
+    return null;
+  }
+
+  // Only trust the title/header on record pages, not list views.
+  var onListPage = /\\/(?:a|helpdesk|itil)\\/(?:tickets|changes|problems|releases)\\/?(?:[?#]|$)/i.test(path);
+  if (!onListPage) {
+    var fromTitle = fromDisplayId(document.title);
+    if (fromTitle) return { ticket: fromTitle, source: "title", text: document.title.substring(0, 100) };
+    var headers = document.querySelectorAll("h1, h2, [class*=display-id], [class*=displayId], [class*=ticket-id], [class*=ticketId]");
+    var maxScan = Math.min(headers.length, ${MAX_GRAB_ELEMENTS});
+    for (var h = 0; h < maxScan; h++) {
+      var text = headers[h].innerText || headers[h].textContent || "";
+      var id = fromDisplayId(text);
+      if (id) return { ticket: id, source: "header", text: text.substring(0, 100) };
     }
   }
-  var body = document.body.innerText || "";
-  var patterns = [
-    /(?:Service\\s*Ticket|Ticket|SR)\\s*#\\s*([0-9]{4,})/i,
-    /#([0-9]{5,})/
-  ];
-  for (var p = 0; p < patterns.length; p++) {
-    var m = body.match(patterns[p]);
-    if (m) return { ticket: m[1], source: "body-scan", text: "" };
-  }
-  var inputs = document.querySelectorAll("input, [contenteditable], span, div");
-  for (var k = 0; k < inputs.length; k++) {
-    var el = inputs[k];
-    var val = el.value || el.innerText || el.textContent || "";
-    var label = (el.getAttribute("aria-label") || el.getAttribute("title") || el.getAttribute("placeholder") || "").toLowerCase();
-    if (label.match(/ticket|sr\\s*#|record\\s*id|ticket\\s*number/)) {
-      var numMatch = val.match(/([0-9]{4,})/);
-      if (numMatch) return { ticket: numMatch[1], source: "input-label:" + label, text: val.substring(0, 100) };
-    }
-  }
-  var allEls = document.querySelectorAll("*");
-  var maxScan = Math.min(allEls.length, ${MAX_GRAB_ELEMENTS});
-  for (var a = 0; a < maxScan; a++) {
-    var cls = allEls[a].className || "";
-    if (typeof cls === "string" && cls.match(/tab.*active|active.*tab|selected/i)) {
-      var tabText = allEls[a].innerText || "";
-      var tabMatch = tabText.match(/#\\s*([0-9]{4,})/);
-      if (tabMatch) return { ticket: tabMatch[1], source: "active-tab-class", text: tabText.substring(0, 100) };
-    }
-  }
+
   return {
     ticket: null,
     source: "not-found",
     debug: {
       title: document.title,
       url: window.location.href,
-      h1: (document.querySelector("h1") || {}).innerText || "",
-      h2: (document.querySelector("h2") || {}).innerText || "",
-      bodySnippet: body.substring(0, 500)
+      h1: (document.querySelector("h1") || {}).innerText || ""
     }
   };
 })()`;

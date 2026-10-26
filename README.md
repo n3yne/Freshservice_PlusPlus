@@ -1,15 +1,15 @@
-# ConnectWise Manage++
+# Freshservice++
 
-An Electron-based wrapper for ConnectWise Manage that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
+An Electron-based wrapper for Freshservice that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
 
-**Current version:** 0.4.2
+**Current version:** 0.5.0
 
 ---
 
 ## Features
 
 ### Browser
-- **Multi-tab browsing** – Open multiple ConnectWise pages simultaneously; tabs persist between launches
+- **Multi-tab browsing** – Open multiple Freshservice pages simultaneously; tabs persist between launches
 - **Tab management** – Pin tabs, duplicate, close others, reopen closed tabs, copy URL, open in default browser (right-click any tab)
 - **Find in page** – `Ctrl+F` to search text on the current page
 - **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions; a badge on the download icon shows how many files finished since you last opened the panel (resets when you open it)
@@ -27,10 +27,10 @@ An Electron-based wrapper for ConnectWise Manage that adds a persistent note edi
 - **Templates** – Create reusable note templates accessible from the toolbar
 - **HTML source view** – Toggle button in the toolbar swaps the rich-text editor for a raw HTML textarea; formatting toolbar is disabled while in HTML mode and re-enabled on exit
 
-### ConnectWise Sync
-- **Live two-way sync** – With "Live Sync" enabled, the panel and the active CW notes field (Draft.js time-entry editor or stopwatch textarea) stay in sync as you type — no manual copy-paste needed
-- **Pull from CW / Push to CW** – Manual sync buttons for when live sync is off or you want an explicit transfer
-- **Auto ticket detection** – Switching tabs automatically loads the correct ticket content into the panel
+### Freshservice Sync
+- **Live two-way sync** – With "Live Sync" enabled, the panel and the open Freshservice note editor (the rich-text **Add note** / **Reply** editor, or a note textarea such as the one on the time-entry form) stay in sync as you type — no manual copy-paste needed. When several editors are open, the one you last clicked into is used
+- **Pull from FS / Push to FS** – Manual sync buttons for when live sync is off or you want an explicit transfer
+- **Auto ticket detection** – The ticket number is read from the page URL (`/a/tickets/1234`), so switching tabs or navigating between tickets automatically loads the correct content into the panel. Changes, problems and releases are tracked too, saved as `CHN-45`, `PRB-12` and `RL-3` so they never collide with ticket numbers
 
 ### Metrics Bar
 
@@ -49,7 +49,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes. After a suggestion is returned, a **Refine** textarea appears — type follow-up instructions (e.g. "make it shorter", "keep this as a client-facing message") and click **↺ Refine** to generate a revised version without losing the Apply option
-- **📋 Summarize** – Scrapes all visible note content from the active CW ticket page and asks the AI to produce a concise bullet-point summary
+- **📋 Summarize** – Scrapes the ticket description, replies and notes from the open Freshservice ticket and asks the AI to produce a concise bullet-point summary
 - Supports **Hatz AI**, **OpenAI**, and **Anthropic** as providers; the model dropdown is populated automatically from the provider's API once an API key is entered
 - **Delivered as a bundled plugin** — AI Features is implemented via the plugin system; it can be disabled independently from Settings → Plugins
 
@@ -58,7 +58,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 Extend the app with self-contained plugin directories — no build step required.
 
 - **Bundled plugins** – Ship with the app and are always available (e.g. the Metrics Bar)
-- **User-installed plugins** – Drop a plugin folder into `%APPDATA%\connectwise-manage-pp\plugins\` for plugins that survive app updates
+- **User-installed plugins** – Drop a plugin folder into `%APPDATA%\freshservice-pp\plugins\` for plugins that survive app updates
 - **Plugin management** – Enable or disable individual plugins from Settings → Plugins; restart to apply
 - **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed
 - Plugins can add toolbar buttons, Settings panels, backend IPC handlers, DOM elements, and application menu items
@@ -69,7 +69,7 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 - **Update available** – Checks GitHub Releases on startup and alerts you when a newer version is published; includes View Release, Hide for now, and Don't remind me for this version actions
 - **Auto-save failed** – Fires once if a note cannot be written to disk (permissions or disk-full)
 - **Backup storage warning** – Alerts when the backup folder exceeds a configurable size threshold (default: 100 MB; set to 0 to disable)
-- **Live sync push failed** – Fires once when the first push to a CW notes field fails (e.g. session expired)
+- **Live sync push failed** – Fires once when the first push to a Freshservice notes field fails (e.g. session expired)
 
 ### Appearance & Settings
 - **Dark / Light theme**
@@ -107,7 +107,7 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 All data is saved under Electron's `userData` directory:
 
 ```
-%APPDATA%\connectwise-manage-pp\note-backups\
+%APPDATA%\freshservice-pp\note-backups\
 ```
 
 Inside you'll find:
@@ -131,6 +131,8 @@ Click **📁 Open Folder** in the app to jump there directly.
 npm install
 npm start
 ```
+
+On first launch, open **Settings** (`Ctrl+,`) → **General** and set the **Home URL** to your Freshservice instance (e.g. `https://yourcompany.freshservice.com/`). Log in once; the session persists across launches.
 
 ### Build a Distributable
 
@@ -186,7 +188,7 @@ The ✨ Suggest and 📋 Summarize buttons appear in the note panel once a provi
 The **Metrics Bar** and **AI Features** are both delivered as bundled plugins and are always available. To install additional plugins, drop a plugin directory into the app's user data folder:
 
 ```
-%APPDATA%\connectwise-manage-pp\plugins\
+%APPDATA%\freshservice-pp\plugins\
   my-plugin\
     manifest.json
     renderer.js
@@ -200,9 +202,10 @@ For plugin development documentation — including the full API reference and a 
 
 ## Troubleshooting
 
-- **ConnectWise doesn't load** – The app sets a Chrome user-agent for `*.myconnectwise.net`. Ensure you have network access to your CW instance.
+- **Freshservice doesn't load** – The app sends a standard Chrome user-agent to `*.freshservice.com`, `*.freshworks.com` and `*.myfreshworks.com`. Ensure you have network access to your Freshservice instance, and set your instance URL (e.g. `https://yourcompany.freshservice.com/`) as the **Home URL** in Settings → General.
 - **Login issues** – The embedded browser keeps its own session cookies. Log in once and the session will persist across launches.
-- **Live sync not working** – Check that you're on a ticket page with a visible notes field. The sync status pill at the bottom of the panel shows the current state (`⇅ Synced`, `⇅ Pushing…`, `⇅ No CW field`).
+- **Live sync not working** – Freshservice only shows a note editor after you click **Add note** or **Reply** on a ticket, so open one first. The sync status pill at the bottom of the panel shows the current state (`⇅ Synced`, `⇅ Pushing…`, `⇅ No FS field`).
+- **Ticket number not detected** – Detection relies on the record URL (`/a/tickets/<id>`, `/a/changes/<id>`, …). You can always type an ID into the **Ticket / Reference ID** box manually.
 - **Metrics bar shows `—` or `(not found)`** – Open Settings → Metrics Bar, click **Test selectors** next to the relevant dashboard to trigger an immediate scrape and see per-field results. If a field still shows `(not found — check selector)`, use **Re-pick** on that field, wait for the dashboard to fully load in the picker, then click the correct value to recapture the selector.
 - **Metrics bar shows `⚠` on a card** – The last refresh for that field failed (network issue, dashboard changed, etc.). The value shown is the last successfully cached value. Hover the `⚠` to see when it was last updated. The app will retry on the next poll interval.
 - **Blank screen or errors** – Press `Ctrl+Shift+I` to open DevTools and check the console.

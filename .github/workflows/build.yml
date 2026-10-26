@@ -114,21 +114,21 @@ jobs:
           PREV=$(git tag --sort=-version:refname | grep -v "^${CURRENT}$" | head -1)
 
           {
-            echo "## ConnectWise Manage++ ${CURRENT}"
+            echo "## Freshservice++ ${CURRENT}"
             echo ""
             echo "### Downloads"
             echo "- **Windows** — Portable \`.exe\`, no installation required"
             echo "- **macOS** — \`.dmg\` disk image, drag to Applications to install"
             if [ -n "$PREV" ]; then
               echo ""
-              echo "**Full Changelog:** https://github.com/PGH-Networks/Connectwise_Manage_PlusPlus/compare/${PREV}...${CURRENT}"
+              echo "**Full Changelog:** https://github.com/n3yne/Freshservice_PlusPlus/compare/${PREV}...${CURRENT}"
             fi
           } > release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
-          name: ConnectWise Manage++ ${{ github.ref_name }}
+          name: Freshservice++ ${{ github.ref_name }}
           body_path: release_notes.md
           draft: false
           prerelease: false

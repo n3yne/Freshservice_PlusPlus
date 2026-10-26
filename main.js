@@ -40,22 +40,34 @@ async function writeAutosaveAtomic(data) {
   await fsp.rename(tmp, AUTOSAVE_FILE);
 }
 
-// Microsoft SSO hostnames — these popups communicate login state back to the
-// ConnectWise page via window.opener / postMessage and must open as real windows.
-const MICROSOFT_SSO_PATTERNS = [
+// Identity-provider hostnames — these popups communicate login state back to the
+// Freshservice page via window.opener / postMessage and must open as real windows.
+const SSO_PROVIDER_PATTERNS = [
   /^login\.microsoftonline\.com$/i,
   /^login\.microsoft\.com$/i,
   /^login\.live\.com$/i,
+  /^accounts\.google\.com$/i,
 ];
 
-// CW's SSO flow often starts on the CW domain (e.g. an auth redirect endpoint)
-// before handing off to Microsoft. Popups to these path segments on the CW
-// domain are allowed as real windows so the redirect chain isn't broken.
-// Everything else on the CW domain (PDFs, reports, etc.) goes to a tab.
+// Freshservice instances (*.freshservice.com) and Freshworks accounts / org SSO
+// (*.freshworks.com, *.myfreshworks.com). Used to scope the user-agent override
+// and to recognise auth popups that start on a Freshworks domain.
+const FRESHWORKS_HOSTNAME_PATTERN = /(?:^|\.)(?:freshservice|freshworks|myfreshworks)\.com$/i;
+const FRESHWORKS_URL_FILTER = {
+  urls: [
+    "*://*.freshservice.com/*",
+    "*://*.freshworks.com/*",
+    "*://*.myfreshworks.com/*",
+  ],
+};
+
+// Freshworks' SSO flow often starts on a Freshworks domain (e.g. an auth redirect
+// endpoint) before handing off to the identity provider. Popups to these path
+// segments on Freshworks domains are allowed as real windows so the redirect chain
+// isn't broken. Everything else (attachments, reports, etc.) goes to a tab.
 // The pattern requires a path-segment boundary after the keyword so that
-// e.g. /ConnectWise.aspx does not accidentally match /connect.
-const CW_HOSTNAME_PATTERN = /\.myconnectwise\.net$/i;
-const CW_AUTH_PATH_PATTERN =
+// e.g. /loginhistory does not accidentally match /login.
+const FRESHWORKS_AUTH_PATH_PATTERN =
   /\/(?:auth|login|sso|oauth|saml|openid|signin)(?:[/?#]|$)/i;
 
 // ===================== Settings Persistence =====================
@@ -232,7 +244,7 @@ function createWindow() {
     height: winHeight,
     ...(winX !== undefined && winY !== undefined ? { x: winX, y: winY } : {}),
     show: false,
-    title: "ConnectWise Manage++",
+    title: "Freshservice++",
     icon: path.join(__dirname, "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -407,7 +419,7 @@ function createWindow() {
   // Intercept new-window requests from webview guest pages and redirect to tabs
   mainWindow.webContents.on("did-attach-webview", (event, webviewContents) => {
     webviewContents.setWindowOpenHandler(({ url }) => {
-      // Microsoft SSO popups and CW auth-path popups open as real windows so the
+      // Identity-provider popups and Freshworks auth-path popups open as real windows so the
       // window.opener / postMessage login handshake works. Everything else goes
       // to a new tab. The console log below shows the exact URL and disposition
       // for each popup — useful if the SSO flow breaks and you need to widen the
@@ -417,12 +429,12 @@ function createWindow() {
         const host = parsed.hostname.toLowerCase();
         console.log("[Popup] window.open() from webview:", url);
 
-        const isMicrosoftSSO = MICROSOFT_SSO_PATTERNS.some((re) => re.test(host));
-        const isCwAuthPopup =
-          CW_HOSTNAME_PATTERN.test(host) &&
-          CW_AUTH_PATH_PATTERN.test(parsed.pathname);
+        const isSsoProvider = SSO_PROVIDER_PATTERNS.some((re) => re.test(host));
+        const isFreshworksAuthPopup =
+          FRESHWORKS_HOSTNAME_PATTERN.test(host) &&
+          FRESHWORKS_AUTH_PATH_PATTERN.test(parsed.pathname);
 
-        if (isMicrosoftSSO || isCwAuthPopup) {
+        if (isSsoProvider || isFreshworksAuthPopup) {
           console.log("[Popup] Allowing auth/popup window:", url);
           const parent =
             mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
@@ -1204,8 +1216,8 @@ function registerIpcHandlers() {
     const currentVersion = electron.app.getVersion();
     try {
       const resp = await fetch(
-        "https://api.github.com/repos/PGH-Networks/Connectwise_Manage_PlusPlus/releases/latest",
-        { headers: { "User-Agent": "ConnectWise-Manage-PP/" + currentVersion } },
+        "https://api.github.com/repos/n3yne/Freshservice_PlusPlus/releases/latest",
+        { headers: { "User-Agent": "Freshservice-PP/" + currentVersion } },
       );
       if (!resp.ok) return { error: `GitHub API error ${resp.status}`, currentVersion };
       const json = await resp.json();
@@ -1246,14 +1258,17 @@ electron.app.whenReady().then(async () => {
   EDITOR_STATE_FILE = path.join(BACKUP_DIR, "editor-state.json");
   MAIN_WINDOW_STATE_FILE = path.join(BACKUP_DIR, "main-window-state.json");
 
-  // Set a realistic user agent for ConnectWise requests only
-  // (scoped to myconnectwise.net to avoid affecting other services)
-  const CW_URL_FILTER = { urls: ["*://*.myconnectwise.net/*"] };
+  // Present a plain Chrome user agent (no "Electron/…" token) to Freshservice and
+  // Freshworks only, so the app isn't treated as an unsupported browser. Scoped to
+  // those domains to avoid affecting other services. The Chrome version tracks the
+  // bundled Chromium so it never looks outdated.
+  const chromeUserAgent =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" +
+    process.versions.chrome + " Safari/537.36";
   electron.session.defaultSession.webRequest.onBeforeSendHeaders(
-    CW_URL_FILTER,
+    FRESHWORKS_URL_FILTER,
     (details, callback) => {
-      details.requestHeaders["User-Agent"] =
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+      details.requestHeaders["User-Agent"] = chromeUserAgent;
       callback({ requestHeaders: details.requestHeaders });
     },
   );
@@ -1338,7 +1353,7 @@ electron.app.whenReady().then(async () => {
 }).catch((err) => {
   console.error("[App] Fatal startup error:", err);
   electron.dialog.showErrorBox(
-    "ConnectWise Manage++ — startup failed",
+    "Freshservice++ — startup failed",
     String(err.message || err),
   );
   electron.app.quit();
