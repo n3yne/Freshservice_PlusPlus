@@ -50,7 +50,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes. After a suggestion is returned, a **Refine** textarea appears — type follow-up instructions (e.g. "make it shorter", "keep this as a client-facing message") and click **↺ Refine** to generate a revised version without losing the Apply option
 - **📋 Summarize** – Scrapes the ticket description, replies and notes from the open Freshservice ticket and asks the AI to produce a concise bullet-point summary
-- Supports **Hatz AI**, **OpenAI**, and **Anthropic** as providers; the model dropdown is populated automatically from the provider's API once an API key is entered
+- Supports **Hatz AI**, **OpenAI**, **Anthropic**, **Azure OpenAI**, and **Microsoft 365 Copilot** as providers; for Hatz, OpenAI and Anthropic the model dropdown is populated automatically from the provider's API once an API key is entered
 - **Delivered as a bundled plugin** — AI Features is implemented via the plugin system; it can be disabled independently from Settings → Plugins
 
 ### Plugin System
@@ -176,10 +176,50 @@ The AI Assistant is a bundled plugin. Make sure it is enabled in **Settings → 
    - **Hatz AI** – paste your API key from the [Hatz Admin Dashboard](https://ai.hatz.ai)
    - **OpenAI** – paste a key from [platform.openai.com](https://platform.openai.com/api-keys)
    - **Anthropic** – paste a key from [console.anthropic.com](https://console.anthropic.com/settings/keys)
-3. The **Model** dropdown populates automatically once a valid key is saved
+   - **Azure OpenAI** – see [Azure OpenAI](#azure-openai) below
+   - **Microsoft 365 Copilot** – see [Microsoft 365 Copilot](#microsoft-365-copilot) below
+3. For Hatz, OpenAI and Anthropic, the **Model** dropdown populates automatically once a valid key is saved
 4. Select the model you want to use
 
 The ✨ Suggest and 📋 Summarize buttons appear in the note panel once a provider and API key are configured.
+
+A saved API key only works with the provider it was entered for. If you switch providers, paste that provider's key; the old key is never sent to the new provider.
+
+### Azure OpenAI
+
+Uses Microsoft-hosted OpenAI models in your own Azure OpenAI or Azure AI Foundry resource.
+
+1. In the Azure portal (or [ai.azure.com](https://ai.azure.com)), deploy a chat model such as `gpt-4o` and note the **deployment name**
+2. From the resource's **Keys and Endpoint** page, copy the **Endpoint** (e.g. `https://your-resource.openai.azure.com/`) and a **Key**
+3. In **Settings → Plugins → AI Features**, choose **Azure OpenAI** and fill in **Endpoint**, **Deployment Name** and **API Key**
+
+Requests go to the Azure OpenAI v1 API (`/openai/v1/chat/completions`).
+
+### Microsoft 365 Copilot
+
+Uses Microsoft 365 Copilot through the [Microsoft 365 Copilot Chat API](https://learn.microsoft.com/microsoft-365/copilot/extensibility/api/ai-services/chat/overview). Each person signs in with their own work account.
+
+> **Note:** The Chat API is currently in **preview** (Microsoft Graph `/beta`) and may change. Copilot also draws on the user's Microsoft 365 data (mail, chats, files) when answering; this app turns off web search grounding for every request.
+
+**Requirements**
+- Each user needs a **Microsoft 365 Copilot** license (the add-on license; free Copilot Chat isn't supported by the API)
+- A one-time **Entra ID app registration**, set up by a tenant admin
+
+**Admin setup (once per tenant)**
+1. In the [Entra admin center](https://entra.microsoft.com), go to **App registrations → New registration**
+   - Supported account types: **Accounts in this organizational directory only**
+   - Redirect URI: platform **Public client/native (mobile & desktop)**, value `https://login.microsoftonline.com/common/oauth2/nativeclient`
+2. Under **API permissions → Add a permission → Microsoft Graph → Delegated permissions**, add all of:
+   `Sites.Read.All`, `Mail.Read`, `People.Read.All`, `OnlineMeetingTranscript.Read.All`, `Chat.Read`, `ChannelMessage.Read.All`, `ExternalItem.Read.All`
+   (the Chat API requires every one of these), then click **Grant admin consent**
+3. Share the **Directory (tenant) ID** and **Application (client) ID** from the app's **Overview** page with your team
+
+**Per-user setup**
+1. In **Settings → Plugins → AI Features**, choose **Microsoft 365 Copilot**
+2. Enter the **Directory (Tenant) ID** (or your domain, e.g. `contoso.onmicrosoft.com`) and **Application (Client) ID**
+3. Click **Sign in** and complete the Microsoft sign-in window
+
+Your sign-in is stored encrypted with the operating system's credential store in the app's data folder (never in `settings.json`) and refreshes automatically. Click **Sign out** to remove it.
 
 ---
 
