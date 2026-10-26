@@ -231,7 +231,7 @@ describe("ai-features validateSettings", () => {
 
   // aiProvider
   test("accepts known providers", () => {
-    for (const p of ["none", "hatz", "openai", "anthropic"]) {
+    for (const p of ["none", "hatz", "openai", "anthropic", "azure", "m365copilot"]) {
       expect(validateAi({ aiProvider: p })).toBe(true);
     }
   });
@@ -269,4 +269,270 @@ describe("ai-features validateSettings", () => {
     expect(validateAi({ aiApiKeyEncrypted: "a".repeat(2001) })).toBe(false);
   });
 
+  // aiAzureEndpoint
+  test("accepts empty or https Azure endpoints", () => {
+    expect(validateAi({ aiAzureEndpoint: "" })).toBe(true);
+    expect(validateAi({ aiAzureEndpoint: "https://contoso.openai.azure.com/" })).toBe(true);
+    expect(validateAi({ aiAzureEndpoint: "https://contoso.services.ai.azure.com/openai/v1/" })).toBe(true);
+  });
+  test("rejects non-https or malformed Azure endpoints", () => {
+    expect(validateAi({ aiAzureEndpoint: "http://contoso.openai.azure.com" })).toBe(false);
+    expect(validateAi({ aiAzureEndpoint: "not a url" })).toBe(false);
+    expect(validateAi({ aiAzureEndpoint: 5 })).toBe(false);
+  });
+
+  // aiM365TenantId / aiM365ClientId
+  test("accepts tenant GUIDs and domains", () => {
+    expect(validateAi({ aiM365TenantId: "" })).toBe(true);
+    expect(validateAi({ aiM365TenantId: "contoso.onmicrosoft.com" })).toBe(true);
+    expect(validateAi({ aiM365TenantId: "72f988bf-86f1-41af-91ab-2d7cd011db47" })).toBe(true);
+  });
+  test("rejects tenant values that could alter the login URL", () => {
+    expect(validateAi({ aiM365TenantId: "contoso/../evil" })).toBe(false);
+    expect(validateAi({ aiM365TenantId: "a?b=c" })).toBe(false);
+  });
+  test("accepts only GUID client IDs", () => {
+    expect(validateAi({ aiM365ClientId: "" })).toBe(true);
+    expect(validateAi({ aiM365ClientId: "11111111-2222-3333-4444-555555555555" })).toBe(true);
+    expect(validateAi({ aiM365ClientId: "my-app" })).toBe(false);
+  });
+
+});
+
+// ===================== ai-features: provider calls =====================
+
+describe("ai-features providers", () => {
+  const fs = require("fs");
+  const os = require("os");
+  const path = require("path");
+  const { cleanCopilotText } = require("../plugins/ai-features/m365");
+
+  const TENANT = "contoso.onmicrosoft.com";
+  const CLIENT = "11111111-2222-3333-4444-555555555555";
+
+  let dataDir;
+  let handlers;
+  let settings;
+  let realFetch;
+
+  function initPlugin() {
+    handlers = {};
+    aiFeatures.init({
+      handle: (name, fn) => { handlers[name] = fn; },
+      getSettings: () => settings,
+      getDataPath: () => dataDir,
+      // Identity "encryption" keeps the test independent of the OS keychain.
+      encryptCredential: (v) => v,
+      decryptCredential: (v) => v,
+      registerSettingsTransformer: () => {},
+      log: () => {},
+    });
+  }
+
+  function jsonResponse(body, status = 200) {
+    return { ok: status >= 200 && status < 300, status, json: async () => body, text: async () => JSON.stringify(body) };
+  }
+
+  beforeEach(() => {
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "fspp-ai-"));
+    realFetch = global.fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = realFetch;
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("Azure OpenAI calls the v1 chat endpoint with the deployment as model", async () => {
+    settings = { aiProvider: "azure", aiApiKey: "azkey", aiModelName: "my-gpt4o", aiAzureEndpoint: "https://contoso.openai.azure.com/openai/v1/" };
+    initPlugin();
+    const calls = [];
+    global.fetch = jest.fn(async (url, opts) => {
+      calls.push({ url, opts });
+      return jsonResponse({ choices: [{ message: { content: "Improved." } }] });
+    });
+
+    const res = await handlers.suggest({ text: "fix printer", settings: { aiProvider: "azure", aiModelName: "my-gpt4o" } });
+
+    expect(res).toEqual({ result: "Improved." });
+    expect(calls[0].url).toBe("https://contoso.openai.azure.com/openai/v1/chat/completions");
+    expect(calls[0].opts.headers["api-key"]).toBe("azkey");
+    expect(JSON.parse(calls[0].opts.body).model).toBe("my-gpt4o");
+  });
+
+  test("Azure OpenAI reports a missing endpoint or deployment", async () => {
+    settings = { aiProvider: "azure", aiApiKey: "azkey", aiModelName: "", aiAzureEndpoint: "https://contoso.openai.azure.com" };
+    initPlugin();
+    global.fetch = jest.fn();
+    const noDeployment = await handlers.summarize({ text: "x", settings: { aiProvider: "azure" } });
+    expect(noDeployment.error).toMatch(/deployment name/);
+
+    settings = { ...settings, aiModelName: "dep", aiAzureEndpoint: "" };
+    const noEndpoint = await handlers.summarize({ text: "x", settings: { aiProvider: "azure" } });
+    expect(noEndpoint.error).toMatch(/endpoint/);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("Microsoft 365 Copilot requires sign-in", async () => {
+    settings = { aiProvider: "m365copilot", aiM365TenantId: TENANT, aiM365ClientId: CLIENT };
+    initPlugin();
+    global.fetch = jest.fn();
+    const res = await handlers.suggest({ text: "x", settings: { aiProvider: "m365copilot" } });
+    expect(res.error).toMatch(/Not signed in to Microsoft 365/);
+    expect(await handlers["m365-status"]()).toEqual({ account: null });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("Microsoft 365 Copilot refreshes the token, creates a conversation and returns the reply", async () => {
+    settings = { aiProvider: "m365copilot", aiM365TenantId: TENANT, aiM365ClientId: CLIENT };
+    fs.writeFileSync(path.join(dataDir, "m365-token.dat"),
+      JSON.stringify({ tenant: TENANT, clientId: CLIENT, refreshToken: "rt-1", account: "agent@contoso.com" }));
+    initPlugin();
+
+    expect(await handlers["m365-status"]()).toEqual({ account: "agent@contoso.com" });
+
+    const calls = [];
+    global.fetch = jest.fn(async (url, opts) => {
+      calls.push({ url, opts });
+      if (url.includes("/oauth2/v2.0/token")) return jsonResponse({ access_token: "at-1", refresh_token: "rt-2", expires_in: 3600 });
+      if (url.endsWith("/beta/copilot/conversations")) return jsonResponse({ id: "conv-1" });
+      return jsonResponse({
+        id: "conv-1",
+        messages: [
+          { text: "prompt echo" },
+          { text: "Spoke with <Person>Jane Doe</Person> about the VPN.[^1^]" },
+        ],
+      });
+    });
+
+    const res = await handlers.summarize({ text: "ticket notes", settings: { aiProvider: "m365copilot" } });
+
+    expect(res).toEqual({ result: "Spoke with Jane Doe about the VPN." });
+    expect(calls[0].url).toBe(`https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/token`);
+    const tokenBody = new URLSearchParams(calls[0].opts.body);
+    expect(tokenBody.get("grant_type")).toBe("refresh_token");
+    expect(tokenBody.get("refresh_token")).toBe("rt-1");
+    expect(tokenBody.get("client_id")).toBe(CLIENT);
+    expect(calls[1].opts.headers.Authorization).toBe("Bearer at-1");
+    expect(calls[2].url).toBe("https://graph.microsoft.com/beta/copilot/conversations/conv-1/chat");
+    const chatBody = JSON.parse(calls[2].opts.body);
+    expect(chatBody.message.text).toContain("ticket notes");
+    expect(chatBody.contextualResources.webContext.isWebEnabled).toBe(false);
+    expect(chatBody.locationHint.timeZone).toBeTruthy();
+
+    // The rotated refresh token is persisted for next launch.
+    const stored = JSON.parse(fs.readFileSync(path.join(dataDir, "m365-token.dat"), "utf-8"));
+    expect(stored.refreshToken).toBe("rt-2");
+    expect(stored.accessToken).toBeUndefined();
+  });
+
+  test("a stored sign-in for a different app registration doesn't count", async () => {
+    settings = { aiProvider: "m365copilot", aiM365TenantId: TENANT, aiM365ClientId: "99999999-2222-3333-4444-555555555555" };
+    fs.writeFileSync(path.join(dataDir, "m365-token.dat"),
+      JSON.stringify({ tenant: TENANT, clientId: CLIENT, refreshToken: "rt-1", account: "agent@contoso.com" }));
+    initPlugin();
+    expect(await handlers["m365-status"]()).toEqual({ account: null });
+  });
+
+  test("sign-out deletes the stored token", async () => {
+    settings = { aiProvider: "m365copilot", aiM365TenantId: TENANT, aiM365ClientId: CLIENT };
+    const file = path.join(dataDir, "m365-token.dat");
+    fs.writeFileSync(file, JSON.stringify({ tenant: TENANT, clientId: CLIENT, refreshToken: "rt-1", account: "a" }));
+    initPlugin();
+    await handlers["m365-sign-out"]();
+    expect(fs.existsSync(file)).toBe(false);
+    expect(await handlers["m365-status"]()).toEqual({ account: null });
+  });
+
+  test("sign-in opens Microsoft login with PKCE and exchanges the returned code", async () => {
+    settings = { aiProvider: "m365copilot", aiM365TenantId: "", aiM365ClientId: "" };
+    let win;
+    jest.resetModules(); // drop any electron mock cached by an earlier test
+    jest.doMock("electron", () => ({
+      BrowserWindow: class {
+        constructor(opts) {
+          win = this;
+          this.opts = opts;
+          this.handlers = {};
+          this.destroyed = false;
+          this.webContents = {
+            on: (ev, fn) => { this.handlers[ev] = fn; },
+            setWindowOpenHandler: () => {},
+          };
+        }
+        static getFocusedWindow() { return null; }
+        on(ev, fn) { this.handlers["win:" + ev] = fn; }
+        loadURL(url) { this.url = url; return Promise.resolve(); }
+        isDestroyed() { return this.destroyed; }
+        close() { this.destroyed = true; if (this.handlers["win:closed"]) this.handlers["win:closed"](); }
+      },
+    }), { virtual: true });
+
+    const calls = [];
+    global.fetch = jest.fn(async (url, opts) => {
+      calls.push({ url, opts });
+      const idToken = "h." + Buffer.from(JSON.stringify({ preferred_username: "agent@contoso.com" })).toString("base64") + ".s";
+      return jsonResponse({ access_token: "at", refresh_token: "rt", id_token: idToken, expires_in: 3600 });
+    });
+
+    initPlugin();
+    const pending = handlers["m365-sign-in"]({ tenant: TENANT, clientId: CLIENT });
+    await new Promise((r) => setImmediate(r));
+
+    const auth = new URL(win.url);
+    expect(auth.origin + auth.pathname).toBe(`https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/authorize`);
+    expect(auth.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(auth.searchParams.get("scope")).toContain("offline_access");
+    expect(win.opts.webPreferences.nodeIntegration).toBe(false);
+
+    const prevented = jest.fn();
+    win.handlers["will-redirect"]({ preventDefault: prevented },
+      "https://login.microsoftonline.com/common/oauth2/nativeclient?code=abc&state=" + auth.searchParams.get("state"));
+
+    expect(await pending).toEqual({ account: "agent@contoso.com" });
+    expect(prevented).toHaveBeenCalled();
+    const body = new URLSearchParams(calls[0].opts.body);
+    expect(body.get("grant_type")).toBe("authorization_code");
+    expect(body.get("code")).toBe("abc");
+    // The verifier must hash to the challenge sent in the authorize request.
+    const crypto = require("crypto");
+    const challenge = crypto.createHash("sha256").update(body.get("code_verifier")).digest("base64")
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    expect(challenge).toBe(auth.searchParams.get("code_challenge"));
+
+    jest.dontMock("electron");
+  });
+
+  test("sign-in rejects a redirect with the wrong state", async () => {
+    settings = {};
+    let win;
+    jest.resetModules(); // drop any electron mock cached by an earlier test
+    jest.doMock("electron", () => ({
+      BrowserWindow: class {
+        constructor() {
+          win = this; this.handlers = {}; this.destroyed = false;
+          this.webContents = { on: (ev, fn) => { this.handlers[ev] = fn; }, setWindowOpenHandler: () => {} };
+        }
+        static getFocusedWindow() { return null; }
+        on(ev, fn) { this.handlers["win:" + ev] = fn; }
+        loadURL(url) { this.url = url; return Promise.resolve(); }
+        isDestroyed() { return this.destroyed; }
+        close() { this.destroyed = true; }
+      },
+    }), { virtual: true });
+    global.fetch = jest.fn();
+    initPlugin();
+    const pending = handlers["m365-sign-in"]({ tenant: TENANT, clientId: CLIENT });
+    await new Promise((r) => setImmediate(r));
+    win.handlers["will-redirect"]({ preventDefault() {} },
+      "https://login.microsoftonline.com/common/oauth2/nativeclient?code=abc&state=forged");
+    expect((await pending).error).toMatch(/state mismatch/);
+    expect(global.fetch).not.toHaveBeenCalled();
+    jest.dontMock("electron");
+  });
+
+  test("cleanCopilotText strips entity tags and citation markers", () => {
+    expect(cleanCopilotText("Call <Person>Jo</Person> re <File>a.docx</File>[^2^] now")).toBe("Call Jo re a.docx now");
+    expect(cleanCopilotText("Keep <b>html</b> lowercase tags")).toBe("Keep <b>html</b> lowercase tags");
+  });
 });

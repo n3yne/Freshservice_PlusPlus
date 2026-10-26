@@ -1,5 +1,9 @@
 "use strict";
 
+const { createM365Client, TENANT_PATTERN, CLIENT_ID_PATTERN } = require("./m365");
+
+const PROVIDERS = ["hatz", "openai", "anthropic", "azure", "m365copilot"];
+
 const MAX_NOTES_CHARS        = 8000;
 const MAX_CONTEXT_CHARS      = 4000;
 const MAX_INSTRUCTIONS_CHARS = 500;
@@ -10,18 +14,29 @@ module.exports = {
     aiEnabled: true,
     aiProvider: "hatz",
     aiModelName: "",
+    aiAzureEndpoint: "",
+    aiM365TenantId: "",
+    aiM365ClientId: "",
   },
 
   validateSettings: function (s) {
     if (s.aiEnabled !== undefined && typeof s.aiEnabled !== "boolean") return false;
-    if (s.aiProvider !== undefined && !["none", "hatz", "openai", "anthropic"].includes(s.aiProvider)) return false;
+    if (s.aiProvider !== undefined && !["none", ...PROVIDERS].includes(s.aiProvider)) return false;
     if (s.aiModelName !== undefined && (typeof s.aiModelName !== "string" || s.aiModelName.length > 100)) return false;
     if (s.aiApiKey !== undefined && (typeof s.aiApiKey !== "string" || s.aiApiKey.length > 500)) return false;
     if (s.aiApiKeyEncrypted !== undefined && (typeof s.aiApiKeyEncrypted !== "string" || s.aiApiKeyEncrypted.length > 2000)) return false;
+    if (s.aiAzureEndpoint !== undefined) {
+      if (typeof s.aiAzureEndpoint !== "string" || s.aiAzureEndpoint.length > 300) return false;
+      if (s.aiAzureEndpoint && normalizeAzureEndpoint(s.aiAzureEndpoint) === null) return false;
+    }
+    if (s.aiM365TenantId !== undefined && (typeof s.aiM365TenantId !== "string" || (s.aiM365TenantId && !TENANT_PATTERN.test(s.aiM365TenantId)))) return false;
+    if (s.aiM365ClientId !== undefined && (typeof s.aiM365ClientId !== "string" || (s.aiM365ClientId && !CLIENT_ID_PATTERN.test(s.aiM365ClientId)))) return false;
     return true;
   },
 
   init: function (api) {
+
+    const m365 = createM365Client(api);
 
     // Encrypt any plaintext aiApiKey before it reaches disk; never write plaintext credentials.
     api.registerSettingsTransformer(function (settings) {
@@ -42,6 +57,27 @@ module.exports = {
 
     async function callAiChat(prompt, aiSettings) {
       const { aiProvider, aiApiKey, aiModelName } = aiSettings;
+
+      if (aiProvider === "m365copilot") {
+        const s = api.getSettings();
+        return m365.chat(prompt, s.aiM365TenantId, s.aiM365ClientId);
+      }
+
+      if (aiProvider === "azure") {
+        // Azure OpenAI v1 API: the "model" is the name of your deployment.
+        const endpoint = normalizeAzureEndpoint(api.getSettings().aiAzureEndpoint || "");
+        const resp = await fetch(endpoint + "/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "api-key": aiApiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: aiModelName, messages: [{ role: "user", content: prompt }] }),
+        });
+        if (!resp.ok) {
+          const body = await resp.text().catch(() => "");
+          throw new Error(`Azure OpenAI error ${resp.status}${body ? ": " + body.substring(0, 200) : ""}`);
+        }
+        const json = await resp.json();
+        return json.choices?.[0]?.message?.content ?? "";
+      }
 
       if (aiProvider === "anthropic") {
         const model = aiModelName || "claude-opus-4-6";
@@ -143,12 +179,30 @@ module.exports = {
         .filter(Boolean);
     }
 
+    // Returns an error message if the selected provider isn't fully configured, else null.
+    function configError(provider, settings, aiApiKey) {
+      const notConfigured = "No AI provider configured. Add your API key in Settings → AI Features.";
+      if (!PROVIDERS.includes(provider)) return notConfigured;
+      if (provider === "m365copilot") {
+        if (!m365.status(settings.aiM365TenantId, settings.aiM365ClientId)) {
+          return "Not signed in to Microsoft 365. Enter your tenant and client IDs and click Sign in under Settings → AI Features.";
+        }
+        return null;
+      }
+      if (!aiApiKey) return notConfigured;
+      if (provider === "azure") {
+        if (!normalizeAzureEndpoint(settings.aiAzureEndpoint || "")) return "Enter your Azure OpenAI endpoint in Settings → AI Features.";
+        if (!settings.aiModelName) return "Enter your Azure OpenAI deployment name in Settings → AI Features.";
+      }
+      return null;
+    }
+
     api.handle("suggest", async function ({ text, ticketContext, customInstructions, settings: aiSettings }) {
       const provider = aiSettings?.aiProvider;
-      const aiApiKey = getApiKey(api.getSettings());
-      if (!aiSettings || !["hatz", "openai", "anthropic"].includes(provider) || !aiApiKey) {
-        return { error: "No AI provider configured. Add your API key in Settings → AI Features." };
-      }
+      const current = api.getSettings();
+      const aiApiKey = getApiKey(current);
+      const notReady = aiSettings ? configError(provider, current, aiApiKey) : "No AI provider configured.";
+      if (notReady) return { error: notReady };
       const safeText = (text || "").substring(0, MAX_NOTES_CHARS);
       const safeContext = (ticketContext || "").substring(0, MAX_CONTEXT_CHARS);
       const safeInstructions = (customInstructions || "").substring(0, MAX_INSTRUCTIONS_CHARS);
@@ -181,10 +235,10 @@ module.exports = {
 
     api.handle("summarize", async function ({ text, settings: aiSettings }) {
       const provider = aiSettings?.aiProvider;
-      const aiApiKey = getApiKey(api.getSettings());
-      if (!aiSettings || !["hatz", "openai", "anthropic"].includes(provider) || !aiApiKey) {
-        return { error: "No AI provider configured. Add your API key in Settings → AI Features." };
-      }
+      const current = api.getSettings();
+      const aiApiKey = getApiKey(current);
+      const notReady = aiSettings ? configError(provider, current, aiApiKey) : "No AI provider configured.";
+      if (notReady) return { error: notReady };
       const safeText = (text || "").substring(0, MAX_NOTES_CHARS + MAX_CONTEXT_CHARS);
       const prompt =
         "Summarize the following Freshservice ticket conversation and notes into a concise bullet-point summary. " +
@@ -198,8 +252,30 @@ module.exports = {
       }
     });
 
+    api.handle("m365-status", async function () {
+      const s = api.getSettings();
+      return m365.status(s.aiM365TenantId, s.aiM365ClientId) || { account: null };
+    });
+
+    api.handle("m365-sign-in", async function (data) {
+      const s = api.getSettings();
+      const tenant = (data && typeof data.tenant === "string" && data.tenant) || s.aiM365TenantId;
+      const clientId = (data && typeof data.clientId === "string" && data.clientId) || s.aiM365ClientId;
+      try {
+        return await m365.signIn(tenant, clientId);
+      } catch (err) {
+        return { error: err.message || String(err) };
+      }
+    });
+
+    api.handle("m365-sign-out", async function () {
+      m365.signOut();
+      return { ok: true };
+    });
+
     api.handle("get-models", async function ({ aiProvider }) {
       const aiApiKey = getApiKey(api.getSettings());
+      // Azure deployments and Microsoft 365 Copilot have no model list to choose from.
       if (!["hatz", "openai", "anthropic"].includes(aiProvider) || !aiApiKey) {
         return { error: "No provider configured" };
       }
@@ -214,3 +290,16 @@ module.exports = {
     });
   },
 };
+
+// Accepts an Azure OpenAI / Foundry resource URL with or without a trailing path
+// (e.g. https://contoso.openai.azure.com/ or .../openai/v1/) and returns its origin,
+// or null if it isn't an https URL.
+function normalizeAzureEndpoint(raw) {
+  try {
+    const url = new URL(String(raw).trim());
+    if (url.protocol !== "https:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}

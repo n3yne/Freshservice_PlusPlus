@@ -6,7 +6,7 @@ export default [
 
   // Main process + Node.js files
   {
-    files: ["main.js", "preload.js", "launch.js", "utils.js", "plugin-manager.js", "plugins/**/main.js"],
+    files: ["main.js", "preload.js", "launch.js", "utils.js", "plugin-manager.js", "plugins/**/main.js", "plugins/ai-features/m365.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "commonjs",
