@@ -293,7 +293,7 @@ Read and write the current note editor content.
 | `notes.setContent(html)` | — | Replace editor content and schedule an autosave |
 | `notes.getTicketId()` | `string \| null` | Current ticket ID, or `null` if none set |
 | `notes.getPlainText()` | `string` | Editor content stripped of HTML tags |
-| `notes.saveSnapshot(incomingText)` | `Promise<void>` | Saves a snapshot of the current editor content if it differs enough from the last snapshot (respects the configured snapshot threshold). Call this before overwriting the editor with bulk-imported or AI-generated content so the previous note can be recovered from history. |
+| `notes.saveSnapshot(incomingText, options?)` | `Promise<void>` | Saves a snapshot of the current editor content if it differs enough from the last snapshot (respects the configured snapshot threshold). Pass `{ force: true }` to skip the size check, e.g. before replacing the note with a rewrite of similar length. Call this before overwriting the editor with bulk-imported or AI-generated content so the previous note can be recovered from history. |
 
 ```js
 // Append a timestamp to the note
@@ -392,7 +392,7 @@ Returns a shallow copy of the current app settings object.
 
 #### `pluginSettingsAPI.saveSettings(patch)`
 
-Merges `patch` into the current settings and writes to disk. The main window receives a `settings:changed` event immediately.
+Merges `patch` into the current settings and writes to disk. Returns a `Promise` that resolves once the save has finished; await it before calling a plugin handler that reads the new value. The main window receives a `settings:changed` event when the save completes.
 
 ```js
 window.pluginSettingsAPI.saveSettings({ myPluginEnabled: true, myPluginThreshold: 10 });
@@ -458,7 +458,7 @@ pluginAPI.notes.getContent(): string
 pluginAPI.notes.setContent(html: string): void
 pluginAPI.notes.getTicketId(): string | null
 pluginAPI.notes.getPlainText(): string
-pluginAPI.notes.saveSnapshot(incomingText: string): Promise<void>
+pluginAPI.notes.saveSnapshot(incomingText: string, options?: { force?: boolean }): Promise<void>
 
 pluginAPI.browser.newTab(url: string): void
 pluginAPI.browser.executeInActiveTab(script: string): Promise<any>

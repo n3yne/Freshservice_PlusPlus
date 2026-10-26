@@ -128,6 +128,28 @@
   let aiApplyCallback = null;
   let currentRefineState = null;
 
+  // Replies can take a minute or more. Each request records which ticket it was
+  // for and a sequence number, so a reply that arrives after the dialog was
+  // closed, another request started, or the ticket changed is never shown or
+  // applied to the wrong note.
+  let requestSeq = 0;
+
+  function startRequest() {
+    requestSeq++;
+    return { seq: requestSeq, ticketId: api.notes.getTicketId() };
+  }
+
+  function isCurrent(req) {
+    return req.seq === requestSeq;
+  }
+
+  function ticketChanged(req) {
+    return api.notes.getTicketId() !== req.ticketId;
+  }
+
+  const TICKET_CHANGED_HTML =
+    '<p class="ai-error">The open ticket changed while waiting for the AI. Run it again on this ticket.</p>';
+
   function showAiOverlay(title, bodyHtml, applyCallback, applyLabel) {
     aiDialogTitle.textContent = title;
     aiDialogBody.innerHTML = bodyHtml;
@@ -142,6 +164,7 @@
   }
 
   function closeAiOverlay() {
+    requestSeq++; // drop any reply still in flight
     aiOverlay.classList.remove("visible");
     aiApplyCallback = null;
     currentRefineState = null;
@@ -155,7 +178,14 @@
   btnAiCancel.addEventListener("click", closeAiOverlay);
 
   btnAiApply.addEventListener("click", async function () {
-    if (aiApplyCallback) await aiApplyCallback();
+    if (aiApplyCallback && (await aiApplyCallback()) === false) {
+      aiDialogBody.innerHTML = TICKET_CHANGED_HTML;
+      aiApplyCallback = null;
+      btnAiApply.style.display = "none";
+      btnAiRefine.style.display = "none";
+      aiInstructionsRow.style.display = "none";
+      return;
+    }
     closeAiOverlay();
   });
 
@@ -164,7 +194,7 @@
     navigator.clipboard.writeText(text).catch(function () {});
   });
 
-  function applySuggestResult(rawResult, sigHtml, sigPlain) {
+  function applySuggestResult(rawResult, sigHtml, sigPlain, req) {
     let resultText = rawResult;
     if (sigPlain) {
       const trimmed = resultText.trimEnd();
@@ -176,7 +206,10 @@
     aiDialogBody.innerHTML = '<div class="ai-result">' + escaped + "</div>";
     aiApplyCallback = (function (text, esc, sig) {
       return async function () {
-        await api.notes.saveSnapshot(text);
+        if (ticketChanged(req)) return false;
+        // Always snapshot: a rewrite is often about the same length as the
+        // original, which the normal size threshold would skip.
+        await api.notes.saveSnapshot(text, { force: true });
         api.notes.setContent(sig ? esc + "<br>" + sig : esc);
       };
     }(resultText, escaped, sigHtml));
@@ -212,11 +245,13 @@
     }
 
     showAiOverlay("✨ AI Suggestion", '<div class="ai-loading">Thinking…</div>', null);
+    const req = startRequest();
 
     let ticketContext = "";
     try {
       ticketContext = await api.browser.executeInActiveTab(FS_NOTES_SCRAPE_SCRIPT) || "";
     } catch { /* non-fatal — context is optional */ }
+    if (!isCurrent(req)) return;
 
     const invokeSettings = { aiProvider: settings.aiProvider, aiModelName: settings.aiModelName };
     let response;
@@ -227,7 +262,13 @@
         settings: invokeSettings,
       });
     } catch {
+      if (!isCurrent(req)) return;
       aiDialogBody.innerHTML = '<p class="ai-error">Request failed — check your connection.</p>';
+      return;
+    }
+    if (!isCurrent(req)) return;
+    if (ticketChanged(req)) {
+      aiDialogBody.innerHTML = TICKET_CHANGED_HTML;
       return;
     }
 
@@ -240,8 +281,8 @@
       return;
     }
 
-    applySuggestResult(response.result, sigHtml, sigPlain);
-    currentRefineState = { textToSend, ticketContext, settings: invokeSettings, sigHtml, sigPlain };
+    applySuggestResult(response.result, sigHtml, sigPlain, req);
+    currentRefineState = { textToSend, ticketContext, settings: invokeSettings, sigHtml, sigPlain, ticketId: req.ticketId };
     aiInstructionsRow.style.display = "";
     btnAiRefine.style.display = "";
   });
@@ -250,7 +291,10 @@
   btnAiRefine.addEventListener("click", async function () {
     if (btnAiRefine.disabled || !currentRefineState) return;
     const instructions = aiInstructionsInput.value.trim();
-    const { textToSend, ticketContext, settings: invokeSettings, sigHtml, sigPlain } = currentRefineState;
+    const { textToSend, ticketContext, settings: invokeSettings, sigHtml, sigPlain, ticketId } = currentRefineState;
+    const refineState = currentRefineState;
+    const req = startRequest();
+    req.ticketId = ticketId; // a refine belongs to the ticket of the original suggestion
 
     btnAiRefine.disabled = true;
     btnAiApply.style.display = "none";
@@ -265,8 +309,16 @@
         settings: invokeSettings,
       });
     } catch {
+      if (!isCurrent(req)) return;
       aiDialogBody.innerHTML = '<p class="ai-error">Request failed — check your connection.</p>';
       btnAiRefine.disabled = false;
+      return;
+    }
+    if (!isCurrent(req)) return;
+    if (ticketChanged(req)) {
+      aiDialogBody.innerHTML = TICKET_CHANGED_HTML;
+      btnAiRefine.style.display = "none";
+      aiInstructionsRow.style.display = "none";
       return;
     }
 
@@ -281,21 +333,25 @@
       return;
     }
 
-    applySuggestResult(response.result, sigHtml, sigPlain);
+    applySuggestResult(response.result, sigHtml, sigPlain, req);
+    currentRefineState = refineState;
     btnAiRefine.disabled = false;
   });
 
   // --- Summarize ---
   btnSummarize.addEventListener("click", async function () {
     showAiOverlay("📋 Ticket Summary", '<div class="ai-loading">Reading ticket notes…</div>', null);
+    const req = startRequest();
 
     let pageText;
     try {
       pageText = await api.browser.executeInActiveTab(FS_NOTES_SCRAPE_SCRIPT);
     } catch {
+      if (!isCurrent(req)) return;
       aiDialogBody.innerHTML = '<p class="ai-error">Could not read the ticket page.</p>';
       return;
     }
+    if (!isCurrent(req)) return;
 
     if (!pageText || pageText.trim().length < 20) {
       aiDialogBody.innerHTML = '<p class="ai-error">No note content found on this page.</p>';
@@ -315,7 +371,13 @@
         },
       });
     } catch {
+      if (!isCurrent(req)) return;
       aiDialogBody.innerHTML = '<p class="ai-error">Request failed — check your connection.</p>';
+      return;
+    }
+    if (!isCurrent(req)) return;
+    if (ticketChanged(req)) {
+      aiDialogBody.innerHTML = TICKET_CHANGED_HTML;
       return;
     }
 
@@ -333,6 +395,7 @@
 
     const capturedSummaryResult = response.result;
     aiApplyCallback = async function () {
+      if (ticketChanged(req)) return false;
       const insertHtml = "<strong>AI Ticket Summary:</strong><br><br>" + markdownToHtml(capturedSummaryResult);
       await api.notes.saveSnapshot(capturedSummaryResult);
       const existing = api.notes.getContent().trim();
