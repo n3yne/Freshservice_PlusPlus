@@ -492,6 +492,32 @@ document.addEventListener("DOMContentLoaded", function () {
   // Push: panel → FS field (plain text; uses the Froala API when available so the
   //        editor's model and Freshservice's form bindings see the change)
 
+  // Live sync, ticket detection and pushes only run on Freshservice/Freshworks pages
+  // (or the host of the configured home page, for custom Freshservice domains).
+  // Any other site open in a tab could otherwise feed the panel fake notes or a
+  // fake ticket number through the watcher's console channel.
+  const FRESHWORKS_HOSTNAME_PATTERN = /(?:^|\.)(?:freshservice|freshworks|myfreshworks)\.com$/i;
+
+  function isWebUrl(url) {
+    try {
+      const p = new URL(url);
+      return p.protocol === "http:" || p.protocol === "https:";
+    } catch { return false; }
+  }
+
+  function isFreshworksUrl(url) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+      if (FRESHWORKS_HOSTNAME_PATTERN.test(parsed.hostname)) return true;
+      return parsed.hostname === new URL(appSettings.defaultUrl).hostname;
+    } catch { return false; }
+  }
+
+  function isFreshworksTab(tab) {
+    try { return isFreshworksUrl(tab.webview.getURL()); } catch { return false; }
+  }
+
   // Shared helpers injected into every script that touches the page's notes field.
   const FS_FIELD_HELPERS = `
     var FS_RICH_SELECTORS = [
@@ -909,6 +935,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const webview = getActiveWebview();
     if (!webview) return;
+    try {
+      if (!isFreshworksUrl(webview.getURL())) return;
+    } catch { return; }
 
     state.pushInFlight = true;
     updateSyncPill();
@@ -1040,6 +1069,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const tab = tabs.find(function (t) { return t.id === tabId; });
     if (!tab) return;
+    if (!isFreshworksTab(tab)) return;
 
     let grabResult;
     try {
@@ -1052,6 +1082,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (userTypedTicket && ticketIdInput.value.trim() && ticketIdInput.value.trim() !== newTicket) return;
     if (newTicket === currentPanelTicket) return;
+    if (tabId !== activeTabId) return;
+
+    // A pending autosave reads the ticket field and the panel when it fires. Left
+    // running, it could fire after the panel holds the incoming ticket's notes but
+    // before the field changes, and save them under the outgoing ticket's number.
+    // The outgoing content is saved just below instead.
+    clearTimeout(autosaveTimer);
 
     if (currentPanelTicket && !isEditorEmpty()) {
       const outgoingHtml = getEditorContent();
@@ -1067,38 +1104,39 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
-    let loadedFromCw = false;
-    try {
-      const fsResult = await tab.webview.executeJavaScript(FS_NOTES_READ_SCRIPT);
-      if (fsResult && fsResult.text && fsResult.text.trim()) {
-        await snapshotBeforeBulkImport(fsResult.text);
-        const html = fsResult.text
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/\n/g, "<br>");
-        setEditorContent(html);
-        const state = getSyncState(tabId);
-        state.fsFieldType = fsResult.type;
-        state.lastPulledText = fsResult.text;
-        state.lastPushedText = null;
-        loadedFromCw = true;
-      }
-    } catch { /* FS read failed — fall through to local */ }
+    // Each await below can let the user switch tabs; stop before touching the
+    // panel if this tab is no longer the active one.
+    if (tabId !== activeTabId) return;
 
-    if (!loadedFromCw) {
-      await loadLocalTicketContent(newTicket);
-      // Still detect field type for sync even if the FS field was empty
-      try {
-        const probe = await tab.webview.executeJavaScript(FS_NOTES_READ_SCRIPT);
-        if (probe) {
-          const state = getSyncState(tabId);
-          state.fsFieldType = probe.type;
-        }
-      } catch { /* ignore */ }
+    let fsResult = null;
+    try {
+      fsResult = await tab.webview.executeJavaScript(FS_NOTES_READ_SCRIPT);
+    } catch { /* FS read failed — fall through to local */ }
+    if (tabId !== activeTabId) return;
+
+    const state = getSyncState(tabId);
+    if (fsResult && fsResult.text && fsResult.text.trim()) {
+      await snapshotBeforeBulkImport(fsResult.text);
+      if (tabId !== activeTabId) return;
+      const html = fsResult.text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br>");
+      setEditorContent(html);
+      state.fsFieldType = fsResult.type;
+      state.lastPulledText = fsResult.text;
+      state.lastPushedText = null;
+    } else {
+      const localHtml = await readLocalTicketContent(newTicket);
+      if (tabId !== activeTabId) return;
+      setEditorContent(localHtml);
+      // Still record the field type for sync even if the FS field was empty
+      if (fsResult) state.fsFieldType = fsResult.type;
     }
 
-    if (tabId !== activeTabId) return;
+    // Bind the panel to the new ticket in the same step as its content, so an
+    // autosave can never pair one ticket's number with another ticket's notes.
     _busEmit("ticket:changed", { ticketId: newTicket, previous: currentPanelTicket });
     ticketIdInput.value = newTicket;
     currentPanelTicket = newTicket;
@@ -1110,10 +1148,10 @@ document.addEventListener("DOMContentLoaded", function () {
     autosaveStatus.className = "saved";
     updateSyncPill();
 
-    await refreshTicketList(newTicket);
-
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+
+    await refreshTicketList(newTicket);
   }
 
   // Save a snapshot before any bulk import that changes the panel beyond the configured threshold.
@@ -1134,21 +1172,18 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch { /* non-fatal */ }
   }
 
-  async function loadLocalTicketContent(ticketId) {
+  // Returns the saved HTML for a ticket: its autosaved draft, else its newest
+  // snapshot, else "".
+  async function readLocalTicketContent(ticketId) {
     try {
       const autosaveData = await window.backupAPI.loadAutosave();
       if (autosaveData[ticketId] && autosaveData[ticketId].content) {
-        setEditorContent(autosaveData[ticketId].content);
-        return;
+        return autosaveData[ticketId].content;
       }
       const history = await window.backupAPI.getHistory(ticketId);
-      if (history.length > 0) {
-        setEditorContent(history[0].content);
-      } else {
-        setEditorContent("");
-      }
+      return history.length > 0 ? history[0].content : "";
     } catch {
-      setEditorContent("");
+      return "";
     }
   }
 
@@ -1468,7 +1503,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Create webview element
     const webview = document.createElement("webview");
-    webview.setAttribute("src", url || appSettings.defaultUrl);
+    webview.setAttribute("src", isWebUrl(url) ? url : appSettings.defaultUrl);
     webview.setAttribute("allowpopups", "");
     webview.style.width = "100%";
     webview.style.height = "100%";
@@ -1611,6 +1646,7 @@ document.addEventListener("DOMContentLoaded", function () {
     on(webview, "console-message", function (e) {
       const msg = e.message || "";
       if (!msg.startsWith("[FS-SYNC] ")) return;
+      if (!isFreshworksTab(tabData)) return;
       const wState = getSyncState(id);
       const now = Date.now();
       if (now - wState.lastWatcherMsgAt < SYNC_WATCHER_MIN_INTERVAL) return;
@@ -1653,7 +1689,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     on(webview, "did-finish-load", function () {
-      webview.executeJavaScript(FS_WATCHER_SCRIPT).catch(function () {});
+      if (isFreshworksTab(tabData)) webview.executeJavaScript(FS_WATCHER_SCRIPT).catch(function () {});
       if (activeTabId === id) ticketSwapRun(id);
     });
 

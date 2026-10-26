@@ -70,6 +70,39 @@ const FRESHWORKS_URL_FILTER = {
 const FRESHWORKS_AUTH_PATH_PATTERN =
   /\/(?:auth|login|sso|oauth|saml|openid|signin)(?:[/?#]|$)/i;
 
+function isWebUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+// The main and settings windows run the preload (window.backupAPI), so they must
+// only ever show the app's own pages. Without this, dropping a link or file on the
+// window navigates it to that page, which would then get full backupAPI access.
+function lockDownWindow(win) {
+  win.webContents.on("will-navigate", (event, url) => {
+    event.preventDefault();
+    console.warn("[Security] Blocked navigation of app window to:", url);
+  });
+
+  // Webviews get no preload and no Node, whatever attributes the page sets,
+  // and may only start on a web page or about:blank.
+  win.webContents.on("will-attach-webview", (event, webPreferences, params) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.nodeIntegrationInSubFrames = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.webSecurity = true;
+    if (params.src && params.src !== "about:blank" && !isWebUrl(params.src)) {
+      console.warn("[Security] Blocked webview with src:", params.src);
+      event.preventDefault();
+    }
+  });
+}
+
 // ===================== Settings Persistence =====================
 
 // Reads and parses settings.json with no transformations applied.
@@ -270,6 +303,7 @@ function createWindow() {
     }
   });
 
+  lockDownWindow(mainWindow);
   mainWindow.loadFile("index.html");
 
   // ===================== Application Menu =====================
@@ -467,8 +501,12 @@ function createWindow() {
         // Ignore malformed URLs
       }
 
-      // Normal links: open in a new tab instead
-      mainWindow.webContents.send("open-in-new-tab", url);
+      // Normal links: open in a new tab instead (web pages only — no file: or other schemes)
+      if (isWebUrl(url)) {
+        mainWindow.webContents.send("open-in-new-tab", url);
+      } else {
+        console.warn("[Popup] Blocked non-web URL:", url);
+      }
       return { action: "deny" };
     });
 
@@ -522,11 +560,13 @@ function createWindow() {
       // Link actions
       if (params.linkURL) {
         if (menuItems.length > 0) menuItems.push({ type: "separator" });
-        menuItems.push({
-          label: "Open Link in New Tab",
-          click: () =>
-            mainWindow.webContents.send("open-in-new-tab", params.linkURL),
-        });
+        if (isWebUrl(params.linkURL)) {
+          menuItems.push({
+            label: "Open Link in New Tab",
+            click: () =>
+              mainWindow.webContents.send("open-in-new-tab", params.linkURL),
+          });
+        }
         menuItems.push({
           label: "Open Link in Default Browser",
           click: () => {
@@ -579,11 +619,13 @@ function createWindow() {
             webviewContents.downloadURL(params.srcURL);
           },
         });
-        menuItems.push({
-          label: "Open Image in New Tab",
-          click: () =>
-            mainWindow.webContents.send("open-in-new-tab", params.srcURL),
-        });
+        if (isWebUrl(params.srcURL)) {
+          menuItems.push({
+            label: "Open Image in New Tab",
+            click: () =>
+              mainWindow.webContents.send("open-in-new-tab", params.srcURL),
+          });
+        }
         menuItems.push({
           label: "Copy Image Address",
           click: () => electron.clipboard.writeText(params.srcURL),
@@ -688,6 +730,11 @@ function createSettingsWindow() {
       webSecurity: true,
       sandbox: true,
     },
+  });
+  lockDownWindow(settingsWindow);
+  settingsWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isWebUrl(url)) electron.shell.openExternal(url);
+    return { action: "deny" };
   });
   settingsWindow.loadFile("settings.html");
   settingsWindow.on("closed", () => { settingsWindow = null; });
@@ -1161,8 +1208,15 @@ function registerIpcHandlers() {
   // Download manager IPC
   electron.ipcMain.handle("get-downloads", () => downloads.map((d) => ({ ...d })));
 
+  // Only files this app downloaded can be opened or shown — shell.openPath runs
+  // executables, so a renderer-supplied path must never reach it unchecked.
+  function isCompletedDownload(savePath) {
+    return typeof savePath === "string" && savePath.length > 0 &&
+      downloads.some((d) => d.state === "completed" && d.savePath === savePath);
+  }
+
   electron.ipcMain.handle("open-download-file", async (_e, savePath) => {
-    if (!savePath || typeof savePath !== "string" || !path.isAbsolute(savePath)) {
+    if (!isCompletedDownload(savePath)) {
       return { error: "Invalid path" };
     }
     const err = await electron.shell.openPath(savePath);
@@ -1170,7 +1224,7 @@ function registerIpcHandlers() {
   });
 
   electron.ipcMain.handle("show-download-folder", (_e, savePath) => {
-    if (!savePath || typeof savePath !== "string" || !path.isAbsolute(savePath)) {
+    if (!isCompletedDownload(savePath)) {
       return { error: "Invalid path" };
     }
     electron.shell.showItemInFolder(savePath);
