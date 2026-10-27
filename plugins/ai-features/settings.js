@@ -275,15 +275,22 @@
     elKey.addEventListener("change", async function () {
       const val = elKey.value.trim();
       if (val) {
-        keyEnteredFor = elProvider.value;
+        const provider = elProvider.value;
         elKey.value = "";
-        elKey.placeholder = "••••••••  (saved)";
         // The main process reads the key from saved settings, so the model list
         // can only be fetched once this save has finished.
-        await settingsAPI.saveSettings({ aiApiKey: val });
-        if (providerUsesModelList(elProvider.value)) populateModelDropdown();
+        const result = await settingsAPI.saveSettings({ aiApiKey: val });
+        if (!result || !result.success) {
+          elKey.setCustomValidity((result && result.error) || "The API key could not be saved.");
+          elKey.reportValidity();
+          return;
+        }
+        keyEnteredFor = provider;
+        elKey.placeholder = "••••••••  (saved)";
+        if (providerUsesModelList(provider)) populateModelDropdown();
       }
     });
+    elKey.addEventListener("input", function () { elKey.setCustomValidity(""); });
   });
 
 }());

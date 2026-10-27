@@ -309,78 +309,16 @@ function createWindow() {
 
   mainWindow.on("close", () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      saveMainWindowState(mainWindow.getBounds(), mainWindow.isMaximized());
+      // getNormalBounds: the un-maximized size, so restoring a maximized window
+      // and then un-maximizing it doesn't leave a screen-sized window.
+      saveMainWindowState(mainWindow.getNormalBounds(), mainWindow.isMaximized());
     }
   });
 
   lockDownWindow(mainWindow);
   mainWindow.loadFile("index.html");
 
-  // ===================== Application Menu =====================
-  const menuTemplate = [
-    {
-      label: "File",
-      submenu: [{ role: "quit" }],
-    },
-    {
-      label: "Edit",
-      submenu: [
-        { role: "undo" },
-        { role: "redo" },
-        { type: "separator" },
-        { role: "cut" },
-        { role: "copy" },
-        { role: "paste" },
-        { role: "selectAll" },
-        { type: "separator" },
-        {
-          label: "Find...",
-          accelerator: "CmdOrCtrl+F",
-          click: () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send("find-in-page");
-            }
-          },
-        },
-        { type: "separator" },
-        {
-          label: "Settings",
-          accelerator: "CmdOrCtrl+,",
-          click: () => { createSettingsWindow(); },
-        },
-      ],
-    },
-    {
-      label: "View",
-      submenu: [
-        { role: "reload" },
-        { role: "forceReload" },
-        {
-          label: "Refresh All Tabs",
-          accelerator: "CmdOrCtrl+Alt+R",
-          click: () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send("refresh-all-tabs");
-            }
-          },
-        },
-        { role: "toggleDevTools" },
-        { type: "separator" },
-        { role: "resetZoom" },
-        { role: "zoomIn" },
-        { role: "zoomOut" },
-        { type: "separator" },
-        { role: "togglefullscreen" },
-      ],
-    },
-    {
-      label: "Window",
-      submenu: [{ role: "minimize" }, { role: "close" }],
-    },
-  ];
-
-  const menu = electron.Menu.buildFromTemplate(menuTemplate);
-  electron.Menu.setApplicationMenu(menu);
+  setApplicationMenu();
 
   // ===================== Renderer Context Menu (notes editor, inputs) =====================
   mainWindow.webContents.on("context-menu", (event, params) => {
@@ -671,6 +609,101 @@ function createWindow() {
       }
     });
   });
+}
+
+// ===================== Application Menu =====================
+
+// Items plugins add with api.addMenuItem — shown at the end of the Edit menu.
+let pluginMenuItems = [];
+
+function setApplicationMenu() {
+  const pluginEditItems = pluginMenuItems.length
+    ? [
+        { type: "separator" },
+        ...pluginMenuItems.map((item) => ({
+          label: item.label,
+          accelerator: item.accelerator,
+          click: () => {
+            try { item.click(); } catch (err) {
+              console.error(`[Plugin:${item.pluginId}] Menu item "${item.label}" failed:`, err);
+            }
+          },
+        })),
+      ]
+    : [];
+
+  const menuTemplate = [
+    {
+      label: "File",
+      submenu: [{ role: "quit" }],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" },
+        { type: "separator" },
+        {
+          label: "Find...",
+          accelerator: "CmdOrCtrl+F",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("find-in-page");
+            }
+          },
+        },
+        { type: "separator" },
+        {
+          label: "Settings",
+          accelerator: "CmdOrCtrl+,",
+          click: () => { createSettingsWindow(); },
+        },
+        ...pluginEditItems,
+      ],
+    },
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "forceReload" },
+        {
+          label: "Refresh All Tabs",
+          accelerator: "CmdOrCtrl+Alt+R",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("refresh-all-tabs");
+            }
+          },
+        },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ],
+    },
+    {
+      label: "Window",
+      submenu: [{ role: "minimize" }, { role: "close" }],
+    },
+  ];
+
+  const menu = electron.Menu.buildFromTemplate(menuTemplate);
+  electron.Menu.setApplicationMenu(menu);
+}
+
+// Called by the plugin manager whenever a plugin adds a menu item. Plugins load
+// before the window exists, so the menu is only rebuilt once the app is ready.
+function rebuildPluginMenu(items) {
+  pluginMenuItems = items.slice();
+  if (electron.app.isReady()) setApplicationMenu();
 }
 
 let settingsWindow = null;
@@ -1042,6 +1075,16 @@ function registerIpcHandlers() {
       return { success: false };
     }
     const toSave = pluginManager.transformSettingsForSave(merged);
+    // The AI plugin's transformer always strips the plaintext key; if it couldn't
+    // encrypt a newly entered one (OS credential storage unavailable), saving
+    // would silently drop the key, so refuse and tell the settings window.
+    if (settings.aiApiKey && !toSave.aiApiKeyEncrypted) {
+      console.warn("[Settings] Rejected API key: OS credential encryption unavailable");
+      return {
+        success: false,
+        error: "The API key could not be saved because secure credential storage isn't available on this computer.",
+      };
+    }
     await saveSettings(toSave);
     const publicMerged = toPublicSettings(toSave);
     pluginManager.fireEvent("settings:changed", publicMerged);
@@ -1070,9 +1113,12 @@ function registerIpcHandlers() {
     return pluginManager.getPluginStylesheets();
   });
 
-  // Plugin system: forward renderer-originated events to main-process plugin listeners
+  // Plugin system: forward renderer-originated events to main-process plugin listeners.
+  // Only events the renderer owns are accepted; note:saved and settings:changed
+  // are fired by the main process itself, so a renderer can't spoof them.
+  const RENDERER_PLUGIN_EVENTS = new Set(["app:ready", "ticket:changed"]);
   electron.ipcMain.on("plugin-event-from-renderer", (_event, payload) => {
-    if (payload && typeof payload.name === "string") {
+    if (payload && typeof payload.name === "string" && RENDERER_PLUGIN_EVENTS.has(payload.name)) {
       pluginManager.fireEvent(payload.name, payload.data);
     }
   });
@@ -1317,6 +1363,10 @@ if (!gotTheLock) {
 }
 
 electron.app.whenReady().then(async () => {
+  // A second instance quits above; don't let it run startup (settings
+  // migration write, backup cleanup) against the first instance's files.
+  if (!gotTheLock) return;
+
   // Initialize paths now that app is ready
   BACKUP_DIR = path.join(electron.app.getPath("userData"), "note-backups");
   AUTOSAVE_FILE = path.join(BACKUP_DIR, "autosave.json");
@@ -1390,7 +1440,8 @@ electron.app.whenReady().then(async () => {
     await pluginManager.initPlugins(
       electron.app.getPath("userData"),
       Object.assign({}, DEFAULT_SETTINGS, rawParsed),
-      electron.ipcMain
+      electron.ipcMain,
+      rebuildPluginMenu
     );
   } catch (e) {
     console.error("[Plugins] initPlugins failed — starting without plugins:", e);
