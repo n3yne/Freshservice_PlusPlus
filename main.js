@@ -145,13 +145,23 @@ async function saveSettings(settings) {
   }
 }
 
+// Credentials that plugins encrypt before saving (see registerSettingsTransformer).
+// They never leave the main process: renderers only see the boolean flag. Saving
+// with the remove flag set deletes the stored key.
+const CREDENTIAL_FIELDS = [
+  { plain: "aiApiKey", encrypted: "aiApiKeyEncrypted", flag: "aiApiKeySet" },
+  { plain: "fsApiKey", encrypted: "fsApiKeyEncrypted", flag: "fsApiKeySet", remove: "fsApiKeyRemove" },
+];
+
 // Returns a copy of settings safe to broadcast to renderer processes and plugins.
-// Strips AI credentials (billing secrets) and replaces with a boolean flag.
+// Strips credentials and replaces each with a boolean flag.
 function toPublicSettings(s) {
   const out = Object.assign({}, s);
-  out.aiApiKeySet = Boolean(out.aiApiKey || out.aiApiKeyEncrypted);
-  delete out.aiApiKey;
-  delete out.aiApiKeyEncrypted;
+  for (const c of CREDENTIAL_FIELDS) {
+    out[c.flag] = Boolean(out[c.plain] || out[c.encrypted]);
+    delete out[c.plain];
+    delete out[c.encrypted];
+  }
   return out;
 }
 
@@ -1066,24 +1076,35 @@ function registerIpcHandlers() {
     const existing = await loadSettings();
     const merged = Object.assign({}, DEFAULT_SETTINGS, pluginManager.getPluginDefaultSettings(), settings);
     // If caller didn't supply a new plaintext key, preserve whatever encrypted key is on disk.
-    if (!settings.aiApiKey) {
-      merged.aiApiKeyEncrypted = existing.aiApiKeyEncrypted;
-      if (existing.aiApiKey) merged.aiApiKey = existing.aiApiKey; // backward compat
+    for (const c of CREDENTIAL_FIELDS) {
+      const removing = Boolean(c.remove && settings[c.remove] === true);
+      if (c.remove) delete merged[c.remove];
+      delete merged[c.flag];
+      if (removing) {
+        delete merged[c.plain];
+        delete merged[c.encrypted];
+      } else if (!settings[c.plain]) {
+        merged[c.encrypted] = existing[c.encrypted];
+        if (existing[c.plain]) merged[c.plain] = existing[c.plain]; // backward compat
+      }
     }
     if (!validateSettings(merged) || !pluginManager.validatePluginSettings(merged)) {
       console.warn("[Settings] Rejected invalid settings payload");
       return { success: false };
     }
     const toSave = pluginManager.transformSettingsForSave(merged);
-    // The AI plugin's transformer always strips the plaintext key; if it couldn't
-    // encrypt a newly entered one (OS credential storage unavailable), saving
-    // would silently drop the key, so refuse and tell the settings window.
-    if (settings.aiApiKey && !toSave.aiApiKeyEncrypted) {
-      console.warn("[Settings] Rejected API key: OS credential encryption unavailable");
-      return {
-        success: false,
-        error: "The API key could not be saved because secure credential storage isn't available on this computer.",
-      };
+    // Plugin transformers always strip the plaintext key; if one couldn't encrypt
+    // a newly entered key (OS credential storage unavailable, or its plugin is
+    // disabled), saving would drop or expose the key, so refuse and tell the
+    // settings window.
+    for (const c of CREDENTIAL_FIELDS) {
+      if (settings[c.plain] && (!toSave[c.encrypted] || toSave[c.plain])) {
+        console.warn("[Settings] Rejected API key: OS credential encryption unavailable");
+        return {
+          success: false,
+          error: "The API key could not be saved because secure credential storage isn't available on this computer.",
+        };
+      }
     }
     await saveSettings(toSave);
     const publicMerged = toPublicSettings(toSave);

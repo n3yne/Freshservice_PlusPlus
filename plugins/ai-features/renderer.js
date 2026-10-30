@@ -24,6 +24,32 @@
     "return parts.join('\\n\\n---\\n\\n').substring(0, 15000);" +
     "})()";
 
+  // Reports the active tab's host and, on a ticket page, its ticket number, so
+  // the API is only asked for the ticket that's actually open.
+  const FS_PAGE_INFO_SCRIPT = "(function() {" +
+    "var path = location.pathname + location.hash.replace(/^#/, '');" +
+    "var m = path.match(/\\/(?:a|helpdesk)\\/tickets\\/(\\d+)(?:[/?#]|$)/i);" +
+    "return { host: location.hostname, ticketId: m ? m[1] : null };" +
+    "})()";
+
+  // Reads the open ticket's description and conversation. Uses the Freshservice
+  // API when it's set up (see the freshservice-api plugin) and falls back to
+  // scraping the page for anything it can't handle: the plugin disabled or not
+  // configured, a change/problem/release, another account, or an API error.
+  async function readTicketText() {
+    try {
+      const page = await api.browser.executeInActiveTab(FS_PAGE_INFO_SCRIPT);
+      if (page && page.ticketId) {
+        const response = await api.invoke("freshservice-api", "get-ticket", { ticketId: page.ticketId, host: page.host });
+        if (response && typeof response.text === "string" && response.text.trim()) {
+          return { text: response.text, source: "api" };
+        }
+        if (response && response.error && !response.skipped) console.warn("[AI] Freshservice API:", response.error);
+      }
+    } catch { /* plugin disabled or page unreadable — fall back to scraping */ }
+    return { text: await api.browser.executeInActiveTab(FS_NOTES_SCRAPE_SCRIPT), source: "page" };
+  }
+
   function sanitizeHtml(html) {
     if (!html) return "";
     const root = document.createElement("div");
@@ -249,7 +275,7 @@
 
     let ticketContext = "";
     try {
-      ticketContext = await api.browser.executeInActiveTab(FS_NOTES_SCRAPE_SCRIPT) || "";
+      ticketContext = (await readTicketText()).text || "";
     } catch { /* non-fatal — context is optional */ }
     if (!isCurrent(req)) return;
 
@@ -344,8 +370,9 @@
     const req = startRequest();
 
     let pageText;
+    let source;
     try {
-      pageText = await api.browser.executeInActiveTab(FS_NOTES_SCRAPE_SCRIPT);
+      ({ text: pageText, source } = await readTicketText());
     } catch {
       if (!isCurrent(req)) return;
       aiDialogBody.innerHTML = '<p class="ai-error">Could not read the ticket page.</p>';
@@ -391,7 +418,8 @@
     }
 
     const summaryHtml = markdownToHtml(response.result);
-    aiDialogBody.innerHTML = '<div class="ai-result">' + summaryHtml + "</div>";
+    aiDialogBody.innerHTML = '<div class="ai-result">' + summaryHtml + "</div>" +
+      '<p class="ai-source">' + (source === "api" ? "Read through the Freshservice API" : "Read from the page") + "</p>";
 
     const capturedSummaryResult = response.result;
     aiApplyCallback = async function () {

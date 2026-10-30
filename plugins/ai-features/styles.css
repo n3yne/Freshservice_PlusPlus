@@ -120,3 +120,9 @@ body[data-theme="light"] .ai-dialog {
   background: #fff;
   border-color: #dde;
 }
+
+.ai-source {
+  margin: 8px 0 0;
+  font-size: 11px;
+  opacity: 0.6;
+}

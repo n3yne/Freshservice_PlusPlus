@@ -474,9 +474,11 @@ document.addEventListener("DOMContentLoaded", function () {
       saveSettings: function (patch) {
         appSettings = Object.assign({}, appSettings, patch);
         const saved = saveSettings();
-        // A new API key is sent once; the plaintext is never kept in this window
-        // or resent with later saves.
+        // A new API key (or a request to remove one) is sent once; the plaintext
+        // is never kept in this window or resent with later saves.
         delete appSettings.aiApiKey;
+        delete appSettings.fsApiKey;
+        delete appSettings.fsApiKeyRemove;
         return saved;
       },
       onSettingsChanged: function (fn) {
