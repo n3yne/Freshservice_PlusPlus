@@ -2,7 +2,7 @@
 
 An Electron-based wrapper for Freshservice that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
 
-**Current version:** 0.5.2
+**Current version:** 0.6.0
 
 ---
 
@@ -49,9 +49,15 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes. After a suggestion is returned, a **Refine** textarea appears — type follow-up instructions (e.g. "make it shorter", "keep this as a client-facing message") and click **↺ Refine** to generate a revised version without losing the Apply option
-- **📋 Summarize** – Scrapes the ticket description, replies and notes from the open Freshservice ticket and asks the AI to produce a concise bullet-point summary
+- **📋 Summarize** – Reads the ticket description, replies and notes from the open Freshservice ticket (through the Freshservice API when it's set up, otherwise from the page) and asks the AI to produce a concise bullet-point summary
 - Supports **Hatz AI**, **OpenAI**, **Anthropic**, **Azure OpenAI**, and **Microsoft 365 Copilot** as providers; for Hatz, OpenAI and Anthropic the model dropdown is populated automatically from the provider's API once an API key is entered
 - **Delivered as a bundled plugin** — AI Features is implemented via the plugin system; it can be disabled independently from Settings → Plugins
+
+### Freshservice API
+- **Ticket details through the API** – With your Freshservice domain and API key entered under Settings → Freshservice API, Summarize and Suggest read the ticket's subject, status, priority, requester, description and every reply and note through the Freshservice REST API (v2) instead of scraping the page
+- **Automatic fallback** – If the API is turned off, not set up, rate-limited or returns an error, or the open record is a change, problem or release, the page is read exactly as before
+- **Safe key storage** – The API key is encrypted with the operating system's credential storage, never sent to the main window, and only sent to the configured domain over https. **Test connection** checks it and **Remove key** deletes it
+- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
 
 ### Plugin System
 

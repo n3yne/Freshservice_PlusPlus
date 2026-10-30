@@ -81,6 +81,7 @@ Every plugin must have a `manifest.json` at its root:
 | `renderer` | No | Relative path to the main-window renderer entry file. |
 | `settings` | No | Relative path to the settings-window entry file. |
 | `minAppVersion` | No | Minimum app version required. Plugins below this threshold are skipped with a warning. |
+| `credentials` | No | Setting names that hold secrets, e.g. `["myApiKey"]` (`/^[a-z][A-Za-z0-9]{0,40}$/`). Your settings transformer should encrypt `myApiKey` with `api.encryptCredential` into `myApiKeyEncrypted` and delete the plain value. The app then keeps the encrypted value out of renderer processes (they see a `myApiKeySet` boolean instead), preserves it across saves that don't include a new key, refuses to save a new key it can't encrypt, and deletes it when settings are saved with `myApiKeyRemove: true`. |
 
 > **ID rules:** Use only lowercase letters, digits, hyphens, and underscores. Path-traversal characters (`../`, `/`, `\`) cause the plugin to be rejected at load time.
 

@@ -34,6 +34,10 @@ const _migrators = [];
 
 // All plugins discovered during initPlugins (including disabled and failed).
 const _discoveredPlugins = [];
+// Credential settings declared in plugin manifests ("credentials": ["myApiKey"]).
+// Collected from disabled plugins too, so their stored keys stay protected.
+const _credentialFields = [];
+const CREDENTIAL_NAME_PATTERN = /^[a-z][A-Za-z0-9]{0,40}$/;
 
 // Plugin enable/disable config: { "plugin-id": false } — only entries for disabled plugins.
 // Missing key = enabled by default.
@@ -224,8 +228,25 @@ async function loadPlugin(pluginDir, source, ipcMain) {
     enabled,
     loaded: false,
     loadError: null,
+    credentials: [],
   };
   _discoveredPlugins.push(record);
+
+  const credentials = Array.isArray(manifest.credentials) ? manifest.credentials : [];
+  for (const name of credentials) {
+    if (typeof name !== "string" || !CREDENTIAL_NAME_PATTERN.test(name)) {
+      console.warn(`[PluginManager] Plugin "${id}" declares an invalid credential name — skipped`);
+      continue;
+    }
+    record.credentials.push(name);
+    if (_credentialFields.some(c => c.plain === name)) continue;
+    _credentialFields.push({
+      plain: name,
+      encrypted: name + "Encrypted",
+      flag: name + "Set",
+      remove: name + "Remove",
+    });
+  }
 
   if (!enabled) {
     return; // Skip load — disabled by user
@@ -325,6 +346,7 @@ async function initPlugins(userData, initialSettings, ipcMain, rebuildMenuFn) {
   _rebuildMenu = rebuildMenuFn || null;
   _pluginsConfigFile = path.join(userData, "note-backups", "plugins-config.json");
   _discoveredPlugins.length = 0; // Clear on re-init
+  _credentialFields.length = 0;
   for (const key of Object.keys(_pluginDefaultSettings)) delete _pluginDefaultSettings[key];
   _pluginValidators.length = 0;
   _settingsTransformers.length = 0;
@@ -379,6 +401,7 @@ function getPluginInfo() {
     enabled: p.enabled,
     loaded: p.loaded,
     loadError: p.loadError,
+    credentials: p.credentials.slice(),
   }));
 }
 
@@ -462,6 +485,11 @@ function runMigrations(rawSettings) {
   }
 }
 
+// Returns [{ plain, encrypted, flag, remove }] for every credential setting a plugin declares.
+function getCredentialFields() {
+  return _credentialFields.map(c => Object.assign({}, c));
+}
+
 function getPluginDefaultSettings() {
   return Object.assign({}, _pluginDefaultSettings);
 }
@@ -508,4 +536,5 @@ module.exports = {
   getPluginDefaultSettings,
   validatePluginSettings,
   transformSettingsForSave,
+  getCredentialFields,
 };
