@@ -432,6 +432,9 @@ document.addEventListener("DOMContentLoaded", function () {
     // Build the pluginSettingsAPI before injecting plugin settings scripts so
     // plugins can call addPanel() synchronously during their top-level execution.
     const pluginPanels = [];
+    // Plaintext keys and remove requests for plugin credentials (see "credentials"
+    // in plugin manifests); filled in before plugin settings scripts run.
+    const oneShotSettingKeys = [];
     window.pluginSettingsAPI = Object.freeze({
       addPanel: function (id, label, setupFn) {
         // Add a nav item, indented under the Plugins button
@@ -476,9 +479,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const saved = saveSettings();
         // A new API key (or a request to remove one) is sent once; the plaintext
         // is never kept in this window or resent with later saves.
-        delete appSettings.aiApiKey;
-        delete appSettings.fsApiKey;
-        delete appSettings.fsApiKeyRemove;
+        oneShotSettingKeys.forEach(function (key) { delete appSettings[key]; });
         return saved;
       },
       onSettingsChanged: function (fn) {
@@ -487,7 +488,17 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Inject plugin settings scripts
-    window.backupAPI.getPluginSettingsScripts().then(function (scriptPaths) {
+    window.backupAPI.getPluginInfo().then(function (plugins) {
+      (plugins || []).forEach(function (p) {
+        (p.credentials || []).forEach(function (name) {
+          oneShotSettingKeys.push(name, name + "Remove");
+        });
+      });
+    }).catch(function (err) {
+      console.error("[Settings] Failed to load plugin credentials:", err);
+    }).then(function () {
+      return window.backupAPI.getPluginSettingsScripts();
+    }).then(function (scriptPaths) {
       (scriptPaths || []).forEach(function (src) {
         const s = document.createElement("script");
         s.src = src;

@@ -45,4 +45,34 @@ describe("plugin-manager", () => {
     expect(url).not.toMatch(/#/);
     expect(url).toContain("%25");
   });
+
+  test("collects manifest credentials, including from disabled plugins", async () => {
+    const { userData } = makeUserData();
+    const credDir = path.join(userData, "plugins", "cred-test");
+    fs.mkdirSync(credDir, { recursive: true });
+    fs.writeFileSync(path.join(credDir, "manifest.json"), JSON.stringify({
+      id: "cred-test",
+      credentials: ["credTestKey", "bad name", 42],
+    }));
+    fs.mkdirSync(path.join(userData, "note-backups"), { recursive: true });
+    fs.writeFileSync(path.join(userData, "note-backups", "plugins-config.json"), JSON.stringify({ "cred-test": false }));
+    await pluginManager.initPlugins(userData, {}, ipcMain);
+    expect(pluginManager.getCredentialFields()).toContainEqual({
+      plain: "credTestKey",
+      encrypted: "credTestKeyEncrypted",
+      flag: "credTestKeySet",
+      remove: "credTestKeyRemove",
+    });
+    expect(pluginManager.getCredentialFields().map((c) => c.plain)).not.toContain("bad name");
+    const info = pluginManager.getPluginInfo().find((p) => p.id === "cred-test");
+    expect(info.enabled).toBe(false);
+    expect(info.credentials).toEqual(["credTestKey"]);
+  });
+
+  test("bundled plugins declare their API keys as credentials", async () => {
+    const { userData } = makeUserData();
+    await pluginManager.initPlugins(userData, {}, ipcMain);
+    const names = pluginManager.getCredentialFields().map((c) => c.plain);
+    expect(names).toEqual(expect.arrayContaining(["aiApiKey", "fsApiKey"]));
+  });
 });

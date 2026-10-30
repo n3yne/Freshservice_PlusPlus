@@ -6,5 +6,8 @@
   "main": "main.js",
   "renderer": "renderer.js",
   "settings": "settings.js",
-  "minAppVersion": "0.4.1"
+  "minAppVersion": "0.4.1",
+  "credentials": [
+    "aiApiKey"
+  ]
 }

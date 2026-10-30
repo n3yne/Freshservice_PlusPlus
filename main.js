@@ -145,19 +145,12 @@ async function saveSettings(settings) {
   }
 }
 
-// Credentials that plugins encrypt before saving (see registerSettingsTransformer).
-// They never leave the main process: renderers only see the boolean flag. Saving
-// with the remove flag set deletes the stored key.
-const CREDENTIAL_FIELDS = [
-  { plain: "aiApiKey", encrypted: "aiApiKeyEncrypted", flag: "aiApiKeySet" },
-  { plain: "fsApiKey", encrypted: "fsApiKeyEncrypted", flag: "fsApiKeySet", remove: "fsApiKeyRemove" },
-];
-
 // Returns a copy of settings safe to broadcast to renderer processes and plugins.
-// Strips credentials and replaces each with a boolean flag.
+// Strips the credentials plugins declare in their manifests ("credentials") and
+// replaces each with a boolean flag, so keys never leave the main process.
 function toPublicSettings(s) {
   const out = Object.assign({}, s);
-  for (const c of CREDENTIAL_FIELDS) {
+  for (const c of pluginManager.getCredentialFields()) {
     out[c.flag] = Boolean(out[c.plain] || out[c.encrypted]);
     delete out[c.plain];
     delete out[c.encrypted];
@@ -1075,10 +1068,12 @@ function registerIpcHandlers() {
     }
     const existing = await loadSettings();
     const merged = Object.assign({}, DEFAULT_SETTINGS, pluginManager.getPluginDefaultSettings(), settings);
-    // If caller didn't supply a new plaintext key, preserve whatever encrypted key is on disk.
-    for (const c of CREDENTIAL_FIELDS) {
-      const removing = Boolean(c.remove && settings[c.remove] === true);
-      if (c.remove) delete merged[c.remove];
+    // If caller didn't supply a new plaintext key, preserve whatever encrypted key
+    // is on disk. Saving with "<name>Remove": true deletes the stored key instead.
+    const credentialFields = pluginManager.getCredentialFields();
+    for (const c of credentialFields) {
+      const removing = settings[c.remove] === true;
+      delete merged[c.remove];
       delete merged[c.flag];
       if (removing) {
         delete merged[c.plain];
@@ -1097,7 +1092,7 @@ function registerIpcHandlers() {
     // a newly entered key (OS credential storage unavailable, or its plugin is
     // disabled), saving would drop or expose the key, so refuse and tell the
     // settings window.
-    for (const c of CREDENTIAL_FIELDS) {
+    for (const c of credentialFields) {
       if (settings[c.plain] && (!toSave[c.encrypted] || toSave[c.plain])) {
         console.warn("[Settings] Rejected API key: OS credential encryption unavailable");
         return {
