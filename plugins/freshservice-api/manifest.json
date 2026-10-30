@@ -1,7 +1,7 @@
 {
   "id": "freshservice-api",
   "name": "Freshservice API",
-  "version": "0.6.0",
+  "version": "0.5.3",
   "description": "Reads ticket details and conversations through the Freshservice REST API (v2) instead of scraping the page.",
   "main": "main.js",
   "settings": "settings.js",
