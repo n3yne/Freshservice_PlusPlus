@@ -266,7 +266,20 @@ const result = await window.pluginAPI.invoke("my-plugin", "get-report", {
 console.log(result.report);
 ```
 
-> Only handlers your plugin registered are reachable. Calling an unregistered `action` rejects the Promise.
+> Calling an unregistered `action`, or a plugin that is disabled or not installed, rejects the Promise.
+
+##### Handlers from bundled plugins
+
+Renderer scripts can also call the bundled plugins, so a plugin can use the app's AI provider and Freshservice connection without asking for keys of its own:
+
+| Call | Returns | Notes |
+|---|---|---|
+| `invoke("ai-features", "complete", { prompt })` | `{ result }` or `{ error }` | Runs `prompt` (up to 60,000 characters) with the provider and model chosen in Settings → AI Features. |
+| `invoke("freshservice-api", "get-ticket", { ticketId, host })` | `{ text }` or `{ error, skipped? }` | Plain-text ticket, description and conversation. |
+| `invoke("freshservice-api", "search-solutions", { term })` | `{ articles }` or `{ error }` | Up to 10 Solutions articles: `{ id, title, status, updatedAt, url, text }`, with `text` cut to a short snippet. |
+| `invoke("freshservice-api", "get-solution-article", { id })` | `{ article }` or `{ error }` | One article with its text (up to 6,000 characters) and a `truncated` flag. |
+
+See `plugins/solutions-chat/renderer.js` for a plugin built on these.
 
 #### `window.pluginAPI.ui.addToolbarButton(opts)`
 

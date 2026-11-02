@@ -8,6 +8,7 @@ const PROVIDERS = ["hatz", "openai", "anthropic", "azure", "m365copilot"];
 const MAX_NOTES_CHARS        = 8000;
 const MAX_CONTEXT_CHARS      = 4000;
 const MAX_INSTRUCTIONS_CHARS = 500;
+const MAX_COMPLETE_CHARS     = 60000;
 const REQUEST_TIMEOUT_MS     = 60000;
 
 module.exports = {
@@ -276,6 +277,25 @@ module.exports = {
         "Reply with only the summary, no preamble:\n\n" + safeText;
       try {
         return { result: await runPrompt(prompt, aiSettings, aiApiKey) };
+      } catch (err) {
+        return { error: err.message || String(err) };
+      }
+    });
+
+    // Generic entry point for other plugins: runs a prompt they built against the
+    // provider and model chosen in Settings → AI Features, so they don't need
+    // their own keys or provider code.
+    api.handle("complete", async function (data) {
+      const prompt = data && typeof data.prompt === "string" ? data.prompt : "";
+      if (!prompt.trim()) return { error: "Nothing to send to the AI." };
+      if (prompt.length > MAX_COMPLETE_CHARS) return { error: "The request is too large to send to the AI." };
+      const current = api.getSettings();
+      const provider = current.aiProvider;
+      const aiApiKey = keyForProvider(current, provider);
+      const notReady = configError(provider, current, aiApiKey);
+      if (notReady) return { error: notReady };
+      try {
+        return { result: await runPrompt(prompt, { aiProvider: provider, aiModelName: current.aiModelName }, aiApiKey) };
       } catch (err) {
         return { error: err.message || String(err) };
       }

@@ -2,7 +2,7 @@
 
 const fsApi = require("../plugins/freshservice-api/main");
 
-const { validateSettings, defaultSettings, normalizeDomain, formatTicketText } = fsApi;
+const { validateSettings, defaultSettings, normalizeDomain, formatTicketText, formatArticle } = fsApi;
 
 // Placeholder only — never a real key.
 const FAKE_KEY = "test-key-not-real";
@@ -62,6 +62,23 @@ describe("freshservice-api formatTicketText", () => {
     expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(text).toMatch(/\[Message from requester, [^\]]+\]/);
     expect(text).toMatch(/\[Private note, [^\]]+\]/);
+  });
+});
+
+describe("freshservice-api formatArticle", () => {
+  test("keeps plain text, marks drafts and builds the portal link from the domain", () => {
+    const a = formatArticle({ id: 9, title: " Reset MFA ", status: 1, description: "<p>Step 1</p><p>Step 2 &amp; 3</p>" }, "acme.freshservice.com", 100);
+    expect(a).toEqual(expect.objectContaining({
+      id: "9", title: "Reset MFA", status: "draft", url: "https://acme.freshservice.com/support/solutions/articles/9",
+      text: "Step 1\nStep 2 & 3", truncated: false,
+    }));
+    expect(formatArticle({ id: 9, status: 2, description_text: "x".repeat(50) }, "acme.freshservice.com", 10))
+      .toEqual(expect.objectContaining({ status: "published", text: "x".repeat(10), truncated: true, title: "Article 9" }));
+  });
+
+  test("rejects entries without a numeric ID", () => {
+    expect(formatArticle({ id: "../tickets" }, "acme.freshservice.com")).toBeNull();
+    expect(formatArticle(null, "acme.freshservice.com")).toBeNull();
   });
 });
 
@@ -158,5 +175,39 @@ describe("freshservice-api handlers", () => {
     global.fetch = jest.fn(async () => jsonResponse({ tickets: [] }));
     expect(await handlers["test-connection"]()).toEqual({ ok: true, domain: "acme.freshservice.com" });
     expect(global.fetch.mock.calls[0][0]).toBe("https://acme.freshservice.com/api/v2/tickets?per_page=1");
+  });
+
+  test("search-solutions URL-encodes the term and returns short entries", async () => {
+    global.fetch = jest.fn(async () => jsonResponse({ articles: [
+      { id: 1, title: "VPN setup", status: 2, description_text: "y".repeat(2000) },
+      { id: "bad" },
+    ] }));
+    const res = await handlers["search-solutions"]({ term: "  vpn & certs  " });
+    expect(global.fetch.mock.calls[0][0]).toBe("https://acme.freshservice.com/api/v2/solutions/articles/search?search_term=vpn%20%26%20certs");
+    expect(res.articles).toHaveLength(1);
+    expect(res.articles[0].text.length).toBe(500);
+    expect(res.articles[0].url).toBe("https://acme.freshservice.com/support/solutions/articles/1");
+  });
+
+  test("search-solutions skips empty terms and reports setup problems", async () => {
+    global.fetch = jest.fn();
+    expect(await handlers["search-solutions"]({ term: "   " })).toEqual({ articles: [] });
+    settings = { fsApiEnabled: true, fsApiDomain: "acme.freshservice.com" };
+    expect((await handlers["search-solutions"]({ term: "vpn" })).error).toMatch(/API key/);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("get-solution-article validates the ID and names articles in errors", async () => {
+    global.fetch = jest.fn(async () => jsonResponse({}, 404));
+    expect((await handlers["get-solution-article"]({ id: "1/../2" })).error).toMatch(/Invalid/);
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect((await handlers["get-solution-article"]({ id: "5" })).error).toBe("Solution article not found in Freshservice (404).");
+    expect(global.fetch.mock.calls[0][0]).toBe("https://acme.freshservice.com/api/v2/solutions/articles/5");
+  });
+
+  test("get-solution-article returns the full article text", async () => {
+    global.fetch = jest.fn(async () => jsonResponse({ article: { id: 5, title: "Printer SOP", status: 2, description_text: "Do the thing." } }));
+    const res = await handlers["get-solution-article"]({ id: 5 });
+    expect(res.article).toEqual(expect.objectContaining({ id: "5", title: "Printer SOP", text: "Do the thing." }));
   });
 });

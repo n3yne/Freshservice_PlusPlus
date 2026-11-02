@@ -2,7 +2,7 @@
 
 An Electron-based wrapper for Freshservice that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
 
-**Current version:** 0.5.3
+**Current version:** 0.5.4
 
 ---
 
@@ -57,6 +57,14 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 - **Ticket details through the API** – With your Freshservice domain and API key entered under Settings → Freshservice API, Summarize and Suggest read the ticket's subject, status, priority, requester, description and every reply and note through the Freshservice REST API (v2) instead of scraping the page
 - **Automatic fallback** – If the API is turned off, not set up, rate-limited or returns an error, or the open record is a change, problem or release, the page is read exactly as before
 - **Safe key storage** – The API key is encrypted with the operating system's credential storage, never sent to the main window, and only sent to the configured domain over https. **Test connection** checks it and **Remove key** deletes it
+- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+
+### Solutions Chat
+- **Ask your knowledge base** – Click **📚** in the side panel header to open a chat that answers from your Freshservice Solutions articles. Ask how to handle something ("how do we reset MFA for a user?") and it searches Solutions, reads the best matches and answers from them only, citing each article with a link that opens it in a new tab
+- **🔎 Check this ticket** – Reads the open ticket (through the Freshservice API, or the page) and looks for an existing documented solution or SOP for it. Leave **Use the open ticket** ticked to give every question the ticket as context
+- **Says when nothing is documented** – If no article matches, it tells you instead of making up steps. Draft articles are marked as drafts
+- **Copy** or **Add to note** puts the answer and its article links into your clipboard or the current note (a snapshot is saved first)
+- **Requirements** – uses the provider set up in **Settings → AI Features** and the domain and API key in **Settings → Freshservice API**; the API key needs permission to view Solutions articles. Each question makes two AI requests (one to choose search terms, one to answer)
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
 
 ### Plugin System
@@ -231,7 +239,7 @@ Your sign-in is stored encrypted with the operating system's credential store in
 
 ## Plugins
 
-The **Metrics Bar** and **AI Features** are both delivered as bundled plugins and are always available. To install additional plugins, drop a plugin directory into the app's user data folder:
+The **Metrics Bar**, **AI Features**, **Freshservice API** and **Solutions Chat** are delivered as bundled plugins and are always available. To install additional plugins, drop a plugin directory into the app's user data folder:
 
 ```
 %APPDATA%\freshservice-pp\plugins\

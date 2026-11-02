@@ -9,6 +9,10 @@ const REQUEST_TIMEOUT_MS = 15000;
 const CONVERSATIONS_PER_PAGE = 100;
 const MAX_CONVERSATION_PAGES = 5;
 const MAX_TEXT_CHARS = 15000;
+const MAX_SEARCH_TERM_CHARS = 200;
+const MAX_SEARCH_RESULTS = 10;
+const MAX_ARTICLE_CHARS = 6000;
+const MAX_SNIPPET_CHARS = 500;
 
 const STATUS_LABELS = { 2: "Open", 3: "Pending", 4: "Resolved", 5: "Closed" };
 const PRIORITY_LABELS = { 1: "Low", 2: "Medium", 3: "High", 4: "Urgent" };
@@ -81,7 +85,7 @@ module.exports = {
         }
         throw new Error("Could not reach Freshservice: " + (err && err.message ? err.message : String(err)), { cause: err });
       }
-      if (!resp.ok) throw new Error(describeHttpError(resp));
+      if (!resp.ok) throw new Error(describeHttpError(resp, conn.what));
       return resp.json();
     }
 
@@ -120,6 +124,44 @@ module.exports = {
       }
     });
 
+    // Searches the Solutions (knowledge base) articles the API key can see.
+    // Returns short entries; use get-solution-article for an article's full text.
+    api.handle("search-solutions", async function (data) {
+      const term = String((data && data.term) || "").replace(/\s+/g, " ").trim().substring(0, MAX_SEARCH_TERM_CHARS);
+      if (!term) return { articles: [] };
+      const conn = connection();
+      if (conn.error) return conn;
+      try {
+        const json = await apiGet(Object.assign({ what: "Solution article" }, conn),
+          "/solutions/articles/search?search_term=" + encodeURIComponent(term));
+        const list = Array.isArray(json.articles) ? json.articles : [];
+        return {
+          articles: list.slice(0, MAX_SEARCH_RESULTS)
+            .map((a) => formatArticle(a, conn.domain, MAX_SNIPPET_CHARS))
+            .filter(Boolean),
+        };
+      } catch (err) {
+        api.log("search-solutions failed:", err.message);
+        return { error: err.message || String(err) };
+      }
+    });
+
+    api.handle("get-solution-article", async function (data) {
+      const id = String((data && data.id) || "");
+      if (!/^\d{1,20}$/.test(id)) return { error: "Invalid solution article ID." };
+      const conn = connection();
+      if (conn.error) return conn;
+      try {
+        const json = await apiGet(Object.assign({ what: "Solution article" }, conn), "/solutions/articles/" + id);
+        const article = formatArticle(json.article || json, conn.domain, MAX_ARTICLE_CHARS);
+        if (!article) return { error: "Freshservice returned no article." };
+        return { article };
+      } catch (err) {
+        api.log("get-solution-article failed:", err.message);
+        return { error: err.message || String(err) };
+      }
+    });
+
     api.handle("test-connection", async function () {
       const conn = connection();
       if (conn.error) return { error: conn.error };
@@ -135,6 +177,7 @@ module.exports = {
   // Exported for tests.
   normalizeDomain,
   formatTicketText,
+  formatArticle,
 };
 
 // Accepts "acme.freshservice.com", "https://acme.freshservice.com/a/tickets/1", etc.
@@ -150,11 +193,12 @@ function normalizeDomain(raw) {
   return HOSTNAME_PATTERN.test(host) ? host : null;
 }
 
-function describeHttpError(resp) {
+function describeHttpError(resp, what) {
+  const noun = what || "Ticket";
   switch (resp.status) {
     case 401: return "Freshservice rejected the API key (401). Check it in Settings → Freshservice API.";
-    case 403: return "This API key isn't allowed to view that ticket (403).";
-    case 404: return "Ticket not found in Freshservice (404).";
+    case 403: return `This API key isn't allowed to view that ${noun.toLowerCase()} (403).`;
+    case 404: return `${noun} not found in Freshservice (404).`;
     case 429: {
       const retry = resp.headers && typeof resp.headers.get === "function" ? resp.headers.get("retry-after") : null;
       return "Freshservice API rate limit reached (429)" + (retry ? `, retry in ${retry} seconds.` : ".");
@@ -178,6 +222,24 @@ function htmlToText(html) {
 function bodyText(item, textField, htmlField) {
   const text = typeof item[textField] === "string" ? item[textField].trim() : "";
   return text || htmlToText(item[htmlField]);
+}
+
+// Reduces a Solutions article from the API to what the chat needs: plain text
+// capped at maxChars and a link built only from the configured domain and the ID.
+function formatArticle(a, domain, maxChars) {
+  if (!a || typeof a !== "object") return null;
+  const id = String(a.id || "");
+  if (!/^\d{1,20}$/.test(id)) return null;
+  const text = bodyText(a, "description_text", "description");
+  return {
+    id,
+    title: typeof a.title === "string" && a.title.trim() ? a.title.trim().substring(0, 300) : "Article " + id,
+    status: a.status === 1 ? "draft" : "published",
+    updatedAt: typeof a.updated_at === "string" ? a.updated_at : "",
+    url: domain ? `https://${domain}/support/solutions/articles/${id}` : "",
+    text: text.substring(0, maxChars || MAX_ARTICLE_CHARS),
+    truncated: text.length > (maxChars || MAX_ARTICLE_CHARS),
+  };
 }
 
 function conversationLabel(c) {
