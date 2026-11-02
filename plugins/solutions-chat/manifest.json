@@ -1,8 +1,9 @@
 {
   "id": "solutions-chat",
   "name": "Solutions Chat",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "A chat panel that answers questions from your Freshservice Solutions articles, using the AI provider set up in AI Features.",
   "renderer": "renderer.js",
+  "settings": "settings.js",
   "minAppVersion": "0.5.4"
 }

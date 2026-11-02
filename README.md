@@ -2,7 +2,7 @@
 
 An Electron-based wrapper for Freshservice that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
 
-**Current version:** 0.5.4
+**Current version:** 0.5.5
 
 ---
 
@@ -64,6 +64,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 - **🔎 Check this ticket** – Reads the open ticket (through the Freshservice API, or the page) and looks for an existing documented solution or SOP for it. Leave **Use the open ticket** ticked to give every question the ticket as context
 - **Says when nothing is documented** – If no article matches, it tells you instead of making up steps. Draft articles are marked as drafts
 - **Copy** or **Add to note** puts the answer and its article links into your clipboard or the current note (a snapshot is saved first)
+- **Setup check** – **Settings → Plugins → Solutions Chat** shows whether AI Features and the Freshservice API are ready, and has a test search to confirm your API key can read Solutions articles
 - **Requirements** – uses the provider set up in **Settings → AI Features** and the domain and API key in **Settings → Freshservice API**; the API key needs permission to view Solutions articles. Each question makes two AI requests (one to choose search terms, one to answer)
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
 
