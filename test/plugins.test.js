@@ -372,6 +372,26 @@ describe("ai-features providers", () => {
     expect(JSON.parse(calls[0].opts.body).model).toBe("my-gpt4o");
   });
 
+  test("complete runs a prompt with the provider chosen in settings", async () => {
+    settings = { aiProvider: "openai", aiApiKey: "oakey", aiApiKeyProvider: "openai", aiModelName: "gpt-4o" };
+    initPlugin();
+    global.fetch = jest.fn(async () => jsonResponse({ choices: [{ message: { content: "Answer." } }] }));
+    expect(await handlers.complete({ prompt: "Question?" })).toEqual({ result: "Answer." });
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.model).toBe("gpt-4o");
+    expect(body.messages[0].content).toBe("Question?");
+  });
+
+  test("complete refuses empty or oversized prompts and unconfigured providers", async () => {
+    settings = { aiProvider: "openai", aiApiKey: "oakey", aiApiKeyProvider: "anthropic" };
+    initPlugin();
+    global.fetch = jest.fn();
+    expect((await handlers.complete({ prompt: " " })).error).toMatch(/Nothing/);
+    expect((await handlers.complete({ prompt: "x".repeat(60001) })).error).toMatch(/too large/);
+    expect((await handlers.complete({ prompt: "hi" })).error).toMatch(/No AI provider configured/);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   test("Azure OpenAI reports a missing endpoint or deployment", async () => {
     settings = { aiProvider: "azure", aiApiKey: "azkey", aiApiKeyProvider: "azure", aiAzureDeployment: "", aiAzureEndpoint: "https://contoso.openai.azure.com" };
     initPlugin();
