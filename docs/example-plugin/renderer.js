@@ -12,7 +12,11 @@
     console.log("[Example plugin] ticket:changed →", data.ticketId, "(was:", data.previous + ")");
   });
 
-  // Uncomment to add a toolbar button:
+  // Uncomment to add a tab to the side panel:
+  // const tab = window.pluginAPI.ui.addSidePanelTab({ id: "example-plugin", label: "Example", icon: "🧩" });
+  // tab.element.innerHTML = '<div style="padding:12px">Hello from the example plugin</div>';
+
+  // Uncomment to add a toolbar button to the Notes tab:
   // window.pluginAPI.ui.addToolbarButton({
   //   id: "example-ping",
   //   label: "Ping",
