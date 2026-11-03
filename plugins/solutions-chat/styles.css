@@ -204,3 +204,20 @@
 #sc-send {
   align-self: flex-end;
 }
+
+/* ===== Solutions Chat: settings panel ===== */
+.sc-settings-checklist {
+  list-style: none;
+  padding-left: 0;
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.sc-settings-checklist .sc-ok {
+  color: var(--success);
+}
+
+.sc-settings-checklist .sc-missing {
+  color: var(--warning);
+}
