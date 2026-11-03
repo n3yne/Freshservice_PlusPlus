@@ -20,7 +20,7 @@
     section.innerHTML =
       '<h3 class="settings-section-title">Solutions Chat</h3>' +
       '<p class="settings-description settings-description-field">' +
-      "Click <strong>📚</strong> at the top of the side panel to open the chat. It answers from your Freshservice " +
+      "Open the <strong>📚 Solutions</strong> tab in the side panel to use the chat. It answers from your Freshservice " +
       "Solutions articles using the AI provider from <strong>AI Features</strong> and the domain and API key from " +
       "<strong>Freshservice API</strong>, so it has no settings of its own. Both need to be set up:" +
       "</p>" +
@@ -38,8 +38,7 @@
       '  <p id="sc-settings-result" class="settings-description"></p>' +
       "</div>" +
       '<p class="settings-description settings-description-field">' +
-      "The search checks that your Freshservice API key is allowed to read Solutions articles. " +
-      "Turn the chat on or off under <strong>Plugins</strong>." +
+      "The search checks that your Freshservice API key is allowed to read Solutions articles." +
       "</p>";
     panel.appendChild(section);
 

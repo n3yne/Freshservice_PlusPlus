@@ -13,9 +13,6 @@
       <!-- Left category nav -->
       <nav class="settings-nav" aria-label="Settings categories">
         <button type="button" class="settings-nav-item active" data-panel="general">General</button>
-        <button type="button" class="settings-nav-item" data-panel="data">Data</button>
-<button type="button" class="settings-nav-item" data-panel="templates">Templates</button>
-        <button type="button" class="settings-nav-item" data-panel="signature">Signature</button>
         <button type="button" class="settings-nav-item" data-panel="plugins">Plugins</button>
       </nav>
 
@@ -56,138 +53,18 @@
             </p>
 
             <label class="settings-toggle settings-toggle-spaced">
-              <input type="checkbox" id="setting-note-panel" />
+              <input type="checkbox" id="setting-side-panel" />
               <span class="settings-toggle-slider"></span>
-              <span class="settings-toggle-label">Note Backup Side Panel</span>
+              <span class="settings-toggle-label">Side Panel</span>
             </label>
             <p class="settings-description">
-              Show the note drafting and backup panel on the right side of the window.
-            </p>
-
-            <label class="settings-toggle settings-toggle-spaced">
-              <input type="checkbox" id="setting-live-sync" />
-              <span class="settings-toggle-slider"></span>
-              <span class="settings-toggle-label">Live Sync with Active Tab</span>
-            </label>
-            <p class="settings-description">
-              Automatically load ticket notes when switching tabs and keep the panel in sync
-              with the open Freshservice note editor as you type.
+              Show the panel on the right side of the window. Plugins add their tabs to it, such as
+              Notes from Note Backup and Solutions from Solutions Chat.
             </p>
 
           </div>
 
         </div><!-- #panel-general -->
-
-        <!-- Data panel -->
-        <div class="settings-panel" id="panel-data">
-
-          <div class="settings-section">
-            <h3 class="settings-section-title">Data</h3>
-
-            <div class="settings-field">
-              <label class="settings-field-label" for="setting-retention-days">Backup Retention</label>
-              <div class="settings-field-row">
-                <input type="number" id="setting-retention-days" class="settings-number-input"
-                  min="0" max="365" step="1" value="7" />
-                <span class="settings-field-suffix">days</span>
-              </div>
-            </div>
-            <p class="settings-description settings-description-field settings-description-field-spaced">
-              How long to keep saved note snapshots before automatic cleanup.
-              Set to <strong>0</strong> to keep notes forever.
-            </p>
-
-            <div class="settings-field">
-              <label class="settings-field-label" for="setting-snapshot-threshold">Snapshot Threshold</label>
-              <div class="settings-field-row">
-                <input type="number" id="setting-snapshot-threshold" class="settings-number-input"
-                  min="1" max="9999" step="1" value="5" />
-                <span class="settings-field-suffix">chars</span>
-              </div>
-            </div>
-            <p class="settings-description settings-description-field settings-description-field-spaced">
-              Minimum character difference between panel content and the last snapshot before a new
-              snapshot is auto-saved on tab switch or sync pull.
-            </p>
-
-            <div class="settings-field">
-              <label class="settings-field-label" for="setting-storage-warning">Storage Warning</label>
-              <div class="settings-field-row">
-                <input type="number" id="setting-storage-warning" class="settings-number-input"
-                  min="0" max="100000" step="1" value="100" />
-                <span class="settings-field-suffix">MB</span>
-              </div>
-            </div>
-            <p class="settings-description settings-description-field settings-description-field-spaced">
-              Show a notification when the backup folder exceeds this size.
-              Set to <strong>0</strong> to disable.
-            </p>
-
-            <div class="settings-field">
-              <label class="settings-field-label" for="setting-sort-field">Ticket Sort Order</label>
-              <div class="settings-field-row">
-                <select id="setting-sort-field" class="settings-select-input" title="Sort saved tickets by">
-                  <option value="lastUpdated">Last Updated</option>
-                  <option value="ticketNumber">Ticket Number</option>
-                </select>
-                <select id="setting-sort-direction" class="settings-select-input" title="Sort direction">
-                  <option value="desc">Descending</option>
-                  <option value="asc">Ascending</option>
-                </select>
-              </div>
-            </div>
-            <p class="settings-description settings-description-field">
-              How the saved tickets dropdown is sorted.
-            </p>
-          </div>
-
-        </div><!-- #panel-data -->
-
-        <!-- Templates panel -->
-        <div class="settings-panel" id="panel-templates">
-
-          <div class="settings-section">
-            <h3 class="settings-section-title">Note Templates</h3>
-            <p class="settings-description settings-description-field settings-description-field-spaced">
-              Predefined text snippets to insert into notes via the <strong>Tmpl</strong> toolbar button.
-            </p>
-            <div id="template-list" class="template-list"></div>
-            <button type="button" id="btn-add-template" class="btn btn-small template-add-btn">+ Add Template</button>
-            <div id="template-add-form" class="template-form">
-              <input type="text" id="template-name-input" class="settings-text-input"
-                placeholder="Template name…" maxlength="100" />
-              <textarea id="template-content-input" class="template-content-textarea"
-                placeholder="Template content…" maxlength="10000" rows="4"></textarea>
-              <div class="template-form-buttons">
-                <button type="button" id="btn-save-template" class="btn btn-primary btn-small">Save</button>
-                <button type="button" id="btn-cancel-template" class="btn btn-secondary btn-small">Cancel</button>
-              </div>
-            </div>
-          </div>
-
-        </div><!-- #panel-templates -->
-
-        <!-- Signature panel -->
-        <div class="settings-panel" id="panel-signature">
-
-          <div class="settings-section">
-            <h3 class="settings-section-title">Signature</h3>
-            <p class="settings-description settings-description-field settings-description-field-spaced">
-              Customize the signature block inserted into notes via the <strong>Sig</strong> toolbar button.
-              Supports rich text formatting.
-            </p>
-            <div id="signature-toolbar" class="signature-toolbar">
-              <button type="button" class="toolbar-btn" data-sig-command="bold" title="Bold"><b>B</b></button>
-              <button type="button" class="toolbar-btn" data-sig-command="italic" title="Italic"><i>I</i></button>
-              <button type="button" class="toolbar-btn" data-sig-command="underline" title="Underline"><u>U</u></button>
-              <span class="toolbar-sep"></span>
-              <button type="button" class="toolbar-btn" data-sig-command="insertUnorderedList" title="Bullet List">&#8226; List</button>
-            </div>
-            <div id="setting-signature" class="signature-editor" contenteditable="true"
-              data-placeholder="e.g. Thanks, John Smith | IT Support | ext. 1234"></div>
-          </div>
-
-        </div><!-- #panel-signature -->
 
         <!-- Plugins panel -->
         <div class="settings-panel" id="panel-plugins">
@@ -195,7 +72,8 @@
           <div class="settings-section">
             <h3 class="settings-section-title">Plugins</h3>
             <p class="settings-description settings-description-field settings-description-field-spaced">
-              Manage installed plugins. Toggling a plugin on or off takes effect after restarting the app.
+              Manage installed plugins. Each plugin also has its own tab below with its settings and the same
+              on/off switch. Turning a plugin on or off takes effect after restarting the app.
             </p>
 
             <div id="plugin-restart-notice" class="plugin-restart-notice">

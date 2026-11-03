@@ -1,35 +1,5 @@
-/* ===== Solutions Chat: header button ===== */
-#btn-solutions-chat {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  transition: all 0.2s;
-}
-
-#btn-solutions-chat:hover,
-#btn-solutions-chat.active {
-  color: var(--primary);
-  border-color: var(--primary);
-}
-
-/* ===== Solutions Chat: panel (replaces the notes view while open) ===== */
+/* ===== Solutions Chat: its side panel tab ===== */
 .sc-panel {
-  display: none;
-}
-
-#side-panel.sc-open #panel-content {
-  display: none;
-}
-
-#side-panel.sc-open .sc-panel {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
   background: var(--panel-content-bg);
 }
 

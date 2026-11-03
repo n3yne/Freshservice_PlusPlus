@@ -17,7 +17,7 @@ const registeredChannels = new Set();
 // Absolute renderer script paths collected during initPlugins.
 const rendererScripts = [];
 
-// Absolute settings-window script paths collected during initPlugins.
+// Settings-window scripts collected during initPlugins: { id, path }.
 const settingsScripts = [];
 
 // Absolute stylesheet paths collected during initPlugins (loaded in both windows).
@@ -120,6 +120,33 @@ function buildPluginApi(pluginId, ipcMain) {
           throw err;
         }
       });
+    },
+
+    // Fire-and-forget messages from renderer code (pluginAPI.send). Unlike handle(),
+    // nothing is returned, but the message is still delivered while the window is
+    // closing, so fn can save state synchronously during beforeunload.
+    onMessage(action, fn) {
+      if (!/^[a-z0-9_-]+$/i.test(action) || typeof fn !== "function") {
+        console.warn(`[Plugin:${pluginId}] Skipped onMessage("${action}"): invalid action name or handler`);
+        return;
+      }
+      const channel = `plugin-msg:${pluginId}:${action}`;
+      if (registeredChannels.has(channel)) {
+        console.warn(`[Plugin:${pluginId}] Duplicate message handler for "${action}" — skipped`);
+        return;
+      }
+      registeredChannels.add(channel);
+      ipcMain.on(channel, (_event, data) => {
+        try { fn(data); } catch (err) {
+          console.error(`[Plugin:${pluginId}] Error in message handler "${action}":`, err);
+        }
+      });
+    },
+
+    // Publishes an event to main-process plugins (api.on), e.g. note:saved.
+    emit(eventName, data) {
+      if (typeof eventName !== "string" || !eventName) return;
+      pluginBus.emit(eventName, data);
     },
 
     on(eventName, fn) {
@@ -229,6 +256,7 @@ async function loadPlugin(pluginDir, source, ipcMain) {
     loaded: false,
     loadError: null,
     credentials: [],
+    hasSettings: typeof manifest.settings === "string" && manifest.settings.length > 0,
   };
   _discoveredPlugins.push(record);
 
@@ -321,7 +349,7 @@ async function loadPlugin(pluginDir, source, ipcMain) {
     } else {
       try {
         await fsp.access(settingsPath, fs.constants.R_OK);
-        settingsScripts.push(settingsPath);
+        settingsScripts.push({ id, path: settingsPath });
       } catch {
         console.warn(`[PluginManager] Plugin "${id}" settings file not found: ${settingsPath}`);
       }
@@ -383,8 +411,10 @@ function getRendererScripts() {
   return rendererScripts.map(p => pathToFileURL(p).href);
 }
 
+// [{ id, url }] — the settings window tags each script with its plugin id, so the
+// panels a script adds can be matched to their plugin.
 function getSettingsScripts() {
-  return settingsScripts.map(p => pathToFileURL(p).href);
+  return settingsScripts.map(s => ({ id: s.id, url: pathToFileURL(s.path).href }));
 }
 
 function getPluginStylesheets() {
@@ -402,6 +432,7 @@ function getPluginInfo() {
     loaded: p.loaded,
     loadError: p.loadError,
     credentials: p.credentials.slice(),
+    hasSettings: p.hasSettings,
   }));
 }
 

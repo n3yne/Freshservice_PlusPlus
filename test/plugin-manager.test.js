@@ -75,4 +75,34 @@ describe("plugin-manager", () => {
     const names = pluginManager.getCredentialFields().map((c) => c.plain);
     expect(names).toEqual(expect.arrayContaining(["aiApiKey", "fsApiKey"]));
   });
+
+  test("onMessage registers a namespaced fire-and-forget channel and emit reaches api.on", async () => {
+    const { userData } = makeUserData();
+    const msgDir = path.join(userData, "plugins", "msg-test");
+    fs.mkdirSync(msgDir, { recursive: true });
+    fs.writeFileSync(path.join(msgDir, "manifest.json"), JSON.stringify({ id: "msg-test", main: "main.js", settings: "settings.js" }));
+    fs.writeFileSync(path.join(msgDir, "settings.js"), "");
+    fs.writeFileSync(path.join(msgDir, "main.js"),
+      "module.exports = function (api) {" +
+      "  api.onMessage('save-state', function (d) { global.__msgTest = d; });" +
+      "  api.on('msg-test:ping', function (d) { global.__msgPing = d; });" +
+      "  api.emit('msg-test:ping', { ok: true });" +
+      "};");
+    const listeners = new Map();
+    const ipc = { handle: () => {}, on: (channel, fn) => listeners.set(channel, fn) };
+    await pluginManager.initPlugins(userData, {}, ipc);
+
+    expect(global.__msgPing).toEqual({ ok: true });
+    const fn = listeners.get("plugin-msg:msg-test:save-state");
+    expect(typeof fn).toBe("function");
+    fn({}, { blank: true });
+    expect(global.__msgTest).toEqual({ blank: true });
+
+    const info = pluginManager.getPluginInfo().find((p) => p.id === "msg-test");
+    expect(info.hasSettings).toBe(true);
+    const entry = pluginManager.getSettingsScripts().find((e) => e.id === "msg-test");
+    expect(entry.url).toMatch(/^file:\/\//);
+    delete global.__msgTest;
+    delete global.__msgPing;
+  });
 });
