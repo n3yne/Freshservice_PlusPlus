@@ -5,61 +5,41 @@
 // live in each plugin's main.js (defaultSettings + validateSettings exports).
 
 const DEFAULT_SETTINGS = {
-  notePanelEnabled: true,
-  backupRetentionDays: 7,
-  signatureHtml: "",
-  ticketSortField: "lastUpdated",
-  ticketSortDirection: "desc",
+  sidePanelEnabled: true,
   panelCollapsed: false,
+  sidePanelTab: "",
   defaultUrl: "https://freshservice.com/login",
   theme: "dark",
-  noteTemplates: [],
-  liveSyncEnabled: true,
-  snapshotThreshold: 5,
   dismissedReleaseVersion: "",
-  backupStorageWarningMb: 100,
 };
-
-function sanitizeTicketId(raw) {
-  return (raw || "no-ticket").replace(/[^a-zA-Z0-9_-]/g, "_");
-}
 
 function validateSettings(s) {
   if (typeof s !== "object" || s === null || Array.isArray(s)) return false;
-  if (typeof s.notePanelEnabled !== "boolean") return false;
-  if (
-    typeof s.backupRetentionDays !== "number" ||
-    s.backupRetentionDays < 0 ||
-    s.backupRetentionDays > 365
-  )
-    return false;
-  if (typeof s.signatureHtml !== "string" || s.signatureHtml.length > 100000)
-    return false;
-  if (!["lastUpdated", "ticketNumber"].includes(s.ticketSortField)) return false;
-  if (!["asc", "desc"].includes(s.ticketSortDirection)) return false;
+  if (typeof s.sidePanelEnabled !== "boolean") return false;
   if (typeof s.panelCollapsed !== "boolean") return false;
+  if (s.sidePanelTab !== undefined && (typeof s.sidePanelTab !== "string" || s.sidePanelTab.length > 64)) return false;
   if (typeof s.defaultUrl !== "string" || s.defaultUrl.length === 0 || s.defaultUrl.length > 2048) return false;
   try {
     const parsed = new URL(s.defaultUrl);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   } catch { return false; }
   if (!["dark", "light"].includes(s.theme)) return false;
-  if (s.liveSyncEnabled !== undefined && typeof s.liveSyncEnabled !== "boolean") return false;
-  if (
-    s.snapshotThreshold !== undefined &&
-    (typeof s.snapshotThreshold !== "number" || s.snapshotThreshold < 1 || s.snapshotThreshold > 9999)
-  )
-    return false;
   if (s.dismissedReleaseVersion !== undefined && (typeof s.dismissedReleaseVersion !== "string" || s.dismissedReleaseVersion.length > 20)) return false;
-  if (s.backupStorageWarningMb !== undefined && (typeof s.backupStorageWarningMb !== "number" || s.backupStorageWarningMb < 0 || s.backupStorageWarningMb > 100000)) return false;
-  if (!Array.isArray(s.noteTemplates)) return false;
-  if (s.noteTemplates.length > 50) return false;
-  for (const tmpl of s.noteTemplates) {
-    if (typeof tmpl !== "object" || tmpl === null || Array.isArray(tmpl)) return false;
-    if (typeof tmpl.name !== "string" || tmpl.name.length === 0 || tmpl.name.length > 100) return false;
-    if (typeof tmpl.content !== "string" || tmpl.content.length > 10000) return false;
-  }
   return true;
 }
 
-module.exports = { DEFAULT_SETTINGS, sanitizeTicketId, validateSettings };
+// Upgrades settings saved by older versions, in place. Run once at startup on
+// the raw settings file. Returns the same object.
+function migrateCoreSettings(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  // 0.5.6: "Note Backup Side Panel" became the shared "Side Panel".
+  if (Object.prototype.hasOwnProperty.call(raw, "notePanelEnabled")) {
+    if (typeof raw.sidePanelEnabled !== "boolean" && typeof raw.notePanelEnabled === "boolean") {
+      raw.sidePanelEnabled = raw.notePanelEnabled;
+    }
+    delete raw.notePanelEnabled;
+  }
+  return raw;
+}
+
+module.exports = { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings };

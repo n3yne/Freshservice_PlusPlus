@@ -1,51 +1,6 @@
 "use strict";
 
-const { DEFAULT_SETTINGS, sanitizeTicketId, validateSettings } = require("../utils");
-
-// ==================== sanitizeTicketId ====================
-
-describe("sanitizeTicketId", () => {
-  test("leaves safe alphanumeric IDs unchanged", () => {
-    expect(sanitizeTicketId("SR-123456")).toBe("SR-123456");
-    expect(sanitizeTicketId("ticket_001")).toBe("ticket_001");
-    expect(sanitizeTicketId("ABC-DEF_789")).toBe("ABC-DEF_789");
-  });
-
-  test("replaces dots and slashes with underscores", () => {
-    expect(sanitizeTicketId("ticket/1.2.3")).toBe("ticket_1_2_3");
-    expect(sanitizeTicketId("SR.123456")).toBe("SR_123456");
-  });
-
-  test("replaces spaces and special characters", () => {
-    expect(sanitizeTicketId("ticket issue!")).toBe("ticket_issue_");
-    expect(sanitizeTicketId("ticket:123")).toBe("ticket_123");
-    expect(sanitizeTicketId("ticket@domain")).toBe("ticket_domain");
-  });
-
-  test("handles empty string", () => {
-    expect(sanitizeTicketId("")).toBe("no-ticket");
-  });
-
-  test("handles null and undefined", () => {
-    expect(sanitizeTicketId(null)).toBe("no-ticket");
-    expect(sanitizeTicketId(undefined)).toBe("no-ticket");
-  });
-
-  test("neutralises path traversal sequences", () => {
-    const result = sanitizeTicketId("../../etc/passwd");
-    expect(result).not.toContain("..");
-    expect(result).not.toContain("/");
-    expect(result).not.toContain("\\");
-    // Confirm the result is still usable as a filename segment
-    expect(result).toMatch(/^[a-zA-Z0-9_-]+$/);
-  });
-
-  test("neutralises Windows-style path traversal", () => {
-    const result = sanitizeTicketId("..\\..\\Windows\\System32");
-    expect(result).not.toContain("..");
-    expect(result).not.toContain("\\");
-  });
-});
+const { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings } = require("../utils");
 
 // ==================== validateSettings ====================
 
@@ -68,86 +23,50 @@ describe("validateSettings", () => {
     expect(validateSettings([])).toBe(false);
   });
 
-  // notePanelEnabled
-  test("rejects non-boolean notePanelEnabled", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, notePanelEnabled: 1 })).toBe(false);
-    expect(validateSettings({ ...DEFAULT_SETTINGS, notePanelEnabled: "true" })).toBe(false);
-    expect(validateSettings({ ...DEFAULT_SETTINGS, notePanelEnabled: null })).toBe(false);
+  // sidePanelEnabled
+  test("rejects non-boolean sidePanelEnabled", () => {
+    expect(validateSettings({ ...DEFAULT_SETTINGS, sidePanelEnabled: 1 })).toBe(false);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, sidePanelEnabled: "true" })).toBe(false);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, sidePanelEnabled: null })).toBe(false);
   });
 
-  // backupRetentionDays
-  test("rejects negative backupRetentionDays", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, backupRetentionDays: -1 })).toBe(false);
+  // sidePanelTab
+  test("accepts a string sidePanelTab and rejects other values", () => {
+    expect(validateSettings({ ...DEFAULT_SETTINGS, sidePanelTab: "notes" })).toBe(true);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, sidePanelTab: 3 })).toBe(false);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, sidePanelTab: "x".repeat(65) })).toBe(false);
   });
 
-  test("accepts 0 backupRetentionDays (keep forever)", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, backupRetentionDays: 0 })).toBe(true);
-  });
-
-  test("rejects backupRetentionDays over 365", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, backupRetentionDays: 366 })).toBe(false);
-  });
-
-  test("accepts backupRetentionDays at boundary values 0 and 365", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, backupRetentionDays: 0 })).toBe(true);
-    expect(validateSettings({ ...DEFAULT_SETTINGS, backupRetentionDays: 365 })).toBe(true);
-  });
-
-  test("rejects non-number backupRetentionDays", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, backupRetentionDays: "7" })).toBe(false);
-    expect(validateSettings({ ...DEFAULT_SETTINGS, backupRetentionDays: null })).toBe(false);
-  });
-
-  // signatureHtml
-  test("rejects signatureHtml over 100 000 chars", () => {
-    expect(
-      validateSettings({ ...DEFAULT_SETTINGS, signatureHtml: "x".repeat(100001) })
-    ).toBe(false);
-  });
-
-  test("accepts signatureHtml at exactly 100 000 chars", () => {
-    expect(
-      validateSettings({ ...DEFAULT_SETTINGS, signatureHtml: "x".repeat(100000) })
-    ).toBe(true);
-  });
-
-  test("rejects non-string signatureHtml", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, signatureHtml: 42 })).toBe(false);
-    expect(validateSettings({ ...DEFAULT_SETTINGS, signatureHtml: null })).toBe(false);
-  });
-
-  // ticketSortField
-  test("accepts valid ticketSortField values", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, ticketSortField: "lastUpdated" })).toBe(true);
-    expect(validateSettings({ ...DEFAULT_SETTINGS, ticketSortField: "ticketNumber" })).toBe(true);
-  });
-
-  test("rejects unknown ticketSortField", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, ticketSortField: "createdAt" })).toBe(false);
-    expect(validateSettings({ ...DEFAULT_SETTINGS, ticketSortField: "" })).toBe(false);
-  });
-
-  // ticketSortDirection
-  test("accepts valid ticketSortDirection values", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, ticketSortDirection: "asc" })).toBe(true);
-    expect(validateSettings({ ...DEFAULT_SETTINGS, ticketSortDirection: "desc" })).toBe(true);
-  });
-
-  test("rejects unknown ticketSortDirection", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, ticketSortDirection: "ascending" })).toBe(false);
-    expect(validateSettings({ ...DEFAULT_SETTINGS, ticketSortDirection: "" })).toBe(false);
-  });
-
-  // panelCollapsed
   test("rejects non-boolean panelCollapsed", () => {
     expect(validateSettings({ ...DEFAULT_SETTINGS, panelCollapsed: 0 })).toBe(false);
     expect(validateSettings({ ...DEFAULT_SETTINGS, panelCollapsed: "false" })).toBe(false);
     expect(validateSettings({ ...DEFAULT_SETTINGS, panelCollapsed: null })).toBe(false);
   });
-
   test("accepts false and true for panelCollapsed", () => {
     expect(validateSettings({ ...DEFAULT_SETTINGS, panelCollapsed: false })).toBe(true);
     expect(validateSettings({ ...DEFAULT_SETTINGS, panelCollapsed: true })).toBe(true);
+  });
+});
+
+// ==================== migrateCoreSettings ====================
+
+describe("migrateCoreSettings", () => {
+  test("carries notePanelEnabled over to sidePanelEnabled", () => {
+    expect(migrateCoreSettings({ notePanelEnabled: false })).toEqual({ sidePanelEnabled: false });
+    expect(migrateCoreSettings({ notePanelEnabled: true })).toEqual({ sidePanelEnabled: true });
+  });
+
+  test("keeps an existing sidePanelEnabled and drops the old key", () => {
+    expect(migrateCoreSettings({ notePanelEnabled: false, sidePanelEnabled: true })).toEqual({ sidePanelEnabled: true });
+  });
+
+  test("leaves settings without the old key unchanged", () => {
+    const s = { theme: "light" };
+    expect(migrateCoreSettings(s)).toEqual({ theme: "light" });
+  });
+
+  test("ignores non-object input", () => {
+    expect(migrateCoreSettings(null)).toBe(null);
   });
 });
 
@@ -155,19 +74,14 @@ describe("validateSettings", () => {
 
 describe("DEFAULT_SETTINGS", () => {
   test("has all required keys", () => {
-    const keys = [
-      "notePanelEnabled",
-      "backupRetentionDays",
-      "signatureHtml",
-      "ticketSortField",
-      "ticketSortDirection",
-      "panelCollapsed",
-      "defaultUrl",
-      "theme",
-      "noteTemplates",
-    ];
-    for (const key of keys) {
+    for (const key of ["sidePanelEnabled", "panelCollapsed", "defaultUrl", "theme"]) {
       expect(DEFAULT_SETTINGS).toHaveProperty(key);
+    }
+  });
+
+  test("holds no Note Backup plugin settings", () => {
+    for (const key of ["notePanelEnabled", "backupRetentionDays", "signatureHtml", "noteTemplates", "liveSyncEnabled"]) {
+      expect(DEFAULT_SETTINGS).not.toHaveProperty(key);
     }
   });
 
@@ -175,102 +89,32 @@ describe("DEFAULT_SETTINGS", () => {
     expect(validateSettings(DEFAULT_SETTINGS)).toBe(true);
   });
 
-  // defaultUrl
   test("rejects non-string defaultUrl", () => {
     expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: 42 })).toBe(false);
     expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: null })).toBe(false);
   });
-
   test("rejects empty defaultUrl", () => {
     expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "" })).toBe(false);
   });
-
   test("rejects non-http defaultUrl", () => {
     expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "ftp://example.com" })).toBe(false);
     expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "file:///C:/foo" })).toBe(false);
   });
-
-  // theme
   test("accepts valid theme values", () => {
     expect(validateSettings({ ...DEFAULT_SETTINGS, theme: "dark" })).toBe(true);
     expect(validateSettings({ ...DEFAULT_SETTINGS, theme: "light" })).toBe(true);
   });
-
   test("rejects unknown theme", () => {
     expect(validateSettings({ ...DEFAULT_SETTINGS, theme: "system" })).toBe(false);
     expect(validateSettings({ ...DEFAULT_SETTINGS, theme: "" })).toBe(false);
   });
-
   test("accepts valid http/https defaultUrl", () => {
     expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "https://yourcompany.freshservice.com/" })).toBe(true);
     expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "http://localhost:8080/" })).toBe(true);
   });
 
-  test("is frozen against accidental mutation between tests", () => {
-    // Not frozen in source — just verify the shape is stable by checking values
-    expect(DEFAULT_SETTINGS.notePanelEnabled).toBe(true);
-    expect(DEFAULT_SETTINGS.backupRetentionDays).toBe(7);
+  test("shape is stable", () => {
+    expect(DEFAULT_SETTINGS.sidePanelEnabled).toBe(true);
     expect(DEFAULT_SETTINGS.panelCollapsed).toBe(false);
-  });
-
-  // noteTemplates
-  test("accepts empty noteTemplates array", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: [] })).toBe(true);
-  });
-
-  test("accepts valid noteTemplates", () => {
-    expect(
-      validateSettings({
-        ...DEFAULT_SETTINGS,
-        noteTemplates: [{ name: "Greeting", content: "Hello, thank you for contacting us." }],
-      })
-    ).toBe(true);
-  });
-
-  test("rejects noteTemplates that is not an array", () => {
-    expect(validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: null })).toBe(false);
-    expect(validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: {} })).toBe(false);
-    expect(validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: "tmpl" })).toBe(false);
-  });
-
-  test("rejects noteTemplates with more than 50 entries", () => {
-    const big = Array.from({ length: 51 }, (_, i) => ({ name: `T${i}`, content: "" }));
-    expect(validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: big })).toBe(false);
-  });
-
-  test("rejects noteTemplates entries with empty or missing name", () => {
-    expect(
-      validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: [{ name: "", content: "x" }] })
-    ).toBe(false);
-    expect(
-      validateSettings({ ...DEFAULT_SETTINGS, noteTemplates: [{ content: "x" }] })
-    ).toBe(false);
-  });
-
-  test("rejects noteTemplates entries with name over 100 chars", () => {
-    expect(
-      validateSettings({
-        ...DEFAULT_SETTINGS,
-        noteTemplates: [{ name: "x".repeat(101), content: "" }],
-      })
-    ).toBe(false);
-  });
-
-  test("rejects noteTemplates entries with content over 10 000 chars", () => {
-    expect(
-      validateSettings({
-        ...DEFAULT_SETTINGS,
-        noteTemplates: [{ name: "T", content: "x".repeat(10001) }],
-      })
-    ).toBe(false);
-  });
-
-  test("accepts noteTemplates entries with content at exactly 10 000 chars", () => {
-    expect(
-      validateSettings({
-        ...DEFAULT_SETTINGS,
-        noteTemplates: [{ name: "T", content: "x".repeat(10000) }],
-      })
-    ).toBe(true);
   });
 });

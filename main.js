@@ -4,15 +4,16 @@ const electron = require("electron");
 const path = require("path");
 const fs = require("fs");
 const fsp = fs.promises;
-const { DEFAULT_SETTINGS, sanitizeTicketId, validateSettings } = require("./utils");
+const { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings } = require("./utils");
 const pluginManager = require("./plugin-manager");
 
 let mainWindow;
-let BACKUP_DIR;
-let AUTOSAVE_FILE;
+// App data folder. Still named "note-backups" from when note backup was built in:
+// it holds settings.json, open tabs and window state, and the Note Backup plugin
+// keeps its snapshots here too, so existing installs keep working.
+let DATA_DIR;
 let TABS_FILE;
 let SETTINGS_FILE;
-let EDITOR_STATE_FILE;
 let MAIN_WINDOW_STATE_FILE;
 
 // In-memory download history (cleared on app restart)
@@ -22,16 +23,6 @@ let nextDownloadId = 1;
 // Pending save paths for "Save Image As" — keyed by URL, consumed in will-download
 const pendingSavePaths = new Map();
 
-// Serializes all reads+writes to autosave.json so concurrent IPC calls
-// (autosave, live-sync snapshot, ticket-swap snapshot) can't interleave and
-// overwrite each other with stale data.
-let autosaveWriteQueue = Promise.resolve();
-function withAutosaveLock(fn) {
-  const queued = autosaveWriteQueue.then(fn);
-  autosaveWriteQueue = queued.catch((err) => { console.error("[Autosave] Write failed:", err); });
-  return queued;
-}
-
 // Serializes save-settings calls. Each save reads the file, merges and writes with
 // awaits in between; overlapping saves could otherwise write back a stale copy
 // (for example an old encrypted API key over one that was just entered).
@@ -40,14 +31,6 @@ function withSettingsLock(fn) {
   const queued = settingsSaveQueue.then(fn);
   settingsSaveQueue = queued.catch((err) => { console.error("[Settings] Save failed:", err); });
   return queued;
-}
-
-// Atomically overwrites autosave.json via a tmp-file + rename to prevent
-// truncation on crash/power-loss mid-write.
-async function writeAutosaveAtomic(data) {
-  const tmp = AUTOSAVE_FILE + ".tmp";
-  await fsp.writeFile(tmp, JSON.stringify(data, null, 2), "utf-8");
-  await fsp.rename(tmp, AUTOSAVE_FILE);
 }
 
 // Identity-provider hostnames — these popups communicate login state back to the
@@ -138,7 +121,7 @@ async function loadSettings() {
 
 async function saveSettings(settings) {
   try {
-    await ensureBackupDir();
+    await ensureDataDir();
     await fsp.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf-8");
   } catch (e) {
     console.error("[Settings] Error saving settings:", e);
@@ -158,123 +141,14 @@ function toPublicSettings(s) {
   return out;
 }
 
-async function ensureBackupDir() {
-  await fsp.mkdir(BACKUP_DIR, { recursive: true });
-}
-
-// ===================== Auto-Cleanup Old Backups =====================
-
-async function cleanupOldBackups() {
-  try {
-    await ensureBackupDir();
-    const settings = await loadSettings();
-    const retentionDays = settings.backupRetentionDays;
-
-    if (retentionDays === 0) {
-      console.log("[Cleanup] Retention set to 0 (keep forever) — skipping cleanup");
-      return;
-    }
-
-    const maxAgeMs = retentionDays * 24 * 60 * 60 * 1000;
-    const cutoff = Date.now() - maxAgeMs;
-    let deletedFiles = 0;
-    let deletedDirs = 0;
-    let prunedAutosaves = 0;
-
-    // 1. Scan all ticket history folders and delete old snapshot files
-    const entries = await fsp.readdir(BACKUP_DIR, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      try {
-        const ticketDir = path.join(BACKUP_DIR, entry.name);
-        const files = await fsp.readdir(ticketDir);
-
-        for (const file of files) {
-          if (!file.endsWith(".html") && !file.endsWith(".txt")) continue;
-
-          const filePath = path.join(ticketDir, file);
-          try {
-            const stat = await fsp.stat(filePath);
-            if (stat.mtimeMs < cutoff) {
-              await fsp.unlink(filePath);
-              deletedFiles++;
-            }
-          } catch {
-            // Skip files we can't stat/delete
-          }
-        }
-
-        // 2. Remove the ticket folder if it's now empty
-        const remaining = await fsp.readdir(ticketDir);
-        if (remaining.length === 0) {
-          try {
-            await fsp.rmdir(ticketDir);
-            deletedDirs++;
-          } catch (e) {
-            if (e.code !== "ENOTEMPTY") throw e;
-          }
-        }
-      } catch {
-        // Skip locked/unreadable ticket folder — don't abort cleanup for the rest
-      }
-    }
-
-    // 3. Prune stale autosave entries (old + no remaining history folder).
-    // Serialized through withAutosaveLock so a concurrent save-note IPC call
-    // can't land between our read and write and have its draft overwritten by
-    // our stale snapshot.
-    await withAutosaveLock(async () => {
-      try {
-        const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
-        const data = JSON.parse(raw);
-        let changed = false;
-
-        for (const [ticketId, info] of Object.entries(data)) {
-          const updatedAt = new Date(info.updatedAt || 0).getTime();
-          if (updatedAt >= cutoff) continue;
-
-          const historyDir = path.join(BACKUP_DIR, ticketId);
-          let hasHistory = false;
-          try {
-            const histFiles = await fsp.readdir(historyDir);
-            hasHistory = histFiles.some((f) => f.endsWith(".html") || f.endsWith(".txt"));
-          } catch {
-            // Directory doesn't exist — no history
-          }
-
-          if (!hasHistory) {
-            delete data[ticketId];
-            prunedAutosaves++;
-            changed = true;
-          }
-        }
-
-        if (changed) {
-          await writeAutosaveAtomic(data);
-        }
-      } catch (e) {
-        if (e.code !== "ENOENT") console.error("[Cleanup] Error pruning autosaves:", e);
-      }
-    });
-
-    if (deletedFiles > 0 || deletedDirs > 0 || prunedAutosaves > 0) {
-      console.log(
-        `[Cleanup] Removed ${deletedFiles} old snapshot(s), ${deletedDirs} empty folder(s), ${prunedAutosaves} stale autosave(s) (older than ${retentionDays} days)`,
-      );
-    } else {
-      console.log(
-        `[Cleanup] Nothing to clean up (all backups are within ${retentionDays} days)`,
-      );
-    }
-  } catch (err) {
-    console.error("[Cleanup] Error during auto-cleanup:", err);
-  }
+async function ensureDataDir() {
+  await fsp.mkdir(DATA_DIR, { recursive: true });
 }
 
 function createWindow() {
-  // Ensure the backup directory exists early; IPC handlers also call this
+  // Ensure the data directory exists early; IPC handlers also call this
   // individually, so this is just a best-effort warm-up.
-  ensureBackupDir().catch((e) => console.error("[App] Error creating backup dir:", e));
+  ensureDataDir().catch((e) => console.error("[App] Error creating data dir:", e));
 
   const defaultWidth = 1600;
   const defaultHeight = 1000;
@@ -787,198 +661,6 @@ function createSettingsWindow() {
 }
 
 function registerIpcHandlers() {
-  // Save a single note entry (autosave or manual)
-  electron.ipcMain.handle(
-    "save-note",
-    async (event, { ticketId, noteContent, isManual }) => {
-      const MAX_NOTE_BYTES = 10 * 1024 * 1024; // 10 MB
-      if (typeof noteContent !== "string" || noteContent.length > MAX_NOTE_BYTES) {
-        return { success: false, error: "Note content exceeds size limit" };
-      }
-      await ensureBackupDir();
-
-      const timestamp = new Date().toISOString();
-      const safeTicketId = sanitizeTicketId(ticketId);
-
-      // Serialized through withAutosaveLock to prevent concurrent read-modify-write races on autosave.json.
-      await withAutosaveLock(async () => {
-        let autosaveData = {};
-        try {
-          const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
-          autosaveData = JSON.parse(raw);
-        } catch (e) {
-          if (e.code !== "ENOENT") {
-            // Corrupt file (truncated write, disk error) — preserve it before starting fresh
-            // so the data isn't silently destroyed and can be manually recovered.
-            const corruptPath = `${AUTOSAVE_FILE}.corrupt-${timestamp.replace(/[:.]/g, "-")}`;
-            await fsp.rename(AUTOSAVE_FILE, corruptPath).catch(() => {});
-            console.error("[Autosave] Corrupt autosave.json preserved at", corruptPath, e);
-          }
-        }
-        autosaveData[safeTicketId] = { content: noteContent, updatedAt: timestamp };
-        await writeAutosaveAtomic(autosaveData);
-      });
-
-      // On manual save, also write a timestamped history file (HTML format)
-      if (isManual) {
-        const historyDir = path.join(BACKUP_DIR, safeTicketId);
-        await fsp.mkdir(historyDir, { recursive: true });
-        const safeTimestamp = timestamp.replace(/[:.]/g, "-");
-        await fsp.writeFile(
-          path.join(historyDir, `${safeTimestamp}.html`),
-          noteContent,
-          "utf-8",
-        );
-      }
-
-      pluginManager.fireEvent("note:saved", { ticketId: safeTicketId, timestamp });
-      return { success: true, timestamp };
-    },
-  );
-
-  // Load autosaved drafts
-  electron.ipcMain.handle("load-autosave", async () => {
-    await ensureBackupDir();
-    try {
-      const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
-      return JSON.parse(raw);
-    } catch {
-      return {};
-    }
-  });
-
-  // Get history for a specific ticket
-  electron.ipcMain.handle("get-history", async (event, ticketId) => {
-    await ensureBackupDir();
-    const safeTicketId = sanitizeTicketId(ticketId);
-    const historyDir = path.join(BACKUP_DIR, safeTicketId);
-
-    try {
-      const files = (await fsp.readdir(historyDir))
-        .filter((f) => f.endsWith(".html") || f.endsWith(".txt"))
-        .sort()
-        .reverse();
-
-      return await Promise.all(
-        files.map(async (f) => ({
-          filename: f,
-          content: await fsp.readFile(path.join(historyDir, f), "utf-8"),
-        })),
-      );
-    } catch {
-      return [];
-    }
-  });
-
-  // Get list of all tickets that have backups
-  electron.ipcMain.handle("get-all-tickets", async () => {
-    await ensureBackupDir();
-
-    const entries = [];
-    const seen = new Set();
-
-    try {
-      const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
-      const data = JSON.parse(raw);
-      for (const [ticketId, info] of Object.entries(data)) {
-        const safeId = sanitizeTicketId(ticketId);
-        if (seen.has(safeId)) continue;
-        seen.add(safeId);
-        entries.push({ ticketId: safeId, updatedAt: info.updatedAt, source: "autosave" });
-      }
-    } catch {
-      // No autosave file yet
-    }
-
-    try {
-      const dirs = (await fsp.readdir(BACKUP_DIR, { withFileTypes: true }))
-        .filter((d) => d.isDirectory())
-        .map((d) => d.name);
-
-      for (const dir of dirs) {
-        const safeDir = sanitizeTicketId(dir);
-        if (!seen.has(safeDir)) {
-          seen.add(safeDir);
-          // Find the mtime of the most recently modified file in this folder
-          // so history-only tickets can show a date in the UI.
-          let updatedAt = null;
-          try {
-            const files = await fsp.readdir(path.join(BACKUP_DIR, safeDir));
-            let latestMs = 0;
-            for (const f of files) {
-              if (!f.endsWith(".html") && !f.endsWith(".txt")) continue;
-              try {
-                const st = await fsp.stat(path.join(BACKUP_DIR, safeDir, f));
-                if (st.mtimeMs > latestMs) {
-                  latestMs = st.mtimeMs;
-                  updatedAt = new Date(st.mtimeMs).toISOString();
-                }
-              } catch {
-                // Skip unreadable files
-              }
-            }
-          } catch {
-            // Folder unreadable — leave updatedAt as null
-          }
-          entries.push({ ticketId: safeDir, updatedAt, source: "history" });
-        }
-      }
-    } catch {
-      // BACKUP_DIR might not exist yet
-    }
-
-    return entries;
-  });
-
-  // Delete autosave entry for a ticket
-  electron.ipcMain.handle("delete-autosave", async (event, ticketId) => {
-    const safeTicketId = sanitizeTicketId(ticketId);
-    await withAutosaveLock(async () => {
-      try {
-        const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
-        const data = JSON.parse(raw);
-        delete data[safeTicketId];
-        await writeAutosaveAtomic(data);
-      } catch {
-        // File doesn't exist or is corrupt — nothing to delete
-      }
-    });
-    return { success: true };
-  });
-
-  // Delete ALL data for a ticket (autosave entry + history folder)
-  electron.ipcMain.handle("delete-ticket", async (event, ticketId) => {
-    const safeTicketId = sanitizeTicketId(ticketId);
-
-    // Remove from autosave.json
-    await withAutosaveLock(async () => {
-      try {
-        const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
-        const data = JSON.parse(raw);
-        delete data[safeTicketId];
-        await writeAutosaveAtomic(data);
-      } catch {
-        // File doesn't exist or is corrupt
-      }
-    });
-
-    // Remove the history folder
-    try {
-      await fsp.rm(path.join(BACKUP_DIR, safeTicketId), { recursive: true, force: true });
-    } catch {
-      // Directory doesn't exist
-    }
-
-    return { success: true };
-  });
-
-  // Open backup folder in file explorer
-  electron.ipcMain.handle("open-backup-folder", async () => {
-    await ensureBackupDir();
-    const err = await electron.shell.openPath(BACKUP_DIR);
-    return err ? { success: false, error: err } : { success: true };
-  });
-
   function sanitizeTabUrls(tabUrls) {
     if (!Array.isArray(tabUrls)) return [];
     return tabUrls.filter((entry) => {
@@ -993,7 +675,7 @@ function registerIpcHandlers() {
 
   // Save open tab URLs to disk (async, returns result)
   electron.ipcMain.handle("save-tabs", async (event, tabUrls) => {
-    await ensureBackupDir();
+    await ensureDataDir();
     try {
       await fsp.writeFile(TABS_FILE, JSON.stringify(sanitizeTabUrls(tabUrls), null, 2), "utf-8");
       return { success: true };
@@ -1006,30 +688,10 @@ function registerIpcHandlers() {
   // Save open tab URLs to disk (fire-and-forget sync path used by beforeunload)
   electron.ipcMain.on("save-tabs-sync", (event, tabUrls) => {
     try {
-      fs.mkdirSync(BACKUP_DIR, { recursive: true });
+      fs.mkdirSync(DATA_DIR, { recursive: true });
       fs.writeFileSync(TABS_FILE, JSON.stringify(sanitizeTabUrls(tabUrls), null, 2), "utf-8");
     } catch (e) {
       console.error("[Tabs] Error saving tabs (sync):", e);
-    }
-  });
-
-  // Save editor state (blank/not-blank) synchronously on beforeunload
-  electron.ipcMain.on("save-editor-state-sync", (event, state) => {
-    try {
-      fs.mkdirSync(BACKUP_DIR, { recursive: true });
-      fs.writeFileSync(EDITOR_STATE_FILE, JSON.stringify(state), "utf-8");
-    } catch (e) {
-      console.error("[EditorState] Error saving editor state (sync):", e);
-    }
-  });
-
-  // Load editor state on startup
-  electron.ipcMain.handle("load-editor-state", async () => {
-    try {
-      const raw = await fsp.readFile(EDITOR_STATE_FILE, "utf-8");
-      return JSON.parse(raw);
-    } catch {
-      return null;
     }
   });
 
@@ -1166,110 +828,6 @@ function registerIpcHandlers() {
     return pluginManager.importPlugin(result.filePaths[0]);
   });
 
-  // Search through saved note content (autosave drafts + snapshot files)
-  electron.ipcMain.handle("search-notes", async (event, query) => {
-    if (!query || typeof query !== "string") return [];
-    const q = query.toLowerCase().trim();
-    if (!q) return [];
-
-    function stripHtml(html) {
-      return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-    }
-
-    function contentPreview(text, q) {
-      const lowerText = text.toLowerCase();
-      const idx = lowerText.indexOf(q);
-      if (idx === -1) return null;
-      const start = Math.max(0, idx - 25);
-      const end = Math.min(text.length, idx + q.length + 50);
-      return (start > 0 ? "…" : "") + text.substring(start, end) + (end < text.length ? "…" : "");
-    }
-
-    const results = [];
-    const seen = new Set();
-
-    // 1. Search autosave.json (current drafts)
-    try {
-      // Wait for any in-flight write to settle before reading
-      await autosaveWriteQueue.catch(() => {});
-      const raw = await fsp.readFile(AUTOSAVE_FILE, "utf-8");
-      const data = JSON.parse(raw);
-      for (const [ticketId, info] of Object.entries(data)) {
-        const safeId = sanitizeTicketId(ticketId);
-        if (seen.has(safeId)) continue;
-        const text = stripHtml(info.content || "");
-        const lowerTicket = safeId.toLowerCase();
-        let preview = null;
-        if (lowerTicket.includes(q)) {
-          preview = text.substring(0, 80) + (text.length > 80 ? "…" : "");
-        } else {
-          preview = contentPreview(text, q);
-        }
-        if (preview !== null) {
-          results.push({ ticketId: safeId, preview, updatedAt: info.updatedAt });
-          seen.add(safeId);
-        }
-      }
-    } catch { /* no autosave file */ }
-
-    // 2. Search snapshot .html/.txt files in ticket history directories
-    try {
-      const dirs = (await fsp.readdir(BACKUP_DIR, { withFileTypes: true }))
-        .filter((d) => d.isDirectory())
-        .map((d) => d.name);
-
-      for (const dir of dirs) {
-        const safeId = sanitizeTicketId(dir);
-        if (seen.has(safeId)) continue;
-
-        const ticketDir = path.join(BACKUP_DIR, dir);
-        const idMatches = safeId.toLowerCase().includes(q);
-        let matchPreview = null;
-        let matchTime = null;
-
-        try {
-          const files = (await fsp.readdir(ticketDir))
-            .filter((f) => f.endsWith(".html") || f.endsWith(".txt"))
-            .sort()
-            .reverse(); // most recent first
-
-          for (const file of files) {
-            try {
-              const content = await fsp.readFile(path.join(ticketDir, file), "utf-8");
-              const text = stripHtml(content);
-              const st = await fsp.stat(path.join(ticketDir, file));
-              const fileTime = new Date(st.mtimeMs).toISOString();
-
-              // Use most-recent snapshot as the preview source for ID matches
-              if (idMatches && matchPreview === null) {
-                matchPreview = text.substring(0, 80) + (text.length > 80 ? "…" : "");
-                matchTime = fileTime;
-              }
-
-              // Check for content match (takes priority over ID-only match)
-              const cp = contentPreview(text, q);
-              if (cp !== null) {
-                matchPreview = cp;
-                matchTime = fileTime;
-                break;
-              }
-            } catch { /* skip unreadable file */ }
-          }
-        } catch { /* directory unreadable */ }
-
-        // If ID matched but no snapshots existed, still return it with empty preview
-        if (matchPreview === null && idMatches) matchPreview = "";
-
-        if (matchPreview !== null) {
-          results.push({ ticketId: safeId, preview: matchPreview, updatedAt: matchTime });
-          seen.add(safeId);
-        }
-      }
-    } catch { /* BACKUP_DIR may not exist */ }
-
-    return results;
-  });
-
   // Load saved tab URLs from disk
   electron.ipcMain.handle("load-tabs", async () => {
     try {
@@ -1309,36 +867,6 @@ function registerIpcHandlers() {
   electron.ipcMain.handle("clear-downloads", () => {
     downloads.splice(0);
     return { ok: true };
-  });
-
-  electron.ipcMain.handle("check-backup-size", async () => {
-    try {
-      await ensureBackupDir();
-      let totalBytes = 0;
-      const entries = await fsp.readdir(BACKUP_DIR, { withFileTypes: true });
-      for (const entry of entries) {
-        const entryPath = path.join(BACKUP_DIR, entry.name);
-        if (entry.isDirectory()) {
-          try {
-            const files = await fsp.readdir(entryPath);
-            for (const file of files) {
-              try {
-                const stat = await fsp.stat(path.join(entryPath, file));
-                totalBytes += stat.size;
-              } catch { /* skip unreadable file */ }
-            }
-          } catch { /* skip unreadable directory */ }
-        } else {
-          try {
-            const stat = await fsp.stat(entryPath);
-            totalBytes += stat.size;
-          } catch { /* skip unreadable entry */ }
-        }
-      }
-      return { totalBytes, totalMb: Math.round((totalBytes / (1024 * 1024)) * 10) / 10 };
-    } catch (err) {
-      return { error: err.message || String(err) };
-    }
   });
 
   electron.ipcMain.handle("check-for-updates", async () => {
@@ -1384,12 +912,10 @@ electron.app.whenReady().then(async () => {
   if (!gotTheLock) return;
 
   // Initialize paths now that app is ready
-  BACKUP_DIR = path.join(electron.app.getPath("userData"), "note-backups");
-  AUTOSAVE_FILE = path.join(BACKUP_DIR, "autosave.json");
-  TABS_FILE = path.join(BACKUP_DIR, "open-tabs.json");
-  SETTINGS_FILE = path.join(BACKUP_DIR, "settings.json");
-  EDITOR_STATE_FILE = path.join(BACKUP_DIR, "editor-state.json");
-  MAIN_WINDOW_STATE_FILE = path.join(BACKUP_DIR, "main-window-state.json");
+  DATA_DIR = path.join(electron.app.getPath("userData"), "note-backups");
+  TABS_FILE = path.join(DATA_DIR, "open-tabs.json");
+  SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+  MAIN_WINDOW_STATE_FILE = path.join(DATA_DIR, "main-window-state.json");
 
   // Present a plain Chrome user agent (no "Electron/…" token) to Freshservice and
   // Freshworks only, so the app isn't treated as an unsupported browser. Scoped to
@@ -1452,6 +978,8 @@ electron.app.whenReady().then(async () => {
   // Two-phase startup: read raw file first so plugins can see persisted values during init,
   // then run plugin migrations + merge defaults to produce the final settings object.
   const rawParsed = await readSettingsFile();
+  const preMigration = JSON.stringify(rawParsed);
+  migrateCoreSettings(rawParsed);
   try {
     await pluginManager.initPlugins(
       electron.app.getPath("userData"),
@@ -1465,7 +993,6 @@ electron.app.whenReady().then(async () => {
   // Run migrations exactly once — plugins are now registered so all migrators are available.
   // If any migration modified rawParsed, write the upgraded data back to disk so future
   // loadSettings() calls (IPC, backup cleanup) never see the legacy format again.
-  const preMigration = JSON.stringify(rawParsed);
   pluginManager.runMigrations(rawParsed);
   let effectiveRaw = rawParsed;
   if (JSON.stringify(rawParsed) !== preMigration) {
@@ -1479,7 +1006,6 @@ electron.app.whenReady().then(async () => {
 
   registerIpcHandlers();
   createWindow();
-  setTimeout(() => cleanupOldBackups(), 0);
 
   electron.app.on("activate", () => {
     if (electron.BrowserWindow.getAllWindows().length === 0) createWindow();

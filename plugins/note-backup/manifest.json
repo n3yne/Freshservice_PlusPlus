@@ -1,0 +1,10 @@
+{
+  "id": "note-backup",
+  "name": "Note Backup",
+  "version": "0.5.6",
+  "description": "A Notes tab in the side panel for drafting ticket notes, with autosave, snapshots, templates, a signature and live sync with the Freshservice note editor.",
+  "main": "main.js",
+  "renderer": "renderer.js",
+  "settings": "settings.js",
+  "minAppVersion": "0.5.6"
+}

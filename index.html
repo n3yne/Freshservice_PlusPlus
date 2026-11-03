@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -41,251 +41,18 @@
       <!-- Resize Handle -->
       <div id="resize-handle" title="Drag to resize"></div>
 
-      <!-- Side Panel -->
+      <!-- Side Panel: a tabbed panel that plugins add tabs to (pluginAPI.ui.addSidePanelTab) -->
       <div id="side-panel">
-        <!-- Panel Header -->
+        <!-- Panel Header: one tab per plugin view, plus the collapse button -->
         <div id="panel-header">
-          <h2>📋 Note Backup</h2>
+          <div id="side-panel-tabs" role="tablist" aria-label="Side panel"></div>
           <div id="panel-header-buttons">
-            <button id="btn-toggle-panel" title="Collapse panel">◀</button>
+            <button type="button" id="btn-toggle-panel" title="Collapse panel (Ctrl+Shift+B)">◀</button>
           </div>
         </div>
 
-        <!-- Panel Content -->
-        <div id="panel-content">
-          <!-- Ticket ID -->
-          <div class="form-group">
-            <label for="ticket-id">Ticket / Reference ID</label>
-            <div class="input-with-button">
-              <input
-                type="text"
-                id="ticket-id"
-                placeholder="e.g. SR-123456 or any label"
-              />
-              <button
-                id="btn-grab-ticket"
-                class="btn btn-small"
-                title="Grab the ticket number from the currently open Freshservice page"
-              >
-                🎯 Grab
-              </button>
-            </div>
-          </div>
-
-          <!-- Note Editor -->
-          <div class="form-group note-group">
-            <label>Notes</label>
-            <!-- Formatting Toolbar -->
-            <div id="editor-toolbar">
-              <button
-                class="toolbar-btn"
-                data-command="bold"
-                title="Bold (Ctrl+B)"
-              >
-                <b>B</b>
-              </button>
-              <button
-                class="toolbar-btn"
-                data-command="italic"
-                title="Italic (Ctrl+I)"
-              >
-                <i>I</i>
-              </button>
-              <button
-                class="toolbar-btn"
-                data-command="underline"
-                title="Underline (Ctrl+U)"
-              >
-                <u>U</u>
-              </button>
-              <button
-                class="toolbar-btn"
-                data-command="strikeThrough"
-                title="Strikethrough"
-              >
-                <s>S</s>
-              </button>
-              <span class="toolbar-sep"></span>
-              <button
-                class="toolbar-btn"
-                data-command="insertUnorderedList"
-                title="Bullet List"
-              >
-                &#8226; List
-              </button>
-              <button
-                class="toolbar-btn"
-                data-command="insertOrderedList"
-                title="Numbered List"
-              >
-                1. List
-              </button>
-              <span class="toolbar-sep"></span>
-              <button
-                class="toolbar-btn"
-                data-command="formatBlock"
-                data-value="h3"
-                title="Heading"
-              >
-                H
-              </button>
-              <button
-                class="toolbar-btn"
-                data-command="formatBlock"
-                data-value="blockquote"
-                title="Quote"
-              >
-                &ldquo;
-              </button>
-              <button
-                class="toolbar-btn"
-                data-command="removeFormat"
-                title="Clear Formatting"
-              >
-                &oslash;
-              </button>
-              <span class="toolbar-sep"></span>
-              <button
-                class="toolbar-btn toolbar-btn-sig"
-                id="btn-insert-signature"
-                title="Insert signature at end of note"
-              >
-                Sig
-              </button>
-              <span class="toolbar-sep"></span>
-              <button
-                type="button"
-                class="toolbar-btn toolbar-btn-tmpl"
-                id="btn-insert-template"
-                title="Insert a note template"
-              >
-                Tmpl &#9662;
-              </button>
-              <span class="toolbar-sep"></span>
-              <button
-                type="button"
-                class="toolbar-btn toolbar-btn-html"
-                id="btn-html-toggle"
-                title="Toggle HTML source view"
-              >
-                HTML
-              </button>
-            </div>
-            <!-- Rich Text Editor -->
-            <div
-              id="note-content"
-              contenteditable="true"
-              data-placeholder="Type or paste your ticket notes here. You can use formatting and paste images..."
-            ></div>
-            <!-- HTML Source Editor (shown when HTML toggle is active) -->
-            <textarea
-              id="note-html-source"
-              class="note-html-source"
-              spellcheck="false"
-              autocomplete="off"
-              aria-label="HTML source"
-            ></textarea>
-          </div>
-
-          <!-- Status Bar -->
-          <div id="status-bar">
-            <span id="autosave-status">Ready</span>
-            <span id="sync-status" class="sync-status sync-off">⇅ No FS field</span>
-          </div>
-
-          <!-- Freshservice Notes Sync -->
-          <div id="fs-sync-buttons">
-            <button
-              type="button"
-              id="btn-pull-from-fs"
-              class="btn btn-small"
-              title="Load the open Freshservice note editor into this panel"
-            >⬇ Pull from FS</button>
-            <button
-              type="button"
-              id="btn-push-to-fs"
-              class="btn btn-small"
-              title="Send panel notes to the open Freshservice note editor"
-            >⬆ Push to FS</button>
-          </div>
-
-          <!-- Action Buttons -->
-          <div id="action-buttons">
-            <button
-              id="btn-save"
-              class="btn btn-primary"
-              title="Save a timestamped backup"
-            >
-              💾 Save Snapshot
-            </button>
-            <button
-              id="btn-clear"
-              class="btn btn-warning"
-              title="Clear current note"
-            >
-              🗑️ Clear
-            </button>
-            <button
-              id="btn-copy"
-              class="btn btn-secondary"
-              title="Copy notes to clipboard"
-            >
-              📋 Copy
-            </button>
-          </div>
-
-          <!-- Divider -->
-          <hr class="divider" />
-
-          <!-- Note Search -->
-          <div id="note-search">
-            <input
-              type="text"
-              id="note-search-input"
-              class="note-search-input"
-              placeholder="Search notes…"
-              autocomplete="off"
-              spellcheck="false"
-            />
-            <div id="note-search-results" class="note-search-results"></div>
-          </div>
-
-          <!-- History / Restore Section -->
-          <div id="history-section">
-            <div id="history-header">
-              <h3>📂 Saved Snapshots</h3>
-              <button
-                id="btn-open-folder"
-                class="btn btn-small"
-                title="Open backup folder"
-              >
-                📁 Open Folder
-              </button>
-            </div>
-
-            <!-- Saved Tickets List -->
-            <div id="saved-tickets">
-              <label>Saved Tickets:</label>
-              <select id="ticket-select" title="Select a saved ticket">
-                <option value="">-- Select a ticket --</option>
-              </select>
-              <button id="btn-load-history" class="btn btn-small">
-                Load History
-              </button>
-              <button
-                id="btn-delete-ticket"
-                class="btn btn-small btn-delete"
-                title="Delete all saved data for the selected ticket"
-              >
-                🗑️ Delete
-              </button>
-            </div>
-
-            <div id="history-list">
-              <!-- Populated dynamically -->
-            </div>
-          </div>
-        </div>
+        <!-- Each plugin tab's view is added here -->
+        <div id="side-panel-body"></div>
       </div>
     </div>
 
@@ -327,28 +94,6 @@
       </div>
     </div>
 
-    <!-- Snapshot Diff Overlay -->
-    <div id="diff-overlay" class="diff-overlay">
-      <div class="diff-dialog">
-        <div class="diff-dialog-header">
-          <h3>Compare Snapshot</h3>
-          <button type="button" id="btn-diff-close" class="settings-close" title="Close">&times;</button>
-        </div>
-        <div class="diff-meta">
-          <span id="diff-snapshot-name" class="diff-snapshot-name"></span>
-          <div class="diff-legend">
-            <span class="diff-legend-item diff-remove-legend">&#x2212; Current</span>
-            <span class="diff-legend-item diff-add-legend">+ Snapshot</span>
-          </div>
-        </div>
-        <div id="diff-body" class="diff-body"></div>
-        <div class="diff-dialog-footer">
-          <button type="button" id="btn-diff-restore" class="btn btn-primary">Restore this snapshot</button>
-          <button type="button" id="btn-diff-cancel" class="btn btn-secondary">Cancel</button>
-        </div>
-      </div>
-    </div>
-
     <!-- Tab Context Menu -->
     <div id="tab-context-menu" class="context-menu">
       <div class="context-menu-item" data-action="refresh">&#8635; Refresh Tab</div>
@@ -379,13 +124,10 @@
     <button
       id="btn-expand-panel"
       class="expand-btn"
-      title="Open Note Backup panel"
+      title="Open the side panel (Ctrl+Shift+B)"
     >
-      ▶<br />N<br />O<br />T<br />E<br />S
+      ▶<br />P<br />A<br />N<br />E<br />L
     </button>
-
-    <!-- Template Dropdown -->
-    <div id="template-dropdown" class="context-menu"></div>
 
     <script src="renderer.js"></script>
   </body>

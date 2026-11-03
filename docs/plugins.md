@@ -27,12 +27,14 @@ The plugin system has three tiers:
 | Tier | File | What it can do |
 |---|---|---|
 | **Main process** | `main.js` | Register backend IPC handlers, react to app events, read/write files, add menu items |
-| **Renderer** | `renderer.js` | Manipulate the main window UI, add toolbar buttons, inject DOM elements, open tabs |
+| **Renderer** | `renderer.js` | Add side panel tabs and toolbar buttons, show notifications, manipulate the main window UI, open tabs |
 | **Settings window** | `settings.js` | Add nav items and panels to the Settings window via `window.pluginSettingsAPI` |
 
 A plugin can include any combination of these three components.
 
-On startup the app scans the `plugins/` directories, loads each `main.js` inside the main Electron process, and injects each `renderer.js` as a `<script>` tag into the main window after settings have loaded. `settings.js` files are injected into the Settings window after `window.pluginSettingsAPI` has been constructed.
+On startup the app scans the `plugins/` directories, loads each `main.js` inside the main Electron process, and injects each `renderer.js` as a `<script>` tag into the main window after settings have loaded. Renderer scripts run one after another in folder order (bundled plugins first, alphabetically), so don't rely on a plugin that sorts after yours having run yet: use events or `notes.onReady()` instead. `settings.js` files are injected into the Settings window after `window.pluginSettingsAPI` has been constructed.
+
+Notes themselves are a plugin too: the bundled **Note Backup** plugin (`plugins/note-backup`) owns the Notes tab, its files on disk and live sync with Freshservice, and backs `pluginAPI.notes` for everyone else. It is a good reference for a larger plugin.
 
 ---
 
@@ -190,6 +192,20 @@ api.addMenuItem({
 });
 ```
 
+#### `api.onMessage(action, fn)`
+
+Registers a fire-and-forget handler for messages sent with `window.pluginAPI.send()`. Nothing is returned to the renderer, but the message is still delivered while the window is closing, so this is the place for `beforeunload` saves (use synchronous `fs` calls inside `fn`).
+
+```js
+api.onMessage("save-state", function (state) {
+  fs.writeFileSync(path.join(api.getDataPath(), "state.json"), JSON.stringify(state));
+});
+```
+
+#### `api.emit(eventName, data)`
+
+Publishes an event to every main-process plugin's `api.on()` listeners. The Note Backup plugin uses it to fire `note:saved`.
+
 #### `api.log(...args)`
 
 Logs a message to the console with a `[Plugin:<id>]` prefix.
@@ -281,9 +297,53 @@ Renderer scripts can also call the bundled plugins, so a plugin can use the app'
 
 See `plugins/solutions-chat/renderer.js` for a plugin built on these.
 
+#### `window.pluginAPI.ui.addSidePanelTab(opts)`
+
+Adds a tab to the side panel on the right of the window and returns a handle for it. The panel shows whenever the **Side Panel** setting is on and at least one plugin has added a tab; with a single tab it still shows the tab strip.
+
+| Option | Description |
+|---|---|
+| `id` | Required. Unique tab id, `/^[a-z0-9][a-z0-9_-]{0,62}$/`. Used to remember the last tab the user opened. |
+| `label` | Text on the tab. |
+| `icon` | Optional emoji or short text shown before the label. |
+| `title` | Optional tooltip. |
+| `order` | Optional number; lower comes first. Notes uses `10`, Solutions Chat `20`, the default is `100`. |
+
+The handle:
+
+| Member | Description |
+|---|---|
+| `element` | The tab's content `<div>` (a flex column filling the panel). Put your UI in it. |
+| `activate()` | Switches to this tab, expanding the panel if it was collapsed. |
+| `isActive()` | Whether this tab is the one showing. |
+| `onShow(fn)` / `onHide(fn)` | Called when the user switches to or away from this tab. |
+
+```js
+const tab = window.pluginAPI.ui.addSidePanelTab({ id: "my-plugin", label: "My Plugin", icon: "🧩", order: 50 });
+tab.element.innerHTML = '<div style="padding:12px">Hello from my plugin</div>';
+tab.onShow(function () { console.log("my tab is showing"); });
+```
+
+#### `window.pluginAPI.ui.notify(opts)`
+
+Shows a notification under the bell icon in the tab bar. `opts` is `{ type, title, desc, action? }`; only one notification of each `type` is shown at a time. `action` is `{ label, onClick }` and adds a button.
+
+```js
+window.pluginAPI.ui.notify({
+  type: "sync-failed",
+  title: "Sync failed",
+  desc: "Couldn't reach the server.",
+  action: { label: "Retry", onClick: retry },
+});
+```
+
+#### `window.pluginAPI.ui.confirm(message, options?)`
+
+Shows the app's confirm dialog (use it instead of `window.confirm()`, which loses focus to the web page). Resolves `true` or `false`. Pass `{ defaultYes: true }` to focus **Yes**.
+
 #### `window.pluginAPI.ui.addToolbarButton(opts)`
 
-Appends a button to the note editor toolbar. Returns the button element.
+Appends a button to the note editor toolbar in the Notes tab. Returns the button element. The toolbar belongs to the Note Backup plugin, so the button appears once that plugin has loaded, and not at all while it is turned off.
 
 ```js
 window.pluginAPI.ui.addToolbarButton({
@@ -299,14 +359,17 @@ window.pluginAPI.ui.addToolbarButton({
 
 #### `window.pluginAPI.notes`
 
-Read and write the current note editor content.
+Read and write the note in the Notes tab. These calls are answered by the Note Backup plugin. While it is turned off, `isAvailable()` is `false`, reads return empty values and writes do nothing, so hide any note actions in that case.
 
 | Method | Returns | Description |
 |---|---|---|
+| `notes.isAvailable()` | `boolean` | Whether a notes provider (Note Backup) is loaded |
+| `notes.onReady(fn)` | — | Calls `fn(provider)` once Note Backup has loaded, straight away if it already has. `provider.toolbar` is the editor toolbar and `provider.actionsRow` the row of sync buttons, for plugins that add their own controls next to them |
 | `notes.getContent()` | `string` | Current editor content as HTML |
 | `notes.setContent(html)` | — | Replace editor content and schedule an autosave |
 | `notes.getTicketId()` | `string \| null` | Current ticket ID, or `null` if none set |
 | `notes.getPlainText()` | `string` | Editor content stripped of HTML tags |
+| `notes.registerProvider(impl)` | — | For a plugin that replaces Note Backup: registers the object that answers the calls above. Only one provider can register |
 | `notes.saveSnapshot(incomingText, options?)` | `Promise<void>` | Saves a snapshot of the current editor content if it differs enough from the last snapshot (respects the configured snapshot threshold). Pass `{ force: true }` to skip the size check, e.g. before replacing the note with a rewrite of similar length. Call this before overwriting the editor with bulk-imported or AI-generated content so the previous note can be recovered from history. |
 
 ```js
@@ -326,6 +389,10 @@ if (settings.theme === "dark") {
 }
 ```
 
+#### `window.pluginAPI.send(pluginId, action, data)`
+
+Sends a fire-and-forget message to a main-process handler registered with `api.onMessage()`. Use it instead of `invoke()` in `beforeunload`, where an `invoke()` reply may never arrive.
+
 #### `window.pluginAPI.browser`
 
 Interacts with the app's tab system and the active webview.
@@ -334,6 +401,10 @@ Interacts with the app's tab system and the active webview.
 |---|---|---|
 | `browser.newTab(url)` | — | Opens `url` in a new tab and switches to it |
 | `browser.executeInActiveTab(script)` | `Promise<any>` | Runs a JavaScript string in the active webview and returns its result. Rejects if no tab is open. |
+| `browser.getActiveTab()` | `{ tabId, webview } \| null` | The active browser tab and its `<webview>` element |
+| `browser.getTabs()` | `Array<{ tabId, webview }>` | Every open browser tab, in tab-bar order |
+
+Browser tabs also raise `tab:created`, `tab:activated` and `tab:closed` events (see [Events reference](#events-reference)). Tabs restored at startup are created before your script runs, so call `getTabs()` once as well as listening for `tab:created`. You can add your own listeners to a tab's `webview` (for example `did-navigate` or `console-message`); remove them on `tab:closed`.
 
 ```js
 window.pluginAPI.browser.newTab("https://my-dashboard.example.com");
@@ -398,7 +469,9 @@ Adds a nav button and a content panel `<div>` to the Settings window.
 
 - `id` — string; the panel element gets `id="panel-plugin-<id>"`
 - `label` — text shown in the left-hand nav button
-- `setupFn(panel)` — called once immediately with the empty panel `HTMLElement`; populate and attach listeners here
+- `setupFn(panel)` — called once immediately with the panel's empty content `HTMLElement`; populate and attach listeners here
+
+Every plugin's tab starts with an **Enabled** switch and the plugin's badges, added by the app above your content; it's the same switch as in the Plugins list. You don't need to add an on/off switch for the plugin itself. A plugin without a `settings.js`, or one that is turned off, still gets a tab with that switch and a short message such as "There's nothing to configure for this plugin."
 
 #### `pluginSettingsAPI.getSettings()`
 
@@ -431,9 +504,17 @@ These events are emitted on both the main-process bus (`api.on()`) and the rende
 | Event | Payload | When |
 |---|---|---|
 | `app:ready` | `{}` | App has fully initialized and settings are loaded |
-| `note:saved` | `{ ticketId: string, timestamp: string }` | An autosave completed successfully |
-| `ticket:changed` | `{ ticketId: string, previous: string \| null }` | The active ticket switched |
+| `note:saved` | `{ ticketId: string, timestamp: string }` | A note was saved (fired by the Note Backup plugin) |
+| `ticket:changed` | `{ ticketId: string, previous: string \| null }` | The ticket in the Notes tab switched (fired by the Note Backup plugin) |
 | `settings:changed` | settings object | Settings were saved from the Settings window |
+
+These are emitted on the renderer bus (`events.on()`) only, because their payload holds the tab's `<webview>` element:
+
+| Event | Payload | When |
+|---|---|---|
+| `tab:created` | `{ tabId, webview }` | A browser tab was opened |
+| `tab:activated` | `{ tabId, webview }` | A browser tab became the active one |
+| `tab:closed` | `{ tabId, webview }` | A browser tab was closed |
 
 > **`app:ready` timing:** Main-process plugins receive `app:ready` during `initPlugins()`, before the renderer window opens. Renderer scripts are injected after `app:ready` has already fired, so there is no need to wait for it in your renderer script.
 
@@ -447,6 +528,8 @@ These events are emitted on both the main-process bus (`api.on()`) and the rende
 api.handle(action: string, fn: (data: any) => Promise<any>): void
 api.on(event: "note:saved" | "ticket:changed" | "settings:changed" | "app:ready", fn: (data: any) => void): void
 api.getDataPath(): string
+api.onMessage(action: string, fn: (data: any) => void): void
+api.emit(event: string, data?: any): void
 api.getSettings(): Readonly<AppSettings>
 api.addMenuItem(opts: { label: string, accelerator?: string, click: () => void }): void
 api.log(...args: any[]): void
@@ -460,6 +543,19 @@ pluginAPI.events.off(name: string, fn: (data: any) => void): void
 pluginAPI.events.emit(name: string, data: any): void
 
 pluginAPI.invoke(pluginId: string, action: string, data?: any): Promise<any>
+pluginAPI.send(pluginId: string, action: string, data?: any): void
+
+pluginAPI.ui.addSidePanelTab(opts: {
+  id: string, label: string, icon?: string, title?: string, order?: number,
+}): { id: string, element: HTMLElement, activate(): void, isActive(): boolean,
+      onShow(fn: () => void): void, onHide(fn: () => void): void }
+
+pluginAPI.ui.notify(opts: {
+  type: string, title: string, desc?: string,
+  action?: { label: string, onClick: () => void },
+}): void
+
+pluginAPI.ui.confirm(message: string, options?: { defaultYes?: boolean }): Promise<boolean>
 
 pluginAPI.ui.addToolbarButton(opts: {
   id?: string,
@@ -468,6 +564,8 @@ pluginAPI.ui.addToolbarButton(opts: {
   onClick: () => void,
 }): HTMLButtonElement
 
+pluginAPI.notes.isAvailable(): boolean
+pluginAPI.notes.onReady(fn: (provider: { toolbar?: HTMLElement, actionsRow?: HTMLElement }) => void): void
 pluginAPI.notes.getContent(): string
 pluginAPI.notes.setContent(html: string): void
 pluginAPI.notes.getTicketId(): string | null
@@ -476,6 +574,8 @@ pluginAPI.notes.saveSnapshot(incomingText: string, options?: { force?: boolean }
 
 pluginAPI.browser.newTab(url: string): void
 pluginAPI.browser.executeInActiveTab(script: string): Promise<any>
+pluginAPI.browser.getActiveTab(): { tabId: string, webview: HTMLElement } | null
+pluginAPI.browser.getTabs(): Array<{ tabId: string, webview: HTMLElement }>
 
 pluginAPI.getSettings(): AppSettings
 ```
@@ -525,7 +625,7 @@ If a plugin with the same `id` is already installed, the import is blocked and a
 
 **Option B — Copy manually**
 
-Drop the plugin directory into the app's data folder. You can open it from within the app via **📁 Open Folder** in the note panel, then navigate up one level:
+Drop the plugin directory into the app's data folder. You can open it from within the app via **📁 Open Folder** in the Notes tab, then navigate up one level:
 
 ```
 %APPDATA%\freshservice-pp\plugins\
@@ -599,6 +699,7 @@ This plugin only needs a renderer script — no main-process work required.
 ### Going further
 
 To make it interactive instead of using `alert`, you could:
+- Give it its own side panel tab with `window.pluginAPI.ui.addSidePanelTab()`
 - Render a count into a small `<span>` appended near the toolbar
 - Update the count live using `events.on("note:saved", ...)`
 - Store a word-count history using `api.getDataPath()` in a `main.js` entry

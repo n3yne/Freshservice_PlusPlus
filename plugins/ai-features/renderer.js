@@ -112,10 +112,12 @@
   aiButtons.appendChild(btnSuggest);
   aiButtons.appendChild(btnSummarize);
 
-  const fsSyncButtons = document.getElementById("fs-sync-buttons");
-  if (fsSyncButtons && fsSyncButtons.parentNode) {
-    fsSyncButtons.parentNode.insertBefore(aiButtons, fsSyncButtons.nextSibling);
-  }
+  // The buttons sit under the note editor's sync buttons, which belong to the
+  // Note Backup plugin; it may load after this one, so wait for it.
+  api.notes.onReady(function (notes) {
+    const row = notes.actionsRow;
+    if (row && row.parentNode) row.parentNode.insertBefore(aiButtons, row.nextSibling);
+  });
 
   // --- Build ai-overlay ---
   const aiOverlay = document.createElement("div");

@@ -1,6 +1,6 @@
 // Solutions Chat plugin — main window renderer
 //
-// Adds a chat panel to the side panel that answers questions from the
+// Adds a Solutions tab to the side panel that answers questions from the
 // Freshservice Solutions (knowledge base) articles. Each question runs:
 //   1. read the open ticket, if asked to (Freshservice API, else the page)
 //   2. ask the AI for a few keyword searches
@@ -195,9 +195,7 @@
   // ===================== UI =====================
 
   const api = window.pluginAPI;
-  const sidePanel = document.getElementById("side-panel");
-  const panelHeader = document.getElementById("panel-header");
-  if (!sidePanel || !panelHeader) return;
+  if (!api.ui || typeof api.ui.addSidePanelTab !== "function") return;
 
   // Reports the active tab's host and, on a Freshservice record page, its type and number.
   const PAGE_INFO_SCRIPT = "(function() {" +
@@ -219,23 +217,20 @@
     "return ((title ? title.trim() + '\\n\\n' : '') + parts.join('\\n\\n---\\n\\n')).substring(0, 15000);" +
     "})()";
 
-  const headerButtons = document.getElementById("panel-header-buttons");
-  const btnOpen = document.createElement("button");
-  btnOpen.type = "button";
-  btnOpen.id = "btn-solutions-chat";
-  btnOpen.title = "Solutions Chat: ask about documented fixes and SOPs";
-  btnOpen.textContent = "📚";
-  if (headerButtons) headerButtons.insertBefore(btnOpen, headerButtons.firstChild);
-
-  const panel = document.createElement("div");
-  panel.id = "solutions-chat-panel";
-  panel.className = "sc-panel";
+  const sidePanelTab = api.ui.addSidePanelTab({
+    id: "solutions-chat",
+    label: "Solutions",
+    icon: "📚",
+    title: "Solutions Chat: ask about documented fixes and SOPs",
+    order: 20,
+  });
+  const panel = sidePanelTab.element;
+  panel.classList.add("sc-panel");
   panel.innerHTML =
     '<div class="sc-header">' +
-    '  <span class="sc-title">📚 Solutions Chat</span>' +
+    '  <span class="sc-title">Ask your Solutions articles</span>' +
     '  <div class="sc-header-buttons">' +
     '    <button type="button" id="sc-new" class="btn btn-small btn-secondary" title="Start a new conversation">New chat</button>' +
-    '    <button type="button" id="sc-close" class="btn btn-small btn-secondary" title="Back to notes">Notes ▸</button>' +
     "  </div>" +
     "</div>" +
     '<div id="sc-messages" class="sc-messages" aria-live="polite"></div>' +
@@ -248,7 +243,6 @@
     '    placeholder="Ask about an SOP or how to fix something… (Enter to send, Shift+Enter for a new line)"></textarea>' +
     '  <button type="button" id="sc-send" class="btn btn-small btn-primary">Ask</button>' +
     "</div>";
-  panelHeader.parentNode.insertBefore(panel, panelHeader.nextSibling);
 
   const elMessages = panel.querySelector("#sc-messages");
   const elInput = panel.querySelector("#sc-input");
@@ -269,14 +263,7 @@
   }
   showIntro();
 
-  function setOpen(open) {
-    sidePanel.classList.toggle("sc-open", open);
-    btnOpen.classList.toggle("active", open);
-    if (open) elInput.focus();
-  }
-
-  btnOpen.addEventListener("click", function () { setOpen(!sidePanel.classList.contains("sc-open")); });
-  panel.querySelector("#sc-close").addEventListener("click", function () { setOpen(false); });
+  sidePanelTab.onShow(function () { elInput.focus(); });
   panel.querySelector("#sc-new").addEventListener("click", function () {
     requestSeq++; // drop any reply still in flight
     history = [];
@@ -429,7 +416,10 @@
       searchedHtml +
       '<div class="sc-actions">' +
       '<button type="button" class="btn btn-small btn-secondary sc-copy">📋 Copy</button>' +
-      '<button type="button" class="btn btn-small btn-secondary sc-insert" title="Add this answer and its article links to the note">➕ Add to note</button>' +
+      // "Add to note" needs the Note Backup plugin, which owns the note editor.
+      (api.notes.isAvailable()
+        ? '<button type="button" class="btn btn-small btn-secondary sc-insert" title="Add this answer and its article links to the note in the Notes tab">➕ Add to note</button>'
+        : "") +
       "</div>";
 
     el.querySelectorAll(".sc-cite, .sc-source").forEach(function (link) {
@@ -444,7 +434,8 @@
       navigator.clipboard.writeText(text.trim() + "\n\n" + links).catch(function () {});
     });
 
-    el.querySelector(".sc-insert").addEventListener("click", async function () {
+    const btnInsert = el.querySelector(".sc-insert");
+    if (btnInsert) btnInsert.addEventListener("click", async function () {
       const links = articles.map(function (a, i) {
         const title = escapeHtml(a.title);
         return "[" + (i + 1) + "] " + (a.url ? '<a href="' + escapeAttr(a.url) + '">' + title + "</a>" : title);
@@ -454,7 +445,7 @@
       await api.notes.saveSnapshot(text);
       const existing = api.notes.getContent().trim();
       api.notes.setContent(existing ? existing + "<br><br>" + insertHtml : insertHtml);
-      this.textContent = "✓ Added";
+      this.textContent = "✓ Added to Notes";
       this.disabled = true;
     });
   }

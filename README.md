@@ -15,8 +15,12 @@ An Electron-based wrapper for Freshservice that adds a persistent note editor, a
 - **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions; a badge on the download icon shows how many files finished since you last opened the panel (resets when you open it)
 - **Image context menu** – Right-click any image for **Copy Image** (copies pixel data to clipboard) and **Save Image As…** (native save dialog); image links open as downloads instead of new tabs
 
-### Note Editor
-- **Rich text side panel** – Draft and edit notes with a full formatting toolbar (bold, italic, underline, lists, clear formatting)
+### Side Panel
+- **One panel, a tab per plugin** – The panel on the right holds a tab for each plugin that adds one: **📋 Notes** (Note Backup) and **📚 Solutions** (Solutions Chat) out of the box. Your own plugins can add tabs too (see [`docs/plugins.md`](docs/plugins.md)). The last tab you used is reopened on launch
+- **Turn it on or off** under **Settings → General → Side Panel**; collapse it with `Ctrl+Shift+B` or the ◀ button
+
+### Note Editor (Note Backup plugin)
+- **Rich text Notes tab** – Draft and edit notes with a full formatting toolbar (bold, italic, underline, lists, clear formatting)
 - **Auto-save** – Notes are saved to disk ~1.5 seconds after you stop typing
 - **Manual snapshots** – Click **💾 Save Snapshot** to create a timestamped backup at any time
 - **Snapshot threshold** – Configurable minimum character difference before an auto-snapshot is triggered on tab switch or sync pull (default: 5 chars)
@@ -26,6 +30,7 @@ An Electron-based wrapper for Freshservice that adds a persistent note editor, a
 - **Signatures** – Save an HTML signature that can be inserted at the end of any note
 - **Templates** – Create reusable note templates accessible from the toolbar
 - **HTML source view** – Toggle button in the toolbar swaps the rich-text editor for a raw HTML textarea; formatting toolbar is disabled while in HTML mode and re-enabled on exit
+- **Delivered as a bundled plugin** — Note Backup, including live sync below, is implemented via the plugin system. Its settings (live sync, backup retention, templates, signature) are under **Settings → Plugins → Note Backup**. Turning it off removes the Notes tab; your saved notes stay on disk
 
 ### Freshservice Sync
 - **Live two-way sync** – With "Live Sync" enabled, the panel and the open Freshservice note editor (the rich-text **Add note** / **Reply** editor, or a note textarea such as the one on the time-entry form) stay in sync as you type — no manual copy-paste needed. When several editors are open, the one you last clicked into is used
@@ -60,10 +65,10 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
 
 ### Solutions Chat
-- **Ask your knowledge base** – Click **📚** in the side panel header to open a chat that answers from your Freshservice Solutions articles. Ask how to handle something ("how do we reset MFA for a user?") and it searches Solutions, reads the best matches and answers from them only, citing each article with a link that opens it in a new tab
+- **Ask your knowledge base** – Open the **📚 Solutions** tab in the side panel for a chat that answers from your Freshservice Solutions articles. Ask how to handle something ("how do we reset MFA for a user?") and it searches Solutions, reads the best matches and answers from them only, citing each article with a link that opens it in a new tab
 - **🔎 Check this ticket** – Reads the open ticket (through the Freshservice API, or the page) and looks for an existing documented solution or SOP for it. Leave **Use the open ticket** ticked to give every question the ticket as context
 - **Says when nothing is documented** – If no article matches, it tells you instead of making up steps. Draft articles are marked as drafts
-- **Copy** or **Add to note** puts the answer and its article links into your clipboard or the current note (a snapshot is saved first)
+- **Copy** or **Add to note** puts the answer and its article links into your clipboard or the note in the Notes tab (a snapshot is saved first; **Add to note** needs Note Backup turned on)
 - **Setup check** – **Settings → Plugins → Solutions Chat** shows whether AI Features and the Freshservice API are ready, and has a test search to confirm your API key can read Solutions articles
 - **Requirements** – uses the provider set up in **Settings → AI Features** and the domain and API key in **Settings → Freshservice API**; the API key needs permission to view Solutions articles. Each question makes two AI requests (one to choose search terms, one to answer)
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
@@ -74,9 +79,9 @@ Extend the app with self-contained plugin directories — no build step required
 
 - **Bundled plugins** – Ship with the app and are always available (e.g. the Metrics Bar)
 - **User-installed plugins** – Drop a plugin folder into `%APPDATA%\freshservice-pp\plugins\` for plugins that survive app updates
-- **Plugin management** – Enable or disable individual plugins from Settings → Plugins; restart to apply
+- **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply. Every plugin gets a settings tab, and one with nothing to set up says so
 - **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed
-- Plugins can add toolbar buttons, Settings panels, backend IPC handlers, DOM elements, and application menu items
+- Plugins can add side panel tabs, toolbar buttons, Settings panels, notifications, backend IPC handlers, DOM elements, and application menu items
 - See [`docs/plugins.md`](docs/plugins.md) for the full development guide and [`docs/example-plugin/`](docs/example-plugin/) for a reference skeleton
 
 ### Notifications
@@ -92,7 +97,7 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 - **Resizable panel** – Drag the divider to adjust the panel width
 - **Window state persistence** – The main window restores its last size and position on launch; validated against connected displays so it never opens off-screen
 - **Native settings window** – Settings open in a separate OS window (`Ctrl+,` or **Edit → Settings**); the main window stays fully usable while settings are open. Re-invoking the shortcut focuses the existing window rather than opening a second one
-- **Category sidebar** – Settings are organised into sections (General, Data, Templates, Signature, Plugins) accessible from a left-hand nav; enabled plugins that provide a settings panel appear as indented sub-items under Plugins automatically
+- **Category sidebar** – Settings are organised into General and Plugins in a left-hand nav, with a tab for every installed plugin as an indented sub-item under Plugins
 - All settings are persisted to disk and applied to the main window immediately
 
 ---

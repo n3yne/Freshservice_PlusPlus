@@ -31,45 +31,21 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }());
 
-  // ==================== Constants ====================
-  const SIG_SAVE_DEBOUNCE = 800;
-
   // Core settings fallback — only keys used by applySettingsForm() before the async load resolves.
   // Plugin keys are omitted; plugins handle their own missing-value fallbacks via getSettings().
   let appSettings = {
-    notePanelEnabled: true,
-    backupRetentionDays: 7,
-    signatureHtml: "",
-    ticketSortField: "lastUpdated",
-    ticketSortDirection: "desc",
+    sidePanelEnabled: true,
     panelCollapsed: false,
+    sidePanelTab: "",
     defaultUrl: "https://freshservice.com/login",
     theme: "dark",
-    noteTemplates: [],
-    liveSyncEnabled: true,
-    snapshotThreshold: 5,
     dismissedReleaseVersion: "",
-    backupStorageWarningMb: 100,
   };
 
   // ==================== Element References ====================
-  const settingNotePanel      = document.getElementById("setting-note-panel");
-  const settingLiveSync       = document.getElementById("setting-live-sync");
+  const settingSidePanel      = document.getElementById("setting-side-panel");
   const settingDefaultUrl     = document.getElementById("setting-default-url");
   const settingTheme          = document.getElementById("setting-theme");
-  const settingRetentionDays  = document.getElementById("setting-retention-days");
-  const settingSnapshotThreshold = document.getElementById("setting-snapshot-threshold");
-  const settingStorageWarning = document.getElementById("setting-storage-warning");
-  const settingSortField      = document.getElementById("setting-sort-field");
-  const settingSortDirection  = document.getElementById("setting-sort-direction");
-  const settingSignature      = document.getElementById("setting-signature");
-  const templateList          = document.getElementById("template-list");
-  const btnAddTemplate        = document.getElementById("btn-add-template");
-  const templateAddForm       = document.getElementById("template-add-form");
-  const templateNameInput     = document.getElementById("template-name-input");
-  const templateContentInput  = document.getElementById("template-content-input");
-  const btnSaveTemplate       = document.getElementById("btn-save-template");
-  const btnCancelTemplate     = document.getElementById("btn-cancel-template");
   const pluginList            = document.getElementById("plugin-list");
   const pluginRestartNotice   = document.getElementById("plugin-restart-notice");
   const btnImportPlugin       = document.getElementById("btn-import-plugin");
@@ -88,18 +64,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // ==================== Form Population ====================
   function applySettingsForm(settings) {
     appSettings = settings;
-    settingNotePanel.checked       = !!settings.notePanelEnabled;
-    settingRetentionDays.value     = settings.backupRetentionDays;
-    settingSnapshotThreshold.value = settings.snapshotThreshold ?? 5;
-    settingStorageWarning.value    = settings.backupStorageWarningMb ?? 100;
-    settingSortField.value         = settings.ticketSortField || "lastUpdated";
-    settingSortDirection.value     = settings.ticketSortDirection || "desc";
-
-    if (settingLiveSync) settingLiveSync.checked = settings.liveSyncEnabled !== false;
-
-    if (document.activeElement !== settingSignature) {
-      settingSignature.innerHTML = settings.signatureHtml || "";
-    }
+    settingSidePanel.checked = settings.sidePanelEnabled !== false;
 
     const theme = settings.theme || "dark";
     document.body.setAttribute("data-theme", theme);
@@ -108,23 +73,14 @@ document.addEventListener("DOMContentLoaded", function () {
     if (document.activeElement !== settingDefaultUrl) {
       settingDefaultUrl.value = settings.defaultUrl || "https://freshservice.com/login";
     }
-
-    renderTemplateList();
   }
 
   // ==================== Settings Event Listeners ====================
 
-  settingNotePanel.addEventListener("change", function () {
-    appSettings.notePanelEnabled = settingNotePanel.checked;
+  settingSidePanel.addEventListener("change", function () {
+    appSettings.sidePanelEnabled = settingSidePanel.checked;
     saveSettings();
   });
-
-  if (settingLiveSync) {
-    settingLiveSync.addEventListener("change", function () {
-      appSettings.liveSyncEnabled = settingLiveSync.checked;
-      saveSettings();
-    });
-  }
 
   settingTheme.addEventListener("change", function () {
     appSettings.theme = settingTheme.checked ? "light" : "dark";
@@ -144,157 +100,104 @@ document.addEventListener("DOMContentLoaded", function () {
   }, 800);
   settingDefaultUrl.addEventListener("input", defaultUrlSave);
 
-  settingRetentionDays.addEventListener("change", function () {
-    let val = parseInt(settingRetentionDays.value, 10);
-    if (isNaN(val) || val < 0) val = 0;
-    if (val > 365) val = 365;
-    settingRetentionDays.value = val;
-    appSettings.backupRetentionDays = val;
-    saveSettings();
-  });
+  // ==================== Plugins ====================
+  //
+  // Every plugin gets a tab under Plugins in the nav. A plugin's settings.js fills
+  // it in with pluginSettingsAPI.addPanel(); a plugin without one (or a disabled
+  // plugin, whose settings.js isn't loaded) gets a default tab. Each tab starts
+  // with the plugin's on/off switch, the same one shown in the Plugins list.
 
-  settingSnapshotThreshold.addEventListener("change", function () {
-    let val = parseInt(settingSnapshotThreshold.value, 10);
-    if (isNaN(val) || val < 1) val = 1;
-    if (val > 9999) val = 9999;
-    settingSnapshotThreshold.value = val;
-    appSettings.snapshotThreshold = val;
-    saveSettings();
-  });
+  let plugins = [];                 // from getPluginInfo()
+  let pluginRestartPending = false;
+  const pluginToggles = new Map();  // plugin id → Set of checkboxes showing its state
+  const pluginPanelIds = new Map(); // plugin id → [panel ids added for it]
 
-  settingStorageWarning.addEventListener("change", function () {
-    let val = parseInt(settingStorageWarning.value, 10);
-    if (isNaN(val) || val < 0) val = 0;
-    if (val > 100000) val = 100000;
-    settingStorageWarning.value = val;
-    appSettings.backupStorageWarningMb = val;
-    saveSettings();
-  });
+  function findPlugin(id) {
+    return plugins.find(function (p) { return p.id === id; }) || null;
+  }
 
-  settingSortField.addEventListener("change", function () {
-    appSettings.ticketSortField = settingSortField.value;
-    saveSettings();
-  });
+  function showRestartNotice() {
+    pluginRestartPending = true;
+    if (pluginRestartNotice) pluginRestartNotice.classList.add("visible");
+    document.querySelectorAll(".plugin-panel-restart").forEach(function (el) { el.classList.add("visible"); });
+  }
 
-  settingSortDirection.addEventListener("change", function () {
-    appSettings.ticketSortDirection = settingSortDirection.value;
-    saveSettings();
-  });
-
-  // ---- Signature ----
-
-  document.getElementById("signature-toolbar").addEventListener("click", function (e) {
-    const btn = e.target.closest("[data-sig-command]");
-    if (!btn) return;
-    settingSignature.focus();
-    document.execCommand(btn.dataset.sigCommand, false, null);
-  });
-
-  const sigSave = debounce(function () {
-    appSettings.signatureHtml = settingSignature.innerHTML;
-    saveSettings();
-  }, SIG_SAVE_DEBOUNCE);
-  settingSignature.addEventListener("input", sigSave);
-
-
-
-  // ==================== Note Templates ====================
-
-  let editingTemplateIndex = null;
-
-  function renderTemplateList() {
-    if (!templateList) return;
-    templateList.innerHTML = "";
-    const templates = appSettings.noteTemplates || [];
-    if (templates.length === 0) {
-      templateList.innerHTML = '<p style="font-size:11px;color:var(--text-muted);padding:4px 0;">No templates yet.</p>';
-      return;
-    }
-    templates.forEach(function (tmpl, idx) {
-      const item = document.createElement("div");
-      item.className = "template-list-item";
-
-      const nameSpan = document.createElement("span");
-      nameSpan.className = "template-item-name";
-      nameSpan.textContent = tmpl.name;
-      nameSpan.title = tmpl.content;
-
-      const editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "btn btn-small";
-      editBtn.textContent = "Edit";
-      editBtn.addEventListener("click", function () {
-        editingTemplateIndex = idx;
-        templateNameInput.value = tmpl.name;
-        templateContentInput.value = tmpl.content;
-        templateAddForm.classList.add("visible");
-        btnAddTemplate.style.display = "none";
-        templateNameInput.focus();
-      });
-
-      const delBtn = document.createElement("button");
-      delBtn.type = "button";
-      delBtn.className = "btn btn-small btn-delete";
-      delBtn.textContent = "✕";
-      delBtn.title = "Delete template";
-      delBtn.addEventListener("click", function () {
-        appSettings.noteTemplates.splice(idx, 1);
-        saveSettings();
-        renderTemplateList();
-      });
-
-      const btnGroup = document.createElement("div");
-      btnGroup.className = "template-item-buttons";
-      btnGroup.appendChild(editBtn);
-      btnGroup.appendChild(delBtn);
-
-      item.appendChild(nameSpan);
-      item.appendChild(btnGroup);
-      templateList.appendChild(item);
+  function setPluginEnabled(plugin, enabled) {
+    return window.backupAPI.setPluginEnabled(plugin.id, enabled).then(function () {
+      plugin.enabled = enabled;
+      showRestartNotice();
+      renderPluginList();
+      (pluginToggles.get(plugin.id) || []).forEach(function (cb) { cb.checked = enabled; });
+      document.querySelectorAll('.plugin-panel-header[data-plugin-id="' + plugin.id + '"]').forEach(updatePanelHeaderState);
+    }).catch(function (err) {
+      console.error("[Settings] Failed to change plugin state:", err);
+      (pluginToggles.get(plugin.id) || []).forEach(function (cb) { cb.checked = plugin.enabled; });
     });
   }
 
-  btnAddTemplate.addEventListener("click", function () {
-    editingTemplateIndex = null;
-    templateNameInput.value = "";
-    templateContentInput.value = "";
-    templateAddForm.classList.add("visible");
-    btnAddTemplate.style.display = "none";
-    templateNameInput.focus();
-  });
+  // An on/off switch for a plugin; every switch for the same plugin stays in step.
+  function createPluginToggle(plugin, labelText) {
+    const toggle = document.createElement("label");
+    toggle.className = "settings-toggle";
+    toggle.title = (plugin.enabled ? "Turn off " : "Turn on ") + (plugin.name || plugin.id);
 
-  btnCancelTemplate.addEventListener("click", function () {
-    templateAddForm.classList.remove("visible");
-    btnAddTemplate.style.display = "";
-    editingTemplateIndex = null;
-  });
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = plugin.enabled;
+    checkbox.addEventListener("change", function () {
+      setPluginEnabled(plugin, checkbox.checked);
+    });
+    if (!pluginToggles.has(plugin.id)) pluginToggles.set(plugin.id, new Set());
+    pluginToggles.get(plugin.id).add(checkbox);
 
-  btnSaveTemplate.addEventListener("click", function () {
-    const name = templateNameInput.value.trim();
-    const content = templateContentInput.value;
-    if (!name) { templateNameInput.focus(); return; }
-    if (!appSettings.noteTemplates) appSettings.noteTemplates = [];
-    if (editingTemplateIndex !== null) {
-      appSettings.noteTemplates[editingTemplateIndex] = { name, content };
-    } else {
-      appSettings.noteTemplates.push({ name, content });
+    const slider = document.createElement("span");
+    slider.className = "settings-toggle-slider";
+
+    toggle.appendChild(checkbox);
+    toggle.appendChild(slider);
+    if (labelText) {
+      const label = document.createElement("span");
+      label.className = "settings-toggle-label";
+      label.textContent = labelText;
+      toggle.appendChild(label);
     }
-    saveSettings();
-    templateAddForm.classList.remove("visible");
-    btnAddTemplate.style.display = "";
-    editingTemplateIndex = null;
-    renderTemplateList();
-  });
+    return toggle;
+  }
 
-  // ==================== Plugins Panel ====================
+  function createBadges(plugin) {
+    const frag = document.createDocumentFragment();
+    if (plugin.version) {
+      const ver = document.createElement("span");
+      ver.className = "plugin-item-version";
+      ver.textContent = "v" + plugin.version;
+      frag.appendChild(ver);
+    }
+    const sourceBadge = document.createElement("span");
+    sourceBadge.className = "plugin-badge " +
+      (plugin.source === "bundled" ? "plugin-badge-bundled" : "plugin-badge-user");
+    sourceBadge.textContent = plugin.source === "bundled" ? "Bundled" : "Installed";
+    frag.appendChild(sourceBadge);
 
-  let pluginRestartPending = false;
+    if (!plugin.enabled) {
+      const disabledBadge = document.createElement("span");
+      disabledBadge.className = "plugin-badge plugin-badge-disabled";
+      disabledBadge.textContent = "Disabled";
+      frag.appendChild(disabledBadge);
+    } else if (plugin.loadError) {
+      const errBadge = document.createElement("span");
+      errBadge.className = "plugin-badge plugin-badge-error";
+      errBadge.title = plugin.loadError;
+      errBadge.textContent = "Error";
+      frag.appendChild(errBadge);
+    }
+    return frag;
+  }
 
-  function renderPluginList(plugins) {
+  function renderPluginList() {
     if (!pluginList) return;
     pluginList.innerHTML = "";
 
-    if (!plugins || plugins.length === 0) {
+    if (plugins.length === 0) {
       const empty = document.createElement("p");
       empty.className = "plugin-list-empty";
       empty.textContent = "No plugins installed.";
@@ -302,48 +205,32 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
+    // The list is rebuilt on every change; drop its old switches from the registry.
+    pluginToggles.forEach(function (set) {
+      set.forEach(function (cb) { if (!cb.isConnected) set.delete(cb); });
+    });
+
     plugins.forEach(function (plugin) {
       const item = document.createElement("div");
       item.className = "plugin-list-item";
 
-      // Left: info block
       const info = document.createElement("div");
       info.className = "plugin-item-info";
 
       const header = document.createElement("div");
       header.className = "plugin-item-header";
 
-      const nameSpan = document.createElement("span");
-      nameSpan.className = "plugin-item-name";
-      nameSpan.textContent = plugin.name || plugin.id;
-      header.appendChild(nameSpan);
-
-      if (plugin.version) {
-        const ver = document.createElement("span");
-        ver.className = "plugin-item-version";
-        ver.textContent = "v" + plugin.version;
-        header.appendChild(ver);
-      }
-
-      const sourceBadge = document.createElement("span");
-      sourceBadge.className = "plugin-badge " +
-        (plugin.source === "bundled" ? "plugin-badge-bundled" : "plugin-badge-user");
-      sourceBadge.textContent = plugin.source === "bundled" ? "Bundled" : "Installed";
-      header.appendChild(sourceBadge);
-
-      if (!plugin.enabled) {
-        const disabledBadge = document.createElement("span");
-        disabledBadge.className = "plugin-badge plugin-badge-disabled";
-        disabledBadge.textContent = "Disabled";
-        header.appendChild(disabledBadge);
-      } else if (plugin.loadError) {
-        const errBadge = document.createElement("span");
-        errBadge.className = "plugin-badge plugin-badge-error";
-        errBadge.title = plugin.loadError;
-        errBadge.textContent = "Error";
-        header.appendChild(errBadge);
-      }
-
+      const nameBtn = document.createElement("button");
+      nameBtn.type = "button";
+      nameBtn.className = "plugin-item-name plugin-item-link";
+      nameBtn.textContent = plugin.name || plugin.id;
+      nameBtn.title = "Open " + (plugin.name || plugin.id) + " settings";
+      nameBtn.addEventListener("click", function () {
+        const ids = pluginPanelIds.get(plugin.id);
+        if (ids && ids.length) switchPanel("plugin-" + ids[0]);
+      });
+      header.appendChild(nameBtn);
+      header.appendChild(createBadges(plugin));
       info.appendChild(header);
 
       if (plugin.description) {
@@ -355,45 +242,131 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       item.appendChild(info);
-
-      // Right: toggle
-      const toggle = document.createElement("label");
-      toggle.className = "settings-toggle";
-      toggle.title = plugin.enabled ? "Disable plugin" : "Enable plugin";
-
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = plugin.enabled;
-      checkbox.addEventListener("change", function () {
-        window.backupAPI.setPluginEnabled(plugin.id, checkbox.checked).then(function () {
-          pluginRestartPending = true;
-          if (pluginRestartNotice) pluginRestartNotice.classList.add("visible");
-          plugin.enabled = checkbox.checked;
-          // Refresh badges without rebuilding the whole list
-          renderPluginList(window._loadedPlugins || []);
-        });
-      });
-
-      const slider = document.createElement("span");
-      slider.className = "settings-toggle-slider";
-
-      toggle.appendChild(checkbox);
-      toggle.appendChild(slider);
-      item.appendChild(toggle);
-
+      item.appendChild(createPluginToggle(plugin));
       pluginList.appendChild(item);
     });
   }
 
-  function loadAndRenderPlugins() {
-    window.backupAPI.getPluginInfo().then(function (plugins) {
-      window._loadedPlugins = plugins;
-      renderPluginList(plugins);
-      if (pluginRestartPending && pluginRestartNotice) {
-        pluginRestartNotice.classList.add("visible");
-      }
+  function updatePanelHeaderState(header) {
+    const plugin = findPlugin(header.dataset.pluginId);
+    if (!plugin) return;
+    const badges = header.querySelector(".plugin-panel-badges");
+    if (badges) {
+      badges.innerHTML = "";
+      badges.appendChild(createBadges(plugin));
+    }
+  }
+
+  // The bar at the top of each plugin tab: the on/off switch and the plugin's badges.
+  function buildPanelHeader(plugin) {
+    const header = document.createElement("div");
+    header.className = "plugin-panel-header";
+    header.dataset.pluginId = plugin.id;
+
+    const row = document.createElement("div");
+    row.className = "plugin-panel-header-row";
+    row.appendChild(createPluginToggle(plugin, "Enabled"));
+    const badges = document.createElement("span");
+    badges.className = "plugin-item-header plugin-panel-badges";
+    badges.appendChild(createBadges(plugin));
+    row.appendChild(badges);
+    header.appendChild(row);
+
+    const notice = document.createElement("div");
+    notice.className = "plugin-restart-notice plugin-panel-restart" + (pluginRestartPending ? " visible" : "");
+    notice.textContent = "Restart the app to apply plugin changes.";
+    header.appendChild(notice);
+    return header;
+  }
+
+  function addPluginNavItem(panelId, label) {
+    const nav = document.querySelector(".settings-nav");
+    if (!nav) return null;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "settings-nav-item settings-nav-subitem";
+    btn.dataset.panel = "plugin-" + panelId;
+    btn.textContent = label;
+    nav.appendChild(btn);
+    return btn;
+  }
+
+  function addPluginPanelElement(panelId, pluginId) {
+    const content = document.querySelector(".settings-content");
+    const panel = document.createElement("div");
+    panel.className = "settings-panel";
+    panel.id = "panel-plugin-" + panelId;
+    if (pluginId) panel.dataset.pluginId = pluginId;
+    if (content) content.appendChild(panel);
+    return panel;
+  }
+
+  // Tabs for plugins that didn't add one: disabled plugins (their settings.js
+  // doesn't load) and plugins with no settings of their own.
+  function addDefaultPluginPanel(plugin) {
+    const panelId = plugin.id;
+    if (document.getElementById("panel-plugin-" + panelId)) return;
+    addPluginNavItem(panelId, plugin.name || plugin.id);
+    const panel = addPluginPanelElement(panelId, plugin.id);
+    panel.appendChild(buildPanelHeader(plugin));
+
+    const section = document.createElement("div");
+    section.className = "settings-section";
+    const title = document.createElement("h3");
+    title.className = "settings-section-title";
+    title.textContent = plugin.name || plugin.id;
+    section.appendChild(title);
+    if (plugin.description) {
+      const desc = document.createElement("p");
+      desc.className = "settings-description settings-description-field settings-description-field-spaced";
+      desc.textContent = plugin.description;
+      section.appendChild(desc);
+    }
+    const msg = document.createElement("p");
+    msg.className = "settings-description settings-description-field plugin-panel-empty";
+    if (!plugin.enabled) {
+      msg.textContent = plugin.hasSettings
+        ? "Turn this plugin on and restart the app to see its settings."
+        : "This plugin is turned off. There's nothing to configure for it.";
+    } else if (plugin.loadError) {
+      msg.textContent = "This plugin couldn't load: " + plugin.loadError;
+    } else {
+      msg.textContent = "There's nothing to configure for this plugin.";
+    }
+    section.appendChild(msg);
+    panel.appendChild(section);
+    pluginPanelIds.set(plugin.id, [panelId]);
+  }
+
+  // Puts plugin tabs in the nav in the same order as the Plugins list, right after Plugins.
+  function sortPluginNav() {
+    const nav = document.querySelector(".settings-nav");
+    const pluginsBtn = nav && nav.querySelector('[data-panel="plugins"]');
+    if (!pluginsBtn) return;
+    const rank = new Map(plugins.map(function (p, i) { return [p.id, i]; }));
+    const items = Array.from(nav.querySelectorAll(".settings-nav-subitem")).map(function (btn, i) {
+      const panel = document.getElementById("panel-" + btn.dataset.panel);
+      const pluginId = panel && panel.dataset.pluginId;
+      return { btn, i, rank: rank.has(pluginId) ? rank.get(pluginId) : plugins.length };
+    });
+    items.sort(function (a, b) { return a.rank - b.rank || a.i - b.i; });
+    let anchor = pluginsBtn;
+    items.forEach(function (item) {
+      anchor.after(item.btn);
+      anchor = item.btn;
+    });
+  }
+
+  function loadPluginInfo() {
+    return window.backupAPI.getPluginInfo().then(function (info) {
+      plugins = Array.isArray(info) ? info : [];
+      renderPluginList();
+      if (pluginRestartPending && pluginRestartNotice) pluginRestartNotice.classList.add("visible");
+      return plugins;
     }).catch(function (err) {
       console.error("[Settings] Failed to load plugin info:", err);
+      plugins = [];
+      return plugins;
     });
   }
 
@@ -406,9 +379,8 @@ document.addEventListener("DOMContentLoaded", function () {
         if (result.success) {
           pluginImportStatus.textContent = "Imported \"" + (result.name || result.id) + "\". Restart to activate.";
           pluginImportStatus.className = "plugin-import-status success";
-          pluginRestartPending = true;
-          if (pluginRestartNotice) pluginRestartNotice.classList.add("visible");
-          loadAndRenderPlugins();
+          showRestartNotice();
+          loadPluginInfo();
         } else {
           pluginImportStatus.textContent = result.error || "Import failed.";
           pluginImportStatus.className = "plugin-import-status error";
@@ -426,49 +398,41 @@ document.addEventListener("DOMContentLoaded", function () {
     applySettingsForm(settings);
   });
 
+  const pluginInfoLoaded = loadPluginInfo();
+
   window.backupAPI.loadSettings().then(function (settings) {
     applySettingsForm(settings);
 
-    // Build the pluginSettingsAPI before injecting plugin settings scripts so
-    // plugins can call addPanel() synchronously during their top-level execution.
-    const pluginPanels = [];
     // Plaintext keys and remove requests for plugin credentials (see "credentials"
     // in plugin manifests); filled in before plugin settings scripts run.
     const oneShotSettingKeys = [];
+
+    // Build the pluginSettingsAPI before injecting plugin settings scripts so
+    // plugins can call addPanel() synchronously during their top-level execution.
     window.pluginSettingsAPI = Object.freeze({
       addPanel: function (id, label, setupFn) {
-        // Add a nav item, indented under the Plugins button
-        const nav = document.querySelector(".settings-nav");
-        if (nav) {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "settings-nav-item settings-nav-subitem";
-          btn.dataset.panel = "plugin-" + id;
-          btn.textContent = label;
-          // Insert after the last existing sub-item, or directly after Plugins if none yet
-          const subItems = nav.querySelectorAll(".settings-nav-subitem");
-          const lastSubItem = subItems.length ? subItems[subItems.length - 1] : null;
-          const pluginsBtn = nav.querySelector('[data-panel="plugins"]');
-          const anchor = lastSubItem || pluginsBtn;
-          if (anchor && anchor.nextSibling) {
-            nav.insertBefore(btn, anchor.nextSibling);
-          } else {
-            nav.appendChild(btn);
-          }
+        // Which plugin is adding this panel: the settings script running right now
+        // (tagged with its plugin id when injected), else a plugin with the same id.
+        const script = document.currentScript;
+        const pluginId = (script && script.dataset && script.dataset.pluginId) ||
+          (findPlugin(id) ? id : null);
+        const plugin = pluginId ? findPlugin(pluginId) : null;
+
+        addPluginNavItem(id, label);
+        const panel = addPluginPanelElement(id, pluginId);
+        if (plugin) {
+          panel.appendChild(buildPanelHeader(plugin));
+          if (!pluginPanelIds.has(plugin.id)) pluginPanelIds.set(plugin.id, []);
+          pluginPanelIds.get(plugin.id).push(id);
         }
-
-        // Add the panel div
-        const content = document.querySelector(".settings-content");
-        const panel = document.createElement("div");
-        panel.className = "settings-panel";
-        panel.id = "panel-plugin-" + id;
-        if (content) content.appendChild(panel);
-
-        pluginPanels.push({ id, panel });
+        // The plugin fills its own element, so replacing its innerHTML keeps the header.
+        const body = document.createElement("div");
+        body.className = "plugin-panel-body";
+        panel.appendChild(body);
 
         // Let the plugin populate the panel
         if (typeof setupFn === "function") {
-          try { setupFn(panel); } catch (err) {
+          try { setupFn(body); } catch (err) {
             console.error("[PluginSettings] Panel setup for \"" + id + "\" failed:", err);
           }
         }
@@ -487,25 +451,36 @@ document.addEventListener("DOMContentLoaded", function () {
       },
     });
 
-    // Inject plugin settings scripts
-    window.backupAPI.getPluginInfo().then(function (plugins) {
-      (plugins || []).forEach(function (p) {
+    // Inject plugin settings scripts, then give every other plugin a default tab.
+    pluginInfoLoaded.then(function () {
+      plugins.forEach(function (p) {
         (p.credentials || []).forEach(function (name) {
           oneShotSettingKeys.push(name, name + "Remove");
         });
       });
-    }).catch(function (err) {
-      console.error("[Settings] Failed to load plugin credentials:", err);
-    }).then(function () {
       return window.backupAPI.getPluginSettingsScripts();
-    }).then(function (scriptPaths) {
-      (scriptPaths || []).forEach(function (src) {
-        const s = document.createElement("script");
-        s.src = src;
-        document.body.appendChild(s);
-      });
+    }).then(function (scripts) {
+      return Promise.all((scripts || []).map(function (entry) {
+        return new Promise(function (resolve) {
+          const s = document.createElement("script");
+          s.src = entry.url;
+          s.dataset.pluginId = entry.id;
+          s.async = false;
+          s.onload = resolve;
+          s.onerror = function (e) {
+            console.error("[Settings] Failed to load plugin settings script:", entry.url, e);
+            resolve();
+          };
+          document.body.appendChild(s);
+        });
+      }));
     }).catch(function (err) {
       console.error("[Settings] Failed to load plugin settings scripts:", err);
+    }).then(function () {
+      plugins.forEach(function (p) {
+        if (!pluginPanelIds.has(p.id)) addDefaultPluginPanel(p);
+      });
+      sortPluginNav();
     });
 
     // Inject stylesheets from installed plugins
@@ -522,7 +497,5 @@ document.addEventListener("DOMContentLoaded", function () {
   }).catch(function (err) {
     console.error("[Settings] Error loading settings:", err);
   });
-
-  loadAndRenderPlugins();
 
 });
