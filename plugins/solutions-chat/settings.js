@@ -1,6 +1,6 @@
 // Solutions Chat plugin — Settings window panel
 // Solutions Chat has no settings of its own: it uses AI Features for the AI and
-// the Freshservice API plugin for articles. This panel shows whether both are
+// a site plugin's knowledge base for articles (the Freshservice plugin's Solutions). This panel shows whether both are
 // ready and lets you test a Solutions search with the saved API key.
 (function () {
   const settingsAPI = window.pluginSettingsAPI;
@@ -22,7 +22,7 @@
       '<p class="settings-description settings-description-field">' +
       "Open the <strong>📚 Solutions</strong> tab in the side panel to use the chat. It answers from your Freshservice " +
       "Solutions articles using the AI provider from <strong>AI Features</strong> and the domain and API key from " +
-      "<strong>Freshservice API</strong>, so it has no settings of its own. Both need to be set up:" +
+      "<strong>Freshservice</strong>, so it has no settings of its own. Both need to be set up:" +
       "</p>" +
       '<ul class="sc-settings-checklist">' +
       '  <li id="sc-settings-ai"></li>' +
@@ -82,11 +82,11 @@
       }
 
       if (s.fsApiEnabled === false) {
-        setLine(elFs, false, "Freshservice API: turned off. Turn it on in Plugins → Freshservice API.");
+        setLine(elFs, false, "Freshservice API: turned off. Turn it on in Plugins → Freshservice.");
       } else if (!s.fsApiDomain) {
-        setLine(elFs, false, "Freshservice API: enter your domain in Plugins → Freshservice API.");
+        setLine(elFs, false, "Freshservice API: enter your domain in Plugins → Freshservice.");
       } else if (!s.fsApiKeySet) {
-        setLine(elFs, false, "Freshservice API: enter your API key in Plugins → Freshservice API.");
+        setLine(elFs, false, "Freshservice API: enter your API key in Plugins → Freshservice.");
       } else {
         setLine(elFs, true, "Freshservice API: connected to " + s.fsApiDomain + ".");
       }
@@ -101,7 +101,7 @@
       elTest.disabled = true;
       elResult.textContent = "Searching…";
       try {
-        const res = await window.backupAPI.pluginInvoke("plugin:freshservice-api:search-solutions", { term });
+        const res = await window.backupAPI.pluginInvoke("plugin:freshservice:search-solutions", { term });
         if (!res || res.error) {
           elResult.textContent = (res && res.error) || "The search failed.";
         } else if (!res.articles.length) {
@@ -112,7 +112,7 @@
             ", including " + titles + ".";
         }
       } catch {
-        elResult.textContent = "The Freshservice API plugin isn't available. Turn it on under Plugins and restart.";
+        elResult.textContent = "The Freshservice plugin isn't available. Turn it on under Plugins and restart.";
       } finally {
         elTest.disabled = false;
       }

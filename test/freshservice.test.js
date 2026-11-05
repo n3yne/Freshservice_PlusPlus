@@ -1,13 +1,13 @@
 "use strict";
 
-const fsApi = require("../plugins/freshservice-api/main");
+const fsApi = require("../plugins/freshservice/main");
 
 const { validateSettings, defaultSettings, normalizeDomain, formatTicketText, formatArticle } = fsApi;
 
 // Placeholder only — never a real key.
 const FAKE_KEY = "test-key-not-real";
 
-describe("freshservice-api validateSettings", () => {
+describe("freshservice validateSettings", () => {
   test("accepts defaults and an empty object", () => {
     expect(validateSettings(defaultSettings)).toBe(true);
     expect(validateSettings({})).toBe(true);
@@ -23,7 +23,7 @@ describe("freshservice-api validateSettings", () => {
   });
 });
 
-describe("freshservice-api normalizeDomain", () => {
+describe("freshservice normalizeDomain", () => {
   test("reduces URLs and bare hosts to a lowercase hostname", () => {
     expect(normalizeDomain("Acme.Freshservice.com")).toBe("acme.freshservice.com");
     expect(normalizeDomain("https://acme.freshservice.com/a/tickets/12")).toBe("acme.freshservice.com");
@@ -40,7 +40,7 @@ describe("freshservice-api normalizeDomain", () => {
   });
 });
 
-describe("freshservice-api formatTicketText", () => {
+describe("freshservice formatTicketText", () => {
   test("lists header, description, then conversations in time order", () => {
     const text = formatTicketText(
       {
@@ -65,7 +65,7 @@ describe("freshservice-api formatTicketText", () => {
   });
 });
 
-describe("freshservice-api formatArticle", () => {
+describe("freshservice formatArticle", () => {
   test("keeps plain text, marks drafts and builds the portal link from the domain", () => {
     const a = formatArticle({ id: 9, title: " Reset MFA ", status: 1, description: "<p>Step 1</p><p>Step 2 &amp; 3</p>" }, "acme.freshservice.com", 100);
     expect(a).toEqual(expect.objectContaining({
@@ -82,7 +82,7 @@ describe("freshservice-api formatArticle", () => {
   });
 });
 
-describe("freshservice-api handlers", () => {
+describe("freshservice handlers", () => {
   let handlers;
   let settings;
   let transformer;

@@ -108,6 +108,12 @@ describe("DEFAULT_SETTINGS", () => {
     expect(validateSettings({ ...DEFAULT_SETTINGS, theme: "system" })).toBe(false);
     expect(validateSettings({ ...DEFAULT_SETTINGS, theme: "" })).toBe(false);
   });
+  test("accepts about:blank, the home page when no site plugin is installed", () => {
+    expect(DEFAULT_SETTINGS.defaultUrl).toBe("about:blank");
+    expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "about:blank" })).toBe(true);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "about:config" })).toBe(false);
+  });
+
   test("accepts valid http/https defaultUrl", () => {
     expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "https://yourcompany.freshservice.com/" })).toBe(true);
     expect(validateSettings({ ...DEFAULT_SETTINGS, defaultUrl: "http://localhost:8080/" })).toBe(true);

@@ -2,8 +2,9 @@
 //
 // Adds the Notes tab to the side panel: a rich-text note editor bound to the
 // ticket open in the active browser tab, with autosave, snapshots and history,
-// note search, templates, a signature, and live sync with the Freshservice note
-// editor. It also registers as the app's notes provider, so other plugins'
+// note search, templates, a signature, and live sync with the note editor of the
+// site open in the tab (Freshservice, ConnectWise Manage, … — whichever site plugin
+// claims the page through pluginAPI.sites; see docs/sites.md). It also registers as the app's notes provider, so other plugins'
 // pluginAPI.notes calls (AI Features, Solutions Chat) read and write this editor.
 //
 // Files on disk are handled by this plugin's main.js (see its handlers below).
@@ -51,7 +52,7 @@
       <button
         id="btn-grab-ticket"
         class="btn btn-small"
-        title="Grab the ticket number from the currently open Freshservice page"
+        title="Grab the ticket number from the record open in the current tab"
       >
         🎯 Grab
       </button>
@@ -176,23 +177,23 @@
   <!-- Status Bar -->
   <div id="status-bar">
     <span id="autosave-status">Ready</span>
-    <span id="sync-status" class="sync-status sync-off">⇅ No FS field</span>
+    <span id="sync-status" class="sync-status sync-off">⇅ No notes field</span>
   </div>
 
-  <!-- Freshservice Notes Sync -->
+  <!-- Site Notes Sync (labels follow the active tab's site) -->
   <div id="fs-sync-buttons">
     <button
       type="button"
       id="btn-pull-from-fs"
       class="btn btn-small"
-      title="Load the open Freshservice note editor into this panel"
-    >⬇ Pull from FS</button>
+      title="Load the page's open note editor into this panel"
+    >⬇ Pull from page</button>
     <button
       type="button"
       id="btn-push-to-fs"
       class="btn btn-small"
-      title="Send panel notes to the open Freshservice note editor"
-    >⬆ Push to FS</button>
+      title="Send panel notes to the page's open note editor"
+    >⬆ Push to page</button>
   </div>
 
   <!-- Action Buttons -->
@@ -332,7 +333,6 @@
   // ==================== Constants ====================
   const MENU_EDGE_PADDING = 4; // px — dropdown window-edge padding
   const PREVIEW_MAX_LENGTH = 100; // chars — history preview truncation
-  const MAX_GRAB_ELEMENTS = 5000; // max DOM elements scanned during ticket grab
   const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2 MB — max pasted/dropped image size
 
   // ==================== Settings ====================
@@ -395,127 +395,59 @@
   });
 
 
-  // ==================== Freshservice Notes Sync ====================
+  // ==================== Site Notes Sync ====================
   //
-  // Reads from / writes to whichever Freshservice notes field is currently on screen.
-  // Supported field types:
-  //   - 'editor'   — rich-text contenteditable (Froala .fr-element, used for ticket
-  //                  notes and replies; legacy Redactor and other editors as fallbacks)
-  //   - 'textarea' — plain textarea whose name/id/placeholder/label mentions "note"
-  //                  (e.g. the note field on the Add Time Entry form)
+  // Reads from / writes to whichever notes field is on screen in the active tab,
+  // through the site adapter that claims the tab's URL (pluginAPI.sites). The
+  // adapter supplies the page scripts: notes.readScript returns { type, text },
+  // notes.buildPushScript(text) writes plain text and returns { type }, and
+  // notes.watcherScript reports field, focus and input changes (see docs/sites.md).
   //
-  // When several fields are visible, the focused one wins, then the one the user
-  // last focused (tagged with data-fspp-sync by the watcher), then the first visible.
+  // Pull: page field → panel (asks for confirmation if panel already has content)
+  // Push: panel → page field (plain text)
   //
-  // Pull: FS field → panel (asks for confirmation if panel already has content)
-  // Push: panel → FS field (plain text; uses the Froala API when available so the
-  //        editor's model and Freshservice's form bindings see the change)
-
-  // Live sync, ticket detection and pushes only run on Freshservice/Freshworks pages
-  // (or the host of the configured home page, for custom Freshservice domains).
+  // Live sync, ticket detection and pushes only run on pages a site plugin claims.
   // Any other site open in a tab could otherwise feed the panel fake notes or a
   // fake ticket number through the watcher's console channel.
-  const FRESHWORKS_HOSTNAME_PATTERN = /(?:^|\.)(?:freshservice|freshworks|myfreshworks)\.com$/i;
 
-  function isFreshworksUrl(url) {
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
-      if (FRESHWORKS_HOSTNAME_PATTERN.test(parsed.hostname)) return true;
-      return parsed.hostname === new URL(appSettings.defaultUrl).hostname;
-    } catch { return false; }
+  function siteForUrl(url) {
+    return api.sites ? api.sites.forUrl(url) : null;
   }
 
-  function isFreshworksTab(tab) {
-    try { return isFreshworksUrl(tab.webview.getURL()); } catch { return false; }
+  function siteForTab(tab) {
+    try { return siteForUrl(tab.webview.getURL()); } catch { return null; }
   }
 
-  // Shared helpers injected into every script that touches the page's notes field.
-  const FS_FIELD_HELPERS = `
-    var FS_RICH_SELECTORS = [
-      '.fr-element[contenteditable="true"]',
-      '.redactor-editor[contenteditable="true"]',
-      '.redactor_editor[contenteditable="true"]',
-      '.ql-editor[contenteditable="true"]',
-      '.ProseMirror[contenteditable="true"]'
-    ];
+  function siteForWebview(webview) {
+    try { return webview ? siteForUrl(webview.getURL()) : null; } catch { return null; }
+  }
 
-    function fsIsVisible(el) {
-      return !!(el && el.isConnected && el.getClientRects().length > 0);
-    }
+  // The site adapter for a webview, but only one that supports notes sync.
+  function notesSiteFor(webview) {
+    const site = siteForWebview(webview);
+    return site && site.notes ? site : null;
+  }
 
-    function fsIsRichEditor(el) {
-      if (!el || el.nodeType !== 1) return false;
-      for (var i = 0; i < FS_RICH_SELECTORS.length; i++) {
-        if (el.matches(FS_RICH_SELECTORS[i])) return true;
-      }
-      return false;
-    }
+  function siteName(site) { return site ? site.name : "the page"; }
 
-    function fsIsNoteTextarea(el) {
-      if (!el || el.tagName !== 'TEXTAREA' || el.disabled || el.readOnly) return false;
-      var hint = [el.name, el.id, el.placeholder, el.getAttribute('aria-label')].join(' ');
-      return /note/i.test(hint);
-    }
+  // Updates the Pull/Push buttons to name the active tab's site.
+  function updateSyncButtons() {
+    const site = notesSiteFor(getActiveWebview());
+    const short = site ? site.shortName : "page";
+    btnPullFromFs.textContent = "⬇ Pull from " + short;
+    btnPushToFs.textContent = "⬆ Push to " + short;
+    btnPullFromFs.title = "Load the open " + (site ? site.name + " " : "") + "note editor into this panel";
+    btnPushToFs.title = "Send panel notes to the open " + (site ? site.name + " " : "") + "note editor";
+  }
 
-    function fsIsField(el) {
-      return fsIsRichEditor(el) || fsIsNoteTextarea(el);
-    }
-
-    // Resolve an arbitrary node (e.g. an event target inside an editor) to its field.
-    function fsFieldFor(node) {
-      var el = node && node.nodeType === 1 ? node : (node && node.parentElement);
-      if (!el) return null;
-      if (fsIsNoteTextarea(el)) return el;
-      var rich = el.closest(FS_RICH_SELECTORS.join(','));
-      return rich || null;
-    }
-
-    function fsFindField() {
-      var active = fsFieldFor(document.activeElement);
-      if (active && fsIsVisible(active)) return active;
-      var marked = document.querySelector('[data-fspp-sync]');
-      if (marked && fsIsField(marked) && fsIsVisible(marked)) return marked;
-      for (var i = 0; i < FS_RICH_SELECTORS.length; i++) {
-        var els = document.querySelectorAll(FS_RICH_SELECTORS[i]);
-        for (var j = 0; j < els.length; j++) {
-          if (fsIsVisible(els[j])) return els[j];
-        }
-      }
-      var tas = document.querySelectorAll('textarea');
-      for (var k = 0; k < tas.length; k++) {
-        if (fsIsNoteTextarea(tas[k]) && fsIsVisible(tas[k])) return tas[k];
-      }
-      return null;
-    }
-
-    function fsFieldType(el) {
-      return el.tagName === 'TEXTAREA' ? 'textarea' : 'editor';
-    }
-
-    function fsNormalize(text) {
-      return (text || '').replace(/\\u00a0/g, ' ').trim().replace(/\\n{3,}/g, '\\n\\n');
-    }
-
-    function fsReadField(el) {
-      return fsNormalize(el.tagName === 'TEXTAREA' ? el.value : el.innerText);
-    }
-  `;
-
-  const FS_NOTES_READ_SCRIPT = `(function() {
-    ${FS_FIELD_HELPERS}
-    var el = fsFindField();
-    if (!el) return null;
-    return { type: fsFieldType(el), text: fsReadField(el) };
-  })()`;
-
-  // Matches fsNormalize() in FS_FIELD_HELPERS so panel text and page text compare equal.
+  // Site read scripts should normalise text the same way, so panel text and page
+  // text compare equal (see docs/sites.md).
   function normalizeSyncText(text) {
     return (text || "").replace(/\u00a0/g, " ").trim().replace(/\n{3,}/g, "\n\n");
   }
 
-  function fieldTypeLabel(type) {
-    return type === "editor" ? "note editor" : "notes field";
+  function fieldTypeLabel(site, type) {
+    try { return site && site.notes ? String(site.notes.fieldTypeLabel(type)) : "notes field"; } catch { return "notes field"; }
   }
 
   btnPullFromFs.addEventListener("click", async function () {
@@ -526,31 +458,38 @@
       return;
     }
 
-    let result;
-    try {
-      result = await webview.executeJavaScript(FS_NOTES_READ_SCRIPT);
-    } catch (err) {
-      autosaveStatus.textContent = "Error reading Freshservice notes field";
+    const site = notesSiteFor(webview);
+    if (!site) {
+      autosaveStatus.textContent = "This page isn't a supported site";
       autosaveStatus.className = "";
-      console.error("[FS Sync] Pull error:", err);
       return;
     }
 
-    if (!result) {
-      autosaveStatus.textContent = "No Freshservice notes field found — open a note or reply first";
+    let result;
+    try {
+      result = await webview.executeJavaScript(site.notes.readScript);
+    } catch (err) {
+      autosaveStatus.textContent = "Error reading " + site.name + " notes field";
+      autosaveStatus.className = "";
+      console.error("[Notes Sync] Pull error:", err);
+      return;
+    }
+
+    if (!result || typeof result.text !== "string") {
+      autosaveStatus.textContent = "No " + site.name + " notes field found — open a note or reply first";
       autosaveStatus.className = "";
       return;
     }
 
     if (result.text.trim() === "") {
-      autosaveStatus.textContent = "Freshservice notes field is empty";
+      autosaveStatus.textContent = site.name + " notes field is empty";
       autosaveStatus.className = "";
       return;
     }
 
     if (!isEditorEmpty()) {
       const confirmed = await showConfirm(
-        "Replace the current panel notes with content pulled from Freshservice?"
+        "Replace the current panel notes with content pulled from " + site.name + "?"
       );
       if (!confirmed) return;
     }
@@ -567,9 +506,9 @@
     setEditorContent(html);
 
     // Auto-grab ticket number from the same page if the field is empty
-    if (!ticketIdInput.value.trim()) {
+    if (!ticketIdInput.value.trim() && site.recordScript) {
       try {
-        const grabResult = await webview.executeJavaScript(TICKET_GRAB_SCRIPT);
+        const grabResult = await webview.executeJavaScript(site.recordScript);
         if (grabResult && grabResult.ticket) {
           ticketIdInput.value = grabResult.ticket;
           refreshTicketList(grabResult.ticket);
@@ -577,7 +516,7 @@
       } catch { /* grab failure is non-fatal */ }
     }
 
-    autosaveStatus.textContent = "Pulled from Freshservice (" + fieldTypeLabel(result.type) + ")";
+    autosaveStatus.textContent = "Pulled from " + site.name + " (" + fieldTypeLabel(site, result.type) + ")";
     autosaveStatus.className = "saved";
 
     // Queue an autosave so the pulled content is persisted
@@ -589,6 +528,13 @@
     const webview = getActiveWebview();
     if (!webview) {
       autosaveStatus.textContent = "No active tab";
+      autosaveStatus.className = "";
+      return;
+    }
+
+    const site = notesSiteFor(webview);
+    if (!site) {
+      autosaveStatus.textContent = "This page isn't a supported site";
       autosaveStatus.className = "";
       return;
     }
@@ -612,112 +558,52 @@
     }
 
     try {
-      const result = await webview.executeJavaScript(buildFsPushScript(plainText));
+      const result = await webview.executeJavaScript(site.notes.buildPushScript(plainText));
       if (!result) {
-        autosaveStatus.textContent = "No Freshservice notes field found — open a note or reply first";
+        autosaveStatus.textContent = "No " + site.name + " notes field found — open a note or reply first";
         autosaveStatus.className = "";
         return;
       }
-      autosaveStatus.textContent = "Pushed to Freshservice (" + fieldTypeLabel(result.type) + ")";
+      autosaveStatus.textContent = "Pushed to " + site.name + " (" + fieldTypeLabel(site, result.type) + ")";
       autosaveStatus.className = "saved";
     } catch (err) {
-      autosaveStatus.textContent = "Error pushing to Freshservice notes field";
+      autosaveStatus.textContent = "Error pushing to " + site.name + " notes field";
       autosaveStatus.className = "";
-      console.error("[FS Push] manual push error:", err);
+      console.error("[Notes Push] manual push error:", err);
     }
   });
 
-  // ==================== Freshservice Live Sync Engine ====================
+  // ==================== Live Sync Engine ====================
   //
   // Three subsystems:
-  //   1. FS_WATCHER_SCRIPT — injected into each webview to emit field/focus/input events
-  //   2. syncEngine        — per-tab state machine driving push (panel→FS) and pull (FS→panel)
-  //   3. ticketSwapper     — auto-loads content when the detected ticket changes
+  //   1. the site's watcher script — injected into each page the site claims; it
+  //      reports field/focus/input changes as console messages with the site's prefix
+  //   2. syncEngine   — per-tab state machine driving push (panel→page) and pull (page→panel)
+  //   3. ticketSwapper — auto-loads content when the detected ticket changes
+  //
+  // Watcher messages are JSON after the prefix: { kind: "fields", type },
+  // { kind: "focus", focused }, { kind: "input", field, text }. Any other kind is
+  // passed to the site's notes.onWatcherMessage(msg, siteState).
 
-  const SYNC_PUSH_EDITOR = 500;          // ms — rich-text editor push debounce
-  const SYNC_PUSH_TEXTAREA = 300;        // ms — plain textarea push debounce
-  const SYNC_PULL_DEBOUNCE = 300;        // ms — incoming FS change pull
+  const SYNC_PUSH_EDITOR = 500;          // ms — default push debounce for rich-text editors ("editor")
+  const SYNC_PUSH_TEXTAREA = 300;        // ms — default push debounce for every other field type
+  const SYNC_PUSH_MAX = 10000;           // ms — longest delay a site's pushDelay() may ask for
+  const SYNC_PULL_DEBOUNCE = 300;        // ms — incoming page change pull
   const SYNC_WATCHER_MIN_INTERVAL = 50;  // ms — minimum gap between processed watcher messages per tab
 
-  // Injected once per page load. Uses console.log as the outbound channel so it
-  // works without an extra IPC registration — the renderer filters by the [FS-SYNC]
-  // prefix in the webview console-message event. Freshservice is a single-page
-  // app, so the watcher stays installed across in-page navigation and keeps
-  // re-detecting fields as editors open and close.
-  const FS_WATCHER_SCRIPT = `(function() {
-    if (window.__fsSyncWatcherInstalled) return;
-    window.__fsSyncWatcherInstalled = true;
-    ${FS_FIELD_HELPERS}
-
-    function emit(payload) {
-      console.log('[FS-SYNC] ' + JSON.stringify(payload));
-    }
-
-    var currentField = null;
-    var currentType = null;
-    var inputDebounce = null;
-    var scanTimer = null;
-
-    function mark(el) {
-      var prev = document.querySelectorAll('[data-fspp-sync]');
-      for (var i = 0; i < prev.length; i++) {
-        if (prev[i] !== el) prev[i].removeAttribute('data-fspp-sync');
-      }
-      if (el) el.setAttribute('data-fspp-sync', '1');
-    }
-
-    function scan() {
-      scanTimer = null;
-      var el = fsFindField();
-      var type = el ? fsFieldType(el) : null;
-      if (el !== currentField || type !== currentType) {
-        currentField = el;
-        currentType = type;
-        if (el) mark(el);
-        emit({ kind: 'fields', type: type });
-      }
-    }
-
-    function scheduleScan() {
-      if (!scanTimer) scanTimer = setTimeout(scan, 250);
-    }
-
-    document.addEventListener('focusin', function(e) {
-      var field = fsFieldFor(e.target);
-      if (!field) return;
-      mark(field);
-      scan();
-      emit({ kind: 'focus', focused: true });
-    }, true);
-
-    document.addEventListener('focusout', function(e) {
-      if (fsFieldFor(e.target)) emit({ kind: 'focus', focused: false });
-    }, true);
-
-    document.addEventListener('input', function(e) {
-      var field = fsFieldFor(e.target);
-      if (!field) return;
-      clearTimeout(inputDebounce);
-      inputDebounce = setTimeout(function() {
-        emit({ kind: 'input', field: fsFieldType(field), text: fsReadField(field) });
-      }, 150);
-    }, true);
-
-    scan();
-
-    var obs = new MutationObserver(scheduleScan);
-    obs.observe(document.body, {
-      childList: true, subtree: true,
-      attributes: true, attributeFilter: ['style', 'class', 'contenteditable']
-    });
-  })()`;
+  function installWatcher(webview, site) {
+    if (!site || !site.notes) return;
+    webview.executeJavaScript(site.notes.watcherScript).catch(function () {});
+  }
 
   const syncStates = new Map();
 
   function getSyncState(tabId) {
     if (!syncStates.has(tabId)) {
       syncStates.set(tabId, {
-        fsFieldType: null,     // 'editor' | 'textarea' | null
+        fsFieldType: null,     // one of the site's notes.fieldTypes, or null
+        siteId: null,          // site whose watcher reported the field
+        siteState: {},         // owned by the site's onWatcherMessage/pushDelay; reset on navigation
         fsFocused: false,
         panelFocused: false,
         lastPushedText: null,  // echo suppression: text we last wrote to FS
@@ -751,7 +637,7 @@
     }
     const state = activeTabId ? syncStates.get(activeTabId) : null;
     if (!state || !state.fsFieldType) {
-      syncStatus.textContent = "⇅ No FS field";
+      syncStatus.textContent = "⇅ No notes field";
       syncStatus.className = "sync-status sync-off";
     } else if (state.pushInFlight) {
       syncStatus.textContent = "⇅ Pushing…";
@@ -762,15 +648,20 @@
     }
   }
 
-  function handleWatcherMessage(tabId, msg) {
+  function handleWatcherMessage(tabId, msg, site) {
     if (!appSettings.liveSyncEnabled) return;
     if (tabId !== activeTabId) return;
+    if (!msg || typeof msg !== "object") return;
 
     const state = getSyncState(tabId);
+    if (state.siteId !== site.id) {
+      state.siteId = site.id;
+      state.siteState = {};
+    }
 
     switch (msg.kind) {
       case "fields":
-        state.fsFieldType = msg.type === "editor" || msg.type === "textarea" ? msg.type : null;
+        state.fsFieldType = site.notes.fieldTypes.includes(msg.type) ? msg.type : null;
         // A different field (or none) is now the target — forget what we last wrote/read
         // so the next push isn't skipped as a duplicate of text sent to the old field.
         state.lastPushedText = null;
@@ -778,21 +669,28 @@
         updateSyncPill();
         break;
       case "focus":
-        state.fsFocused = msg.focused;
+        state.fsFocused = msg.focused === true;
         break;
       case "input":
-        // FS field changed while panel is not focused → schedule a pull
-        if (!state.panelFocused) {
+        // Page field changed while panel is not focused → schedule a pull
+        if (!state.panelFocused && typeof msg.text === "string") {
           clearTimeout(state.pullTimer);
           state.pullTimer = setTimeout(function () {
-            executePull(tabId, normalizeSyncText(msg.text), msg.field);
+            executePull(tabId, normalizeSyncText(msg.text), msg.field, site);
           }, SYNC_PULL_DEBOUNCE);
+        }
+        break;
+      default:
+        if (typeof site.notes.onWatcherMessage === "function") {
+          try { site.notes.onWatcherMessage(msg, state.siteState); } catch (e) {
+            console.error("[Notes Sync] " + site.id + " onWatcherMessage:", e);
+          }
         }
         break;
     }
   }
 
-  async function executePull(tabId, text, field) {
+  async function executePull(tabId, text, field, site) {
     if (tabId !== activeTabId) return;
     const state = getSyncState(tabId);
     if (state.panelFocused) return;
@@ -812,7 +710,7 @@
       setEditorContent(html);
 
       if (syncStatus) {
-        syncStatus.textContent = "⇅ Pulled (" + fieldTypeLabel(field) + ")";
+        syncStatus.textContent = "⇅ Pulled (" + fieldTypeLabel(site, field) + ")";
         syncStatus.className = "sync-status sync-active";
         setTimeout(updateSyncPill, 1500);
       }
@@ -830,10 +728,21 @@
     const state = getSyncState(tabId);
     if (!state.fsFieldType) return;
 
-    const delay = state.fsFieldType === "editor" ? SYNC_PUSH_EDITOR : SYNC_PUSH_TEXTAREA;
+    const delay = pushDelayFor(notesSiteFor(getActiveWebview()), state);
 
     clearTimeout(state.pushTimer);
     state.pushTimer = setTimeout(function () { executePush(tabId); }, delay);
+  }
+
+  // The site's pushDelay(type, siteState) when it gives a usable number, else the default.
+  function pushDelayFor(site, state) {
+    const fallback = state.fsFieldType === "editor" ? SYNC_PUSH_EDITOR : SYNC_PUSH_TEXTAREA;
+    if (!site || typeof site.notes.pushDelay !== "function") return fallback;
+    try {
+      const ms = site.notes.pushDelay(state.fsFieldType, state.siteState);
+      if (typeof ms === "number" && isFinite(ms) && ms >= 0) return Math.min(ms, SYNC_PUSH_MAX);
+    } catch (e) { console.error("[Notes Sync] " + site.id + " pushDelay:", e); }
+    return fallback;
   }
 
   async function executePush(tabId) {
@@ -847,14 +756,19 @@
 
     const webview = getActiveWebview();
     if (!webview) return;
-    try {
-      if (!isFreshworksUrl(webview.getURL())) return;
-    } catch { return; }
+    const site = notesSiteFor(webview);
+    if (!site) return;
 
     state.pushInFlight = true;
     updateSyncPill();
 
-    const pushScript = buildFsPushScript(plainText);
+    let pushScript;
+    try { pushScript = site.notes.buildPushScript(plainText); } catch (e) {
+      console.error("[Notes Push] " + site.id + " buildPushScript:", e);
+      state.pushInFlight = false;
+      updateSyncPill();
+      return;
+    }
     try {
       const result = await webview.executeJavaScript(pushScript);
       if (result) {
@@ -866,11 +780,12 @@
         }
       }
     } catch (pushErr) {
-      console.error("[FS Push] auto push error:", pushErr);
+      console.error("[Notes Push] auto push error:", pushErr);
       state.consecutivePushFailures = (state.consecutivePushFailures || 0) + 1;
       if (state.consecutivePushFailures === 1) {
         notify("sync-failure", "Live Sync Push Failed",
-          "Could not write notes to the Freshservice notes field. Your Freshservice session may have expired or the note editor is no longer open on this page.");
+          "Could not write notes to the " + siteName(site) + " notes field. Your " + siteName(site) +
+          " session may have expired or the note editor is no longer open on this page.");
       }
     } finally {
       state.pushInFlight = false;
@@ -878,84 +793,12 @@
     }
   }
 
-  function buildFsPushScript(plainText) {
-    return `(function() {
-      var text = ${JSON.stringify(plainText)};
-      ${FS_FIELD_HELPERS}
-
-      var el = fsFindField();
-      if (!el) return null;
-
-      if (el.tagName === 'TEXTAREA') {
-        el.focus();
-        // Use the native setter so framework bindings (Ember/React) see a real change.
-        var setter = Object.getOwnPropertyDescriptor(
-          window.HTMLTextAreaElement.prototype, 'value'
-        ).set;
-        setter.call(el, text);
-        el.dispatchEvent(new Event('input',  { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        return { type: 'textarea' };
-      }
-
-      // Single paragraph with <br> line breaks: its innerText round-trips to the
-      // same plain text, so live-sync echo detection stays stable.
-      var html = '<p>' + (text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/\\n/g, '<br>') || '<br>') + '</p>';
-
-      // Prefer the Froala API (v3/v4 global, then the v2 jQuery plugin) so Froala's
-      // model, undo stack, and Freshservice's contentChanged bindings all update.
-      try {
-        var inst = null;
-        if (window.FroalaEditor && Array.isArray(window.FroalaEditor.INSTANCES)) {
-          inst = window.FroalaEditor.INSTANCES.find(function(i) {
-            return i && i.el === el;
-          }) || null;
-        }
-        if (!inst && window.jQuery) {
-          var box = window.jQuery(el).closest('.fr-box').prev();
-          var data = box.length ? box.data('froala.editor') : null;
-          if (data && data.html) inst = data;
-        }
-        if (inst && inst.html && typeof inst.html.set === 'function') {
-          inst.html.set(html);
-          if (inst.undo && typeof inst.undo.saveStep === 'function') inst.undo.saveStep();
-          if (inst.events && typeof inst.events.trigger === 'function') {
-            inst.events.trigger('contentChanged');
-          }
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          return { type: 'editor' };
-        }
-      } catch (froalaErr) { /* fall through to the DOM path */ }
-
-      // Generic contenteditable path: select everything inside the editor and
-      // replace it via execCommand so the browser fires native input events.
-      el.focus();
-      var range = document.createRange();
-      range.selectNodeContents(el);
-      var sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-      var ok = false;
-      try { ok = document.execCommand('insertHTML', false, html); } catch (cmdErr) { ok = false; }
-      if (!ok) {
-        el.innerHTML = html;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      // Some editors only sync their model on key events.
-      el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-      return { type: 'editor' };
-    })()`;
-  }
 
   // ==================== Ticket Swapper ====================
   //
   // Runs on tab activation and did-finish-load. When the detected ticket differs
   // from currentPanelTicket: snapshot the outgoing content (if changed), then
-  // load the incoming ticket from the open Freshservice notes field first, falling
+  // load the incoming ticket from the page's open notes field first, falling
   // back to local backup.
 
   let currentPanelTicket = null;  // ticket currently bound to the panel
@@ -977,16 +820,17 @@
 
     const tab = tabs.find(function (t) { return t.id === tabId; });
     if (!tab) return;
-    if (!isFreshworksTab(tab)) return;
+    const site = siteForTab(tab);
+    if (!site || !site.recordScript) return;
 
     let grabResult;
     try {
-      grabResult = await tab.webview.executeJavaScript(TICKET_GRAB_SCRIPT);
+      grabResult = await tab.webview.executeJavaScript(site.recordScript);
     } catch { return; }
 
     if (!grabResult || !grabResult.ticket) return;
 
-    const newTicket = grabResult.ticket;
+    const newTicket = String(grabResult.ticket);
 
     if (userTypedTicket && ticketIdInput.value.trim() && ticketIdInput.value.trim() !== newTicket) return;
     if (newTicket === currentPanelTicket) return;
@@ -1017,9 +861,12 @@
     if (tabId !== activeTabId) return;
 
     let fsResult = null;
-    try {
-      fsResult = await tab.webview.executeJavaScript(FS_NOTES_READ_SCRIPT);
-    } catch { /* FS read failed — fall through to local */ }
+    if (site.notes) {
+      try {
+        fsResult = await tab.webview.executeJavaScript(site.notes.readScript);
+      } catch { /* page read failed — fall through to local */ }
+      if (fsResult && (typeof fsResult.text !== "string" || !site.notes.fieldTypes.includes(fsResult.type))) fsResult = null;
+    }
     if (tabId !== activeTabId) return;
 
     const state = getSyncState(tabId);
@@ -1039,13 +886,13 @@
       const localHtml = await readLocalTicketContent(newTicket);
       if (tabId !== activeTabId) return;
       setEditorContent(localHtml);
-      // Still record the field type for sync even if the FS field was empty
+      // Still record the field type for sync even if the page field was empty
       if (fsResult) state.fsFieldType = fsResult.type;
     }
 
     // Bind the panel to the new ticket in the same step as its content, so an
     // autosave can never pair one ticket's number with another ticket's notes.
-    const ticketChange = { ticketId: newTicket, previous: currentPanelTicket };
+    const ticketChange = { ticketId: newTicket, previous: currentPanelTicket, site: site.id };
     api.events.emit("ticket:changed", ticketChange);
     ticketIdInput.value = newTicket;
     currentPanelTicket = newTicket;
@@ -1434,65 +1281,6 @@
   });
 
 
-  // ==================== Grab Ticket from Freshservice ====================
-  //
-  // Freshservice is a single-page app whose record URLs carry the numeric ID:
-  //   /a/tickets/123   (/helpdesk/tickets/123 on the legacy UI) → "123"
-  //   /a/changes/45    (/itil/changes/45)                        → "CHN-45"
-  //   /a/problems/67   (/itil/problems/67)                       → "PRB-67"
-  //   /a/releases/89   (/itil/releases/89)                       → "RL-89"
-  // Tickets (incidents and service requests share one number sequence) keep a
-  // bare number so "Ticket Number" sorting works; other modules are prefixed so
-  // they can't collide with ticket numbers. If the URL doesn't match (custom
-  // portal routes, etc.) the page title and record header are checked for a
-  // display ID such as "INC-123" or "SR-123". List pages intentionally return
-  // nothing — they show many IDs and none of them is "the" open record.
-
-  const TICKET_GRAB_SCRIPT = `(function() {
-  var routes = [
-    { re: /\\/(?:a|helpdesk)\\/tickets\\/(\\d+)(?:[/?#]|$)/i, prefix: "" },
-    { re: /\\/(?:a|itil)\\/changes\\/(\\d+)(?:[/?#]|$)/i, prefix: "CHN-" },
-    { re: /\\/(?:a|itil)\\/problems\\/(\\d+)(?:[/?#]|$)/i, prefix: "PRB-" },
-    { re: /\\/(?:a|itil)\\/releases\\/(\\d+)(?:[/?#]|$)/i, prefix: "RL-" }
-  ];
-  var path = window.location.pathname + window.location.hash.replace(/^#/, "");
-  for (var i = 0; i < routes.length; i++) {
-    var m = path.match(routes[i].re);
-    if (m) return { ticket: routes[i].prefix + m[1], source: "url", text: path.substring(0, 100) };
-  }
-
-  function fromDisplayId(text) {
-    var t = (text || "").match(/\\b(INC|SR)-(\\d+)\\b/);
-    if (t) return t[2];
-    var o = (text || "").match(/\\b(CHN|PRB|RL)-(\\d+)\\b/);
-    if (o) return o[1] + "-" + o[2];
-    return null;
-  }
-
-  // Only trust the title/header on record pages, not list views.
-  var onListPage = /\\/(?:a|helpdesk|itil)\\/(?:tickets|changes|problems|releases)\\/?(?:[?#]|$)/i.test(path);
-  if (!onListPage) {
-    var fromTitle = fromDisplayId(document.title);
-    if (fromTitle) return { ticket: fromTitle, source: "title", text: document.title.substring(0, 100) };
-    var headers = document.querySelectorAll("h1, h2, [class*=display-id], [class*=displayId], [class*=ticket-id], [class*=ticketId]");
-    var maxScan = Math.min(headers.length, ${MAX_GRAB_ELEMENTS});
-    for (var h = 0; h < maxScan; h++) {
-      var text = headers[h].innerText || headers[h].textContent || "";
-      var id = fromDisplayId(text);
-      if (id) return { ticket: id, source: "header", text: text.substring(0, 100) };
-    }
-  }
-
-  return {
-    ticket: null,
-    source: "not-found",
-    debug: {
-      title: document.title,
-      url: window.location.href,
-      h1: (document.querySelector("h1") || {}).innerText || ""
-    }
-  };
-})()`;
 
   // ==================== Auto-Grab on First Typing ====================
   // Fires once per tab context (reset on tab switch and Clear).
@@ -1502,9 +1290,11 @@
   function backgroundAutoGrab() {
     const webview = getActiveWebview();
     if (!webview) return;
+    const site = siteForWebview(webview);
+    if (!site || !site.recordScript) return;
 
     webview
-      .executeJavaScript(TICKET_GRAB_SCRIPT)
+      .executeJavaScript(site.recordScript)
       .then(function (result) {
         // Abort if the user has already typed a ticket ID while the scan was running.
         if (ticketIdInput.value.trim()) return;
@@ -1595,8 +1385,15 @@
       return;
     }
 
+    const site = siteForWebview(webview);
+    if (!site || !site.recordScript) {
+      autosaveStatus.textContent = "This page isn't a supported site";
+      autosaveStatus.className = "";
+      return;
+    }
+
     try {
-      const result = await webview.executeJavaScript(TICKET_GRAB_SCRIPT);
+      const result = await webview.executeJavaScript(site.recordScript);
 
       if (result && result.ticket) {
         ticketIdInput.value = result.ticket;
@@ -2063,18 +1860,19 @@
     }
     tabs.push(tabData);
 
-    // Messages emitted by the injected FS watcher arrive here.
+    // Messages emitted by the site's injected watcher arrive here. Only the prefix
+    // of the site that claims the tab's current URL is accepted.
     on("console-message", function (e) {
       const msg = e.message || "";
-      if (!msg.startsWith("[FS-SYNC] ")) return;
-      if (!isFreshworksTab(tabData)) return;
+      const site = siteForTab(tabData);
+      if (!site || !site.notes || !msg.startsWith(site.notes.watcherPrefix)) return;
       const wState = getSyncState(tabId);
       const now = Date.now();
       if (now - wState.lastWatcherMsgAt < SYNC_WATCHER_MIN_INTERVAL) return;
       wState.lastWatcherMsgAt = now;
-      try {
-        handleWatcherMessage(tabId, JSON.parse(msg.slice(10)));
-      } catch { /* malformed payload — ignore */ }
+      let payload;
+      try { payload = JSON.parse(msg.slice(site.notes.watcherPrefix.length)); } catch { return; /* malformed payload */ }
+      handleWatcherMessage(tabId, payload, site);
     });
 
     on("did-navigate", function () {
@@ -2086,11 +1884,14 @@
         navState.lastPushedText = null;
         navState.lastPulledText = null;
         navState.fsFocused = false;
+        navState.siteId = null;
+        navState.siteState = {};
       }
+      if (activeTabId === tabId) updateSyncButtons();
     });
 
     on("did-finish-load", function () {
-      if (isFreshworksTab(tabData)) webview.executeJavaScript(FS_WATCHER_SCRIPT).catch(function () {});
+      installWatcher(webview, siteForTab(tabData));
       if (activeTabId === tabId) ticketSwapRun(tabId);
     });
 
@@ -2123,6 +1924,7 @@
     // Each tab has its own page context, so the previous auto-grab result doesn't apply.
     hasAttemptedAutoGrab = false;
     updateSyncPill();
+    updateSyncButtons();
     ticketSwapRun(tabId);
   }
 
@@ -2139,10 +1941,20 @@
     const tabData = attachTab(t.tabId, t.webview);
     if (!tabData) return;
     try {
-      if (!t.webview.isLoading() && isFreshworksTab(tabData)) {
-        t.webview.executeJavaScript(FS_WATCHER_SCRIPT).catch(function () {});
-      }
+      if (!t.webview.isLoading()) installWatcher(t.webview, siteForTab(tabData));
     } catch { /* webview not ready yet — did-finish-load will install it */ }
+  });
+
+  // A site plugin that registers after this script ran (a user-installed one, say):
+  // install its watcher in pages it claims that have already loaded.
+  api.events.on("site:registered", function () {
+    tabs.forEach(function (t) {
+      try {
+        if (!t.webview.isLoading()) installWatcher(t.webview, siteForTab(t));
+      } catch { /* webview not ready — did-finish-load will install it */ }
+    });
+    updateSyncButtons();
+    if (activeTabId) ticketSwapRun(activeTabId);
   });
 
   document.addEventListener("click", function (e) {

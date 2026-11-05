@@ -37,7 +37,7 @@ document.addEventListener("DOMContentLoaded", function () {
     sidePanelEnabled: true,
     panelCollapsed: false,
     sidePanelTab: "",
-    defaultUrl: "https://freshservice.com/login",
+    defaultUrl: "about:blank",
     theme: "dark",
     dismissedReleaseVersion: "",
   };
@@ -71,7 +71,7 @@ document.addEventListener("DOMContentLoaded", function () {
     settingTheme.checked = theme === "light";
 
     if (document.activeElement !== settingDefaultUrl) {
-      settingDefaultUrl.value = settings.defaultUrl || "https://freshservice.com/login";
+      settingDefaultUrl.value = settings.defaultUrl && settings.defaultUrl !== "about:blank" ? settings.defaultUrl : "";
     }
   }
 

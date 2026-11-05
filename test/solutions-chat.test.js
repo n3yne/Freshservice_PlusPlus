@@ -44,6 +44,7 @@ describe("solutions-chat prompts", () => {
       [{ role: "user", text: "hi" }, { role: "assistant", text: "hello" }],
       "Ticket #7: MFA broken",
       [{ title: 'MFA "reset"', status: "draft", text: "Step one", truncated: true }, { title: "Other", text: "Two" }],
+      { site: "Freshservice", kb: "Solutions" },
     );
     expect(prompt).toContain('<article number="1" title="MFA &quot;reset&quot;" status="draft">');
     expect(prompt).toContain("[article continues]");
@@ -51,6 +52,12 @@ describe("solutions-chat prompts", () => {
     expect(prompt).toContain("<ticket>\nTicket #7: MFA broken\n</ticket>");
     expect(prompt).toContain("Agent: hi");
     expect(prompt).toMatch(/only the\s+Freshservice Solutions articles/);
+  });
+
+  test("prompts name the knowledge base, with a neutral default", () => {
+    expect(chat.kbLabel({ site: "Freshservice", kb: "Solutions" })).toBe("Freshservice Solutions articles");
+    expect(chat.kbLabel()).toBe("knowledge base articles");
+    expect(chat.buildQueryPrompt("vpn", [], "", { site: "Acme", kb: "KB" })).toContain("search their Acme KB articles.");
   });
 
   test("the query prompt asks for a JSON array and leaves out an empty ticket", () => {

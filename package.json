@@ -1,6 +1,6 @@
 {
   "name": "freshservice-pp",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "Freshservice++ wrapper with a plugin side panel and ticket note backup",
   "main": "main.js",
   "scripts": {
