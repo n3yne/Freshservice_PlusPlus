@@ -35,6 +35,14 @@ describe("connectwise-manage ticket keys", () => {
   });
 });
 
+describe("connectwise-manage formatTitle", () => {
+  test("strips the Manage prefix", () => {
+    expect(cw.formatTitle("Manage: Service Ticket #123")).toBe("Service Ticket #123");
+    expect(cw.formatTitle("manage:Dashboard")).toBe("Dashboard");
+    expect(cw.formatTitle("Other page")).toBe("Other page");
+  });
+});
+
 describe("connectwise-manage live sync hooks", () => {
   test("labels field types", () => {
     expect(cw.fieldTypeLabel("draft")).toBe("time entry");
@@ -68,6 +76,16 @@ describe("connectwise-manage page scripts", () => {
     }
   });
 
+  test("read script normalises draft text like the Notes tab", async () => {
+    const draft = { innerText: "\u00a0hello\n\n\n\nworld\n", parentElement: null, style: {} };
+    const document = {
+      documentElement: {},
+      querySelector: (sel) => (sel.startsWith(".public-DraftEditor-content") ? draft : null),
+    };
+    const out = await vm.runInNewContext(cw.NOTES_READ_SCRIPT, { document, window: {} });
+    expect(out).toEqual({ type: "draft", text: "hello\n\nworld" });
+  });
+
   function runRecordScript({ search = "", hash = "", headings = {}, bodyText = "" }) {
     const document = {
       querySelectorAll: (sel) => (headings[sel] || []).map((t) => ({ innerText: t, getAttribute: () => null })),
@@ -89,6 +107,8 @@ describe("connectwise-manage page scripts", () => {
 
   test("manifest declares the site", () => {
     expect(manifest.site.hosts).toEqual(["myconnectwise.net"]);
-    expect(manifest.site.defaultUrl).toBe("https://na.myconnectwise.net/");
+    // No defaultUrl: Freshservice stays the Home URL default for fresh installs.
+    expect(manifest.site.defaultUrl).toBeUndefined();
+    expect(manifest.minAppVersion).toBe("0.5.7");
   });
 });

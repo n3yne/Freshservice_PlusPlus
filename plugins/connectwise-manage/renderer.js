@@ -76,6 +76,11 @@
     return undefined;
   }
 
+  // CW tab titles start with "Manage: ".
+  function formatTitle(title) {
+    return String(title || "").replace(/^Manage:\s*/i, "");
+  }
+
   // Watcher messages the core sync engine doesn't know about.
   function onWatcherMessage(msg, siteState) {
     if (!msg || !siteState) return;
@@ -162,6 +167,11 @@
       if (closeBtn) makeClickFn(closeBtn)();
     }
 
+    // Same normalisation as the Notes tab, so panel and page text compare equal.
+    function cwNormalize(text) {
+      return (text || '').replace(/\\u00a0/g, ' ').trim().replace(/\\n{3,}/g, '\\n\\n');
+    }
+
     function findDraft() {
       return document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
     }
@@ -172,14 +182,14 @@
     var draftEl = findDraft();
     if (draftEl) {
       // innerText is "" on hidden elements, so reveal before reading.
-      var text = withVisible(draftEl, function() { return draftEl.innerText.replace(/\\n$/, ''); });
+      var text = withVisible(draftEl, function() { return cwNormalize(draftEl.innerText); });
       return { type: 'draft', text: text };
     }
     var info = await ensureTextarea();
     if (!info) return null;
     var taText = info.ta.value;
     restoreState(info);
-    return { type: 'textarea', text: taText };
+    return { type: 'textarea', text: cwNormalize(taText) };
   })()`;
 
   function buildPushScript(plainText) {
@@ -297,6 +307,10 @@
     var popupVisible = false;
     var inputDebounce = null;
 
+    function cwNormalize(text) {
+      return (text || '').replace(/\\u00a0/g, ' ').trim().replace(/\\n{3,}/g, '\\n\\n');
+    }
+
     function emitFields() {
       emit({ kind: 'fields', type: draftEl && draftEl.isConnected ? 'draft' : (textareaEl && textareaEl.isConnected ? 'textarea' : null) });
     }
@@ -305,9 +319,9 @@
       clearTimeout(inputDebounce);
       inputDebounce = setTimeout(function() {
         if (field === 'draft' && draftEl) {
-          emit({ kind: 'input', field: 'draft', text: (draftEl.innerText || '').replace(/\\n$/, '') });
+          emit({ kind: 'input', field: 'draft', text: cwNormalize(draftEl.innerText) });
         } else if (field === 'textarea' && textareaEl) {
-          emit({ kind: 'input', field: 'textarea', text: textareaEl.value || '' });
+          emit({ kind: 'input', field: 'textarea', text: cwNormalize(textareaEl.value) });
         }
       }, 150);
     }
@@ -426,6 +440,7 @@
     name: "ConnectWise Manage",
     shortName: "CW",
     matchesUrl: matchesUrl,
+    formatTitle: formatTitle,
     recordScript: RECORD_SCRIPT,
     scrapeScript: SCRAPE_SCRIPT,
     notes: Object.freeze({
@@ -442,7 +457,7 @@
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
-      adapter, matchesUrl, ticketKey, ticketNumberFromKey, ticketFromUrl,
+      adapter, matchesUrl, formatTitle, ticketKey, ticketNumberFromKey, ticketFromUrl,
       fieldTypeLabel, pushDelay, onWatcherMessage, buildPushScript,
       NOTES_READ_SCRIPT, WATCHER_SCRIPT, RECORD_SCRIPT, SCRAPE_SCRIPT, WATCHER_PREFIX,
     };
