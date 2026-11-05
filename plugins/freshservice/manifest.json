@@ -1,7 +1,7 @@
 {
   "id": "freshservice",
   "name": "Freshservice",
-  "version": "0.5.8",
+  "version": "0.6.0",
   "description": "Freshservice site support: ticket detection, note editor sync, page reading for AI features, and ticket details and Solutions articles through the Freshservice REST API (v2).",
   "main": "main.js",
   "renderer": "renderer.js",
