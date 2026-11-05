@@ -1,0 +1,15 @@
+{
+  "id": "connectwise-manage",
+  "name": "ConnectWise Manage",
+  "version": "0.5.6",
+  "description": "Site support for ConnectWise Manage: ticket detection, live note sync with time-entry and stopwatch notes, and ticket notes for AI Summarize.",
+  "renderer": "renderer.js",
+  "minAppVersion": "0.5.6",
+  "site": {
+    "name": "ConnectWise Manage",
+    "shortName": "CW",
+    "hosts": ["myconnectwise.net"],
+    "defaultUrl": "https://na.myconnectwise.net/",
+    "chromeUserAgent": true
+  }
+}
