@@ -8,12 +8,12 @@ const path = require("path");
 
 const SOURCE = fs.readFileSync(path.join(__dirname, "../plugins/freshservice/renderer.js"), "utf-8");
 
-function loadAdapter(settings, invoke) {
+function loadAdapter(settings, invoke, others) {
   let adapter = null;
   const listeners = {};
   global.window = {
     pluginAPI: {
-      sites: { register: (a) => { adapter = a; return a; } },
+      sites: { register: (a) => { adapter = a; return a; }, list: () => (others || []).concat(adapter ? [adapter] : []) },
       getSettings: () => Object.assign({}, settings),
       events: { on: (name, fn) => { listeners[name] = fn; } },
       invoke: invoke || (async () => ({})),
@@ -58,6 +58,15 @@ describe("freshservice site adapter", () => {
     expect(adapter.matchesUrl("file:///C:/freshservice.com")).toBe(false);
     listeners["settings:changed"]({ fsApiDomain: "" });
     expect(adapter.matchesUrl("https://help.acme.com/")).toBe(false);
+  });
+
+  test("claims the Home URL's custom domain unless another site does", () => {
+    const { adapter } = loadAdapter({ defaultUrl: "https://help.acme.com/a" });
+    expect(adapter.matchesUrl("https://help.acme.com/a/tickets/1")).toBe(true);
+    expect(adapter.matchesUrl("https://other.acme.com/")).toBe(false);
+    const cw = { id: "connectwise-manage", matchesUrl: (u) => u.includes("help.acme.com") };
+    const second = loadAdapter({ defaultUrl: "https://help.acme.com/a" }, undefined, [cw]).adapter;
+    expect(second.matchesUrl("https://help.acme.com/a/tickets/1")).toBe(false);
   });
 
   test("finds the open record from the URL, title or header", () => {
