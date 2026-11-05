@@ -28,12 +28,38 @@
     return d && !/[/:]/.test(d) ? d : "";
   }
 
+  function homeHost() {
+    try {
+      const u = new URL(settings.defaultUrl || "");
+      return u.protocol === "https:" || u.protocol === "http:" ? u.hostname.toLowerCase() : "";
+    } catch { return ""; }
+  }
+
+  // True when another registered site claims the URL. Guarded so two adapters that
+  // ask each other can't recurse.
+  let checkingOthers = false;
+  function claimedByAnotherSite(url) {
+    if (checkingOthers) return false;
+    checkingOthers = true;
+    try {
+      return api.sites.list().some(function (si) {
+        if (si.id === PLUGIN_ID) return false;
+        try { return si.matchesUrl(url) === true; } catch { return false; }
+      });
+    } finally {
+      checkingOthers = false;
+    }
+  }
+
   function matchesUrl(url) {
     let parsed;
     try { parsed = new URL(url); } catch { return false; }
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
     const host = parsed.hostname.toLowerCase();
-    return FRESHWORKS_HOSTNAME_PATTERN.test(host) || (!!apiHost() && host === apiHost());
+    if (FRESHWORKS_HOSTNAME_PATTERN.test(host) || (!!apiHost() && host === apiHost())) return true;
+    // A custom helpdesk domain set as the Home URL counts as Freshservice too,
+    // unless another site plugin claims it (it could be that site's home page).
+    return !!homeHost() && host === homeHost() && !claimedByAnotherSite(url);
   }
 
   // ==================== Notes field ====================
