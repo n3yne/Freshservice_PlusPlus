@@ -7,6 +7,7 @@ Bundled site plugins:
 | Plugin | Folder | Hosts |
 |---|---|---|
 | Freshservice | `plugins/freshservice` | `freshservice.com`, `freshworks.com`, `myfreshworks.com`, plus the domain set for its API and the Home URL's host (unless another site claims it) |
+| ConnectWise Manage | `plugins/connectwise-manage` | `myconnectwise.net` (cloud instances such as `na.myconnectwise.net`) |
 
 Several site plugins can be installed at once. The adapter is chosen **per tab, by URL**, so a Freshservice tab and another site's tab can sit side by side, each with its own ticket detection and note sync.
 

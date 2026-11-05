@@ -38,6 +38,14 @@ An Electron-based wrapper for Freshservice that adds a persistent note editor, a
 - **Pull from FS / Push to FS** – Manual sync buttons for when live sync is off or you want an explicit transfer
 - **Auto ticket detection** – The ticket number is read from the page URL (`/a/tickets/1234`), so switching tabs or navigating between tickets automatically loads the correct content into the panel. Changes, problems and releases are tracked too, saved as `CHN-45`, `PRB-12` and `RL-3` so they never collide with ticket numbers
 
+### ConnectWise Manage
+- **Works alongside Freshservice** – Open ConnectWise Manage (`*.myconnectwise.net`) in any tab; each tab uses the right site automatically
+- **Live two-way sync** – The panel syncs with the time-entry notes editor and the stopwatch notes. Stopwatch notes are reached by opening the stopwatch popup out of sight, saving it as a draft and closing it again
+- **Pull from CW / Push to CW** – Manual sync buttons, as for Freshservice
+- **Auto ticket detection** – The ticket number is read from the URL or the page and saved as `CW-123456`, so it never collides with Freshservice numbers
+- **AI Summarize** – Reads the ticket's notes (author, date and text) from the page
+- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+
 ### Metrics Bar
 
 A configurable stats bar displayed above the tab strip that periodically scrapes live numbers from one or more BrightGauge public dashboards.
