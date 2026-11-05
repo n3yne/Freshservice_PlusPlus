@@ -575,9 +575,12 @@ document.addEventListener("DOMContentLoaded", function () {
   function freezeSiteAdapter(a) {
     const out = Object.assign({}, a, { shortName: a.shortName || a.name });
     if (a.notes) {
-      out.notes = Object.freeze(Object.assign({
-        fieldTypeLabel: function (type) { return String(type || "notes field"); },
-      }, a.notes, { fieldTypes: Object.freeze(a.notes.fieldTypes.slice()) }));
+      out.notes = Object.freeze(Object.assign({}, a.notes, {
+        fieldTypes: Object.freeze(a.notes.fieldTypes.slice()),
+        fieldTypeLabel: typeof a.notes.fieldTypeLabel === "function"
+          ? a.notes.fieldTypeLabel
+          : function (type) { return String(type || "notes field"); },
+      }));
     }
     if (a.knowledge) out.knowledge = Object.freeze(Object.assign({ name: "Knowledge base" }, a.knowledge));
     return Object.freeze(out);

@@ -34,7 +34,9 @@ A plugin can include any combination of these three components.
 
 On startup the app scans the `plugins/` directories, loads each `main.js` inside the main Electron process, and injects each `renderer.js` as a `<script>` tag into the main window after settings have loaded. Renderer scripts run one after another in folder order (bundled plugins first, alphabetically), so don't rely on a plugin that sorts after yours having run yet: use events or `notes.onReady()` instead. `settings.js` files are injected into the Settings window after `window.pluginSettingsAPI` has been constructed.
 
-Notes themselves are a plugin too: the bundled **Note Backup** plugin (`plugins/note-backup`) owns the Notes tab, its files on disk and live sync with Freshservice, and backs `pluginAPI.notes` for everyone else. It is a good reference for a larger plugin.
+Notes themselves are a plugin too: the bundled **Note Backup** plugin (`plugins/note-backup`) owns the Notes tab, its files on disk and live sync with the page's note editor, and backs `pluginAPI.notes` for everyone else. It is a good reference for a larger plugin.
+
+Support for a ticketing site is a plugin as well. The core app knows nothing about Freshservice: the bundled **Freshservice** plugin (`plugins/freshservice`) declares its hosts in a manifest `"site"` block and registers a **site adapter** with `pluginAPI.sites` (ticket detection, note editor sync scripts, record reading, knowledge base). Note Backup, AI Features and Solutions Chat work through whichever adapter claims the page in a tab. To add another site, see **[Site Plugins](sites.md)**.
 
 ---
 
@@ -83,6 +85,7 @@ Every plugin must have a `manifest.json` at its root:
 | `renderer` | No | Relative path to the main-window renderer entry file. |
 | `settings` | No | Relative path to the settings-window entry file. |
 | `minAppVersion` | No | Minimum app version required. Plugins below this threshold are skipped with a warning. |
+| `site` | No | Makes this a site plugin: `{ name, shortName?, hosts, defaultUrl?, chromeUserAgent? }`. See [Site Plugins](sites.md). |
 | `credentials` | No | Setting names that hold secrets, e.g. `["myApiKey"]` (`/^[a-z][A-Za-z0-9]{0,40}$/`). Your settings transformer should encrypt `myApiKey` with `api.encryptCredential` into `myApiKeyEncrypted` and delete the plain value. The app then keeps the encrypted value out of renderer processes (they see a `myApiKeySet` boolean instead), preserves it across saves that don't include a new key, refuses to save a new key it can't encrypt, and deletes it when settings are saved with `myApiKeyRemove: true`. |
 
 > **ID rules:** Use only lowercase letters, digits, hyphens, and underscores. Path-traversal characters (`../`, `/`, `\`) cause the plugin to be rejected at load time.
@@ -286,16 +289,16 @@ console.log(result.report);
 
 ##### Handlers from bundled plugins
 
-Renderer scripts can also call the bundled plugins, so a plugin can use the app's AI provider and Freshservice connection without asking for keys of its own:
+Renderer scripts can also call the bundled plugins, so a plugin can use the app's AI provider and Freshservice connection without asking for keys of its own. To stay site-agnostic, prefer `pluginAPI.sites` (`readActiveRecord()`, a site's `knowledge`) over calling the Freshservice plugin directly:
 
 | Call | Returns | Notes |
 |---|---|---|
 | `invoke("ai-features", "complete", { prompt })` | `{ result }` or `{ error }` | Runs `prompt` (up to 60,000 characters) with the provider and model chosen in Settings → AI Features. |
-| `invoke("freshservice-api", "get-ticket", { ticketId, host })` | `{ text }` or `{ error, skipped? }` | Plain-text ticket, description and conversation. |
-| `invoke("freshservice-api", "search-solutions", { term })` | `{ articles }` or `{ error }` | Up to 10 Solutions articles: `{ id, title, status, updatedAt, url, text }`, with `text` cut to a short snippet. |
-| `invoke("freshservice-api", "get-solution-article", { id })` | `{ article }` or `{ error }` | One article with its text (up to 6,000 characters) and a `truncated` flag. |
+| `invoke("freshservice", "get-ticket", { ticketId, host })` | `{ text }` or `{ error, skipped? }` | Plain-text ticket, description and conversation. |
+| `invoke("freshservice", "search-solutions", { term })` | `{ articles }` or `{ error }` | Up to 10 Solutions articles: `{ id, title, status, updatedAt, url, text }`, with `text` cut to a short snippet. |
+| `invoke("freshservice", "get-solution-article", { id })` | `{ article }` or `{ error }` | One article with its text (up to 6,000 characters) and a `truncated` flag. |
 
-See `plugins/solutions-chat/renderer.js` for a plugin built on these.
+See `plugins/solutions-chat/renderer.js` for a plugin built on `pluginAPI.sites` and the AI Features handler.
 
 #### `window.pluginAPI.ui.addSidePanelTab(opts)`
 
@@ -505,7 +508,7 @@ These events are emitted on both the main-process bus (`api.on()`) and the rende
 |---|---|---|
 | `app:ready` | `{}` | App has fully initialized and settings are loaded |
 | `note:saved` | `{ ticketId: string, timestamp: string }` | A note was saved (fired by the Note Backup plugin) |
-| `ticket:changed` | `{ ticketId: string, previous: string \| null }` | The ticket in the Notes tab switched (fired by the Note Backup plugin) |
+| `ticket:changed` | `{ ticketId: string, previous: string \| null, site: string }` | The ticket in the Notes tab switched (fired by the Note Backup plugin); `site` is the site plugin's id |
 | `settings:changed` | settings object | Settings were saved from the Settings window |
 
 These are emitted on the renderer bus (`events.on()`) only, because their payload holds the tab's `<webview>` element:
@@ -515,6 +518,7 @@ These are emitted on the renderer bus (`events.on()`) only, because their payloa
 | `tab:created` | `{ tabId, webview }` | A browser tab was opened |
 | `tab:activated` | `{ tabId, webview }` | A browser tab became the active one |
 | `tab:closed` | `{ tabId, webview }` | A browser tab was closed |
+| `site:registered` | `{ siteId }` | A site plugin registered its adapter with `pluginAPI.sites.register()` |
 
 > **`app:ready` timing:** Main-process plugins receive `app:ready` during `initPlugins()`, before the renderer window opens. Renderer scripts are injected after `app:ready` has already fired, so there is no need to wait for it in your renderer script.
 
@@ -571,6 +575,15 @@ pluginAPI.notes.setContent(html: string): void
 pluginAPI.notes.getTicketId(): string | null
 pluginAPI.notes.getPlainText(): string
 pluginAPI.notes.saveSnapshot(incomingText: string, options?: { force?: boolean }): Promise<void>
+
+pluginAPI.sites.register(adapter: SiteAdapter): SiteAdapter   // see docs/sites.md
+pluginAPI.sites.list(): SiteAdapter[]
+pluginAPI.sites.get(id: string): SiteAdapter | null
+pluginAPI.sites.forUrl(url: string): SiteAdapter | null
+pluginAPI.sites.forWebview(webview: HTMLElement): SiteAdapter | null
+pluginAPI.sites.forActiveTab(): { site: SiteAdapter, tabId: string, webview: HTMLElement } | null
+pluginAPI.sites.readActiveRecord(): Promise<{ site, record, text: string, source: "api" | "page", label: string } | null>
+pluginAPI.sites.onRegistered(fn: (site: SiteAdapter) => void): () => void
 
 pluginAPI.browser.newTab(url: string): void
 pluginAPI.browser.executeInActiveTab(script: string): Promise<any>

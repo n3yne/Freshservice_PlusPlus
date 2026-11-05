@@ -32,7 +32,8 @@ An Electron-based wrapper for Freshservice that adds a persistent note editor, a
 - **HTML source view** – Toggle button in the toolbar swaps the rich-text editor for a raw HTML textarea; formatting toolbar is disabled while in HTML mode and re-enabled on exit
 - **Delivered as a bundled plugin** — Note Backup, including live sync below, is implemented via the plugin system. Its settings (live sync, backup retention, templates, signature) are under **Settings → Plugins → Note Backup**. Turning it off removes the Notes tab; your saved notes stay on disk
 
-### Freshservice Sync
+### Freshservice Sync (Freshservice plugin)
+- **Site support is a plugin** – Everything Freshservice-specific (ticket detection, note editor sync, page reading, the API) lives in the bundled **Freshservice** plugin. The core app and the other plugins are site-agnostic, so support for other ticketing systems can be added as further site plugins (see [`docs/sites.md`](docs/sites.md))
 - **Live two-way sync** – With "Live Sync" enabled, the panel and the open Freshservice note editor (the rich-text **Add note** / **Reply** editor, or a note textarea such as the one on the time-entry form) stay in sync as you type — no manual copy-paste needed. When several editors are open, the one you last clicked into is used
 - **Pull from FS / Push to FS** – Manual sync buttons for when live sync is off or you want an explicit transfer
 - **Auto ticket detection** – The ticket number is read from the page URL (`/a/tickets/1234`), so switching tabs or navigating between tickets automatically loads the correct content into the panel. Changes, problems and releases are tracked too, saved as `CHN-45`, `PRB-12` and `RL-3` so they never collide with ticket numbers
@@ -58,11 +59,11 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 - Supports **Hatz AI**, **OpenAI**, **Anthropic**, **Azure OpenAI**, and **Microsoft 365 Copilot** as providers; for Hatz, OpenAI and Anthropic the model dropdown is populated automatically from the provider's API once an API key is entered
 - **Delivered as a bundled plugin** — AI Features is implemented via the plugin system; it can be disabled independently from Settings → Plugins
 
-### Freshservice API
-- **Ticket details through the API** – With your Freshservice domain and API key entered under Settings → Freshservice API, Summarize and Suggest read the ticket's subject, status, priority, requester, description and every reply and note through the Freshservice REST API (v2) instead of scraping the page
+### Freshservice API (Freshservice plugin)
+- **Ticket details through the API** – With your Freshservice domain and API key entered under Settings → Plugins → Freshservice, Summarize and Suggest read the ticket's subject, status, priority, requester, description and every reply and note through the Freshservice REST API (v2) instead of scraping the page
 - **Automatic fallback** – If the API is turned off, not set up, rate-limited or returns an error, or the open record is a change, problem or release, the page is read exactly as before
 - **Safe key storage** – The API key is encrypted with the operating system's credential storage, never sent to the main window, and only sent to the configured domain over https. **Test connection** checks it and **Remove key** deletes it
-- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+- **Delivered as a bundled plugin** — part of the Freshservice plugin. To stop using the API but keep Freshservice support, untick **Read ticket details through the API**; turning the whole plugin off also turns off ticket detection and note sync on Freshservice pages
 
 ### Solutions Chat
 - **Ask your knowledge base** – Open the **📚 Solutions** tab in the side panel for a chat that answers from your Freshservice Solutions articles. Ask how to handle something ("how do we reset MFA for a user?") and it searches Solutions, reads the best matches and answers from them only, citing each article with a link that opens it in a new tab
@@ -70,7 +71,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 - **Says when nothing is documented** – If no article matches, it tells you instead of making up steps. Draft articles are marked as drafts
 - **Copy** or **Add to note** puts the answer and its article links into your clipboard or the note in the Notes tab (a snapshot is saved first; **Add to note** needs Note Backup turned on)
 - **Setup check** – **Settings → Plugins → Solutions Chat** shows whether AI Features and the Freshservice API are ready, and has a test search to confirm your API key can read Solutions articles
-- **Requirements** – uses the provider set up in **Settings → AI Features** and the domain and API key in **Settings → Freshservice API**; the API key needs permission to view Solutions articles. Each question makes two AI requests (one to choose search terms, one to answer)
+- **Requirements** – uses the provider set up in **Settings → AI Features** and the domain and API key in **Settings → Plugins → Freshservice**; the API key needs permission to view Solutions articles. Each question makes two AI requests (one to choose search terms, one to answer)
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
 
 ### Plugin System
@@ -245,7 +246,7 @@ Your sign-in is stored encrypted with the operating system's credential store in
 
 ## Plugins
 
-The **Metrics Bar**, **AI Features**, **Freshservice API** and **Solutions Chat** are delivered as bundled plugins and are always available. To install additional plugins, drop a plugin directory into the app's user data folder:
+The **Freshservice** site plugin, **Note Backup**, **Metrics Bar**, **AI Features** and **Solutions Chat** are delivered as bundled plugins and are always available. To install additional plugins, drop a plugin directory into the app's user data folder:
 
 ```
 %APPDATA%\freshservice-pp\plugins\
@@ -256,7 +257,7 @@ The **Metrics Bar**, **AI Features**, **Freshservice API** and **Solutions Chat*
 
 Restart the app to activate newly installed plugins. Use **Settings → Plugins** to enable or disable any installed plugin.
 
-For plugin development documentation — including the full API reference and a step-by-step walkthrough — see [`docs/plugins.md`](docs/plugins.md). A reference skeleton with annotated examples lives in [`docs/example-plugin/`](docs/example-plugin/).
+For plugin development documentation — including the full API reference and a step-by-step walkthrough — see [`docs/plugins.md`](docs/plugins.md). To add support for another ticketing site, see [`docs/sites.md`](docs/sites.md). A reference skeleton with annotated examples lives in [`docs/example-plugin/`](docs/example-plugin/).
 
 ---
 

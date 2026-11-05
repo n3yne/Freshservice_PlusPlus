@@ -271,7 +271,7 @@ module.exports = {
       if (notReady) return { error: notReady };
       const safeText = (text || "").substring(0, MAX_NOTES_CHARS + MAX_CONTEXT_CHARS);
       const prompt =
-        "Summarize the following Freshservice ticket conversation and notes into a concise bullet-point summary. " +
+        "Summarize the following service desk ticket conversation and notes into a concise bullet-point summary. " +
         "Capture the key issue, actions taken, and current status. " +
         "Do not use em-dashes or en-dashes in your response — use commas, periods, or hyphens instead. " +
         "Reply with only the summary, no preamble:\n\n" + safeText;
