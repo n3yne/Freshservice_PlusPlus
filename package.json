@@ -25,7 +25,10 @@
     "testEnvironment": "node",
     "testMatch": [
       "**/test/**/*.test.js"
-    ]
+    ],
+    "moduleNameMapper": {
+      "^electron$": "<rootDir>/test/electron-stub.js"
+    }
   },
   "build": {
     "appId": "com.n3yne.freshservicepp",
