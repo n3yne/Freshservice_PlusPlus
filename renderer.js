@@ -1,5 +1,5 @@
 ﻿// ===================================================
-// Freshservice++ - Renderer (UI Logic)
+// MSP++ - Renderer (UI Logic)
 // ===================================================
 
 document.addEventListener("DOMContentLoaded", function () {

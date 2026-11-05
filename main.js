@@ -4,8 +4,22 @@ const electron = require("electron");
 const path = require("path");
 const fs = require("fs");
 const fsp = fs.promises;
-const { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings } = require("./utils");
+const { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings, findLegacyUserDataDir } = require("./utils");
 const pluginManager = require("./plugin-manager");
+
+// Keep using the Freshservice++ data folder after the rename to MSP++. This must
+// run before anything touches userData (the single-instance lock, sessions).
+try {
+  const legacyDir = findLegacyUserDataDir(
+    electron.app.getPath("appData"),
+    electron.app.getPath("userData"),
+    fs.existsSync,
+    path.join,
+  );
+  if (legacyDir) electron.app.setPath("userData", legacyDir);
+} catch (err) {
+  console.error("[App] Could not check for the Freshservice++ data folder:", err);
+}
 
 let mainWindow;
 // App data folder. Still named "note-backups" from when note backup was built in:
@@ -152,7 +166,7 @@ function createWindow() {
     height: winHeight,
     ...(winX !== undefined && winY !== undefined ? { x: winX, y: winY } : {}),
     show: false,
-    title: "Freshservice++",
+    title: "MSP++",
     icon: path.join(__dirname, "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -862,7 +876,7 @@ function registerIpcHandlers() {
     try {
       const resp = await fetch(
         "https://api.github.com/repos/n3yne/Freshservice_PlusPlus/releases/latest",
-        { headers: { "User-Agent": "Freshservice-PP/" + currentVersion } },
+        { headers: { "User-Agent": "MSP-PP/" + currentVersion } },
       );
       if (!resp.ok) return { error: `GitHub API error ${resp.status}`, currentVersion };
       const json = await resp.json();
@@ -1022,7 +1036,7 @@ electron.app.whenReady().then(async () => {
 }).catch((err) => {
   console.error("[App] Fatal startup error:", err);
   electron.dialog.showErrorBox(
-    "Freshservice++ — startup failed",
+    "MSP++ — startup failed",
     String(err.message || err),
   );
   electron.app.quit();

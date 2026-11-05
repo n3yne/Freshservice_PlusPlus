@@ -1,7 +1,7 @@
 "use strict";
 
 // ===================================================
-// Freshservice++ — Settings Window Renderer
+// MSP++ — Settings Window Renderer
 // Handles all settings form logic. Saves via backupAPI.saveSettings;
 // main.js broadcasts settings-changed to the main window so it can
 // update its UI without needing to reload.

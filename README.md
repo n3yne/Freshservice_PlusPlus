@@ -1,15 +1,19 @@
-# Freshservice++
+<p align="center"><img src="icon.svg" alt="MSP++ icon" width="128"></p>
 
-An Electron-based wrapper for Freshservice that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
+# MSP++
 
-**Current version:** 0.5.5
+An Electron-based wrapper for MSP and ticketing web apps (Freshservice and ConnectWise Manage today) that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
+
+**Current version:** 0.5.8
+
+> MSP++ was called **Freshservice++** before 0.5.8. Your settings, notes and sign-ins carry over: the app keeps using the existing Freshservice++ data folder.
 
 ---
 
 ## Features
 
 ### Browser
-- **Multi-tab browsing** – Open multiple Freshservice pages simultaneously; tabs persist between launches
+- **Multi-tab browsing** – Open multiple ticketing pages simultaneously; tabs persist between launches
 - **Tab management** – Pin tabs, duplicate, close others, reopen closed tabs, copy URL, open in default browser (right-click any tab)
 - **Find in page** – `Ctrl+F` to search text on the current page
 - **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions; a badge on the download icon shows how many files finished since you last opened the panel (resets when you open it)
@@ -87,7 +91,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 Extend the app with self-contained plugin directories — no build step required.
 
 - **Bundled plugins** – Ship with the app and are always available (e.g. the Metrics Bar)
-- **User-installed plugins** – Drop a plugin folder into `%APPDATA%\freshservice-pp\plugins\` for plugins that survive app updates
+- **User-installed plugins** – Drop a plugin folder into `%APPDATA%\MSP++\plugins\` (or `%APPDATA%\Freshservice++\plugins\` if you upgraded) for plugins that survive app updates
 - **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply. Every plugin gets a settings tab, and one with nothing to set up says so
 - **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed
 - Plugins can add side panel tabs, toolbar buttons, Settings panels, notifications, backend IPC handlers, DOM elements, and application menu items
@@ -136,8 +140,11 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 All data is saved under Electron's `userData` directory:
 
 ```
-%APPDATA%\freshservice-pp\note-backups\
+Windows: %APPDATA%\MSP++\note-backups\
+macOS:   ~/Library/Application Support/MSP++/note-backups/
 ```
+
+If you used the app when it was called Freshservice++, it keeps using that folder instead (`%APPDATA%\Freshservice++\` or `~/Library/Application Support/Freshservice++/`).
 
 Inside you'll find:
 - `autosave.json` – Latest auto-saved draft for each ticket
@@ -257,7 +264,7 @@ Your sign-in is stored encrypted with the operating system's credential store in
 The **Freshservice** site plugin, **Note Backup**, **Metrics Bar**, **AI Features** and **Solutions Chat** are delivered as bundled plugins and are always available. To install additional plugins, drop a plugin directory into the app's user data folder:
 
 ```
-%APPDATA%\freshservice-pp\plugins\
+%APPDATA%\MSP++\plugins\        (or %APPDATA%\Freshservice++\plugins\ if you upgraded)
   my-plugin\
     manifest.json
     renderer.js
