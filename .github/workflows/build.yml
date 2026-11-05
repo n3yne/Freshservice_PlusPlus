@@ -114,7 +114,7 @@ jobs:
           PREV=$(git tag --sort=-version:refname | grep -v "^${CURRENT}$" | head -1)
 
           {
-            echo "## Freshservice++ ${CURRENT}"
+            echo "## MSP++ ${CURRENT}"
             echo ""
             echo "### Downloads"
             echo "- **Windows** — Portable \`.exe\`, no installation required"
@@ -128,7 +128,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
-          name: Freshservice++ ${{ github.ref_name }}
+          name: MSP++ ${{ github.ref_name }}
           body_path: release_notes.md
           draft: false
           prerelease: false

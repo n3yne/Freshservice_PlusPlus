@@ -1,7 +1,7 @@
 {
-  "name": "freshservice-pp",
-  "version": "0.5.7",
-  "description": "Freshservice++ wrapper with a plugin side panel and ticket note backup",
+  "name": "msp-pp",
+  "version": "0.6.0",
+  "description": "MSP++: a wrapper for MSP and ticketing sites with a plugin side panel and ticket note backup",
   "main": "main.js",
   "scripts": {
     "start": "node launch.js",
@@ -29,7 +29,7 @@
   },
   "build": {
     "appId": "com.n3yne.freshservicepp",
-    "productName": "Freshservice++",
+    "productName": "MSP++",
     "files": [
       "main.js",
       "preload.js",

@@ -1,6 +1,6 @@
 # Plugin Development Guide
 
-Freshservice++ supports an external plugin system that lets you add new features without modifying the core application source. Plugins are self-contained directories dropped into a `plugins/` folder — no build step required.
+MSP++ supports an external plugin system that lets you add new features without modifying the core application source. Plugins are self-contained directories dropped into a `plugins/` folder — no build step required.
 
 ---
 

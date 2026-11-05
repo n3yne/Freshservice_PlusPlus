@@ -1,6 +1,7 @@
 "use strict";
 
-const { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings } = require("../utils");
+const { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings, findLegacyUserDataDir } = require("../utils");
+const path = require("path");
 
 // ==================== validateSettings ====================
 
@@ -122,5 +123,43 @@ describe("DEFAULT_SETTINGS", () => {
   test("shape is stable", () => {
     expect(DEFAULT_SETTINGS.sidePanelEnabled).toBe(true);
     expect(DEFAULT_SETTINGS.panelCollapsed).toBe(false);
+  });
+});
+
+// ==================== findLegacyUserDataDir ====================
+
+describe("findLegacyUserDataDir", () => {
+  const appData = path.join("/home", "u", ".config");
+  const current = path.join(appData, "MSP++");
+  const existsFrom = (dirs) => (p) => dirs.includes(p);
+  const data = (name) => path.join(appData, name, "note-backups");
+
+  test("keeps using the Freshservice++ folder when MSP++ has no data", () => {
+    const exists = existsFrom([data("Freshservice++")]);
+    expect(findLegacyUserDataDir(appData, current, exists, path.join)).toBe(path.join(appData, "Freshservice++"));
+  });
+
+  test("falls back to the old package-name folder", () => {
+    const exists = existsFrom([data("freshservice-pp")]);
+    expect(findLegacyUserDataDir(appData, current, exists, path.join)).toBe(path.join(appData, "freshservice-pp"));
+  });
+
+  test("prefers Freshservice++ when both old folders have data", () => {
+    const exists = existsFrom([data("freshservice-pp"), data("Freshservice++")]);
+    expect(findLegacyUserDataDir(appData, current, exists, path.join)).toBe(path.join(appData, "Freshservice++"));
+  });
+
+  test("uses the MSP++ folder once it has data", () => {
+    const exists = existsFrom([data("MSP++"), data("Freshservice++")]);
+    expect(findLegacyUserDataDir(appData, current, exists, path.join)).toBeNull();
+  });
+
+  test("ignores an old folder without data (fresh install)", () => {
+    const exists = existsFrom([path.join(appData, "Freshservice++")]);
+    expect(findLegacyUserDataDir(appData, current, exists, path.join)).toBeNull();
+  });
+
+  test("returns null when nothing exists", () => {
+    expect(findLegacyUserDataDir(appData, current, () => false, path.join)).toBeNull();
   });
 });

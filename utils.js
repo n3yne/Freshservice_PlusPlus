@@ -46,4 +46,22 @@ function migrateCoreSettings(raw) {
   return raw;
 }
 
-module.exports = { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings };
+// The app was called Freshservice++ before it became MSP++. Electron names the
+// data folder after the app, so after the rename it would look in a new, empty
+// folder and existing users would lose their settings, notes, open tabs and
+// site sign-ins. Returns the old folder to keep using when the new one has no
+// data yet and an old one does, otherwise null. Data stays where it is, so an
+// older build pointed at the same folder still works.
+const LEGACY_DATA_DIR_NAMES = ["Freshservice++", "freshservice-pp"];
+
+function findLegacyUserDataDir(appDataDir, currentDir, exists, join) {
+  const hasData = (dir) => exists(join(dir, "note-backups"));
+  if (hasData(currentDir)) return null;
+  for (const name of LEGACY_DATA_DIR_NAMES) {
+    const legacy = join(appDataDir, name);
+    if (legacy !== currentDir && hasData(legacy)) return legacy;
+  }
+  return null;
+}
+
+module.exports = { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings, findLegacyUserDataDir };
