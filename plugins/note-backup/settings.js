@@ -23,7 +23,7 @@
   </label>
   <p class="settings-description">
     Automatically load ticket notes when switching tabs and keep the Notes tab in sync
-    with the open Freshservice note editor as you type.
+    with the open note editor of the site in the tab (such as Freshservice) as you type.
   </p>
 </div>
 

@@ -1,6 +1,8 @@
 "use strict";
 
-// Reads ticket details through the Freshservice REST API v2. The API key is
+// Main-process half of the Freshservice site plugin: reads ticket details and
+// Solutions articles through the Freshservice REST API v2 (the page-side half,
+// the site adapter, is renderer.js). The API key is
 // encrypted at rest, only ever decrypted in the main process, and only sent to
 // the configured Freshservice domain over https. Callers fall back to scraping
 // the page whenever this returns an error or is skipped.
@@ -62,9 +64,9 @@ module.exports = {
       const s = api.getSettings();
       if (s.fsApiEnabled === false) return { skipped: true, error: "The Freshservice API is turned off." };
       const domain = normalizeDomain(s.fsApiDomain || "");
-      if (!domain) return { skipped: true, error: "Enter your Freshservice domain in Settings → Freshservice API." };
+      if (!domain) return { skipped: true, error: "Enter your Freshservice domain in Settings → Freshservice." };
       const key = getApiKey(s);
-      if (!key) return { skipped: true, error: "Enter your Freshservice API key in Settings → Freshservice API." };
+      if (!key) return { skipped: true, error: "Enter your Freshservice API key in Settings → Freshservice." };
       return { domain, key };
     }
 
@@ -196,7 +198,7 @@ function normalizeDomain(raw) {
 function describeHttpError(resp, what) {
   const noun = what || "Ticket";
   switch (resp.status) {
-    case 401: return "Freshservice rejected the API key (401). Check it in Settings → Freshservice API.";
+    case 401: return "Freshservice rejected the API key (401). Check it in Settings → Freshservice.";
     case 403: return `This API key isn't allowed to view that ${noun.toLowerCase()} (403).`;
     case 404: return `${noun} not found in Freshservice (404).`;
     case 429: {

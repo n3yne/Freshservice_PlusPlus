@@ -2,7 +2,7 @@
   const settingsAPI = window.pluginSettingsAPI;
   if (!settingsAPI) return;
 
-  settingsAPI.addPanel("freshservice-api", "Freshservice API", function (panel) {
+  settingsAPI.addPanel("freshservice", "Freshservice", function (panel) {
 
     const section = document.createElement("div");
     section.className = "settings-section";
@@ -125,7 +125,7 @@
       elTest.disabled = true;
       elStatus.textContent = "Testing…";
       try {
-        const result = await window.backupAPI.pluginInvoke("plugin:freshservice-api:test-connection", {});
+        const result = await window.backupAPI.pluginInvoke("plugin:freshservice:test-connection", {});
         elStatus.textContent = result && result.ok
           ? "Connected to " + result.domain
           : ((result && result.error) || "Connection failed");

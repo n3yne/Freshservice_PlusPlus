@@ -74,7 +74,7 @@ document.addEventListener("DOMContentLoaded", function () {
     sidePanelEnabled: true,
     panelCollapsed: false,
     sidePanelTab: "",
-    defaultUrl: "https://freshservice.com/login",
+    defaultUrl: "about:blank",
     theme: "dark",
     dismissedReleaseVersion: "",
   };
@@ -526,6 +526,166 @@ document.addEventListener("DOMContentLoaded", function () {
     },
   });
 
+  // ==================== Sites ====================
+  //
+  // pluginAPI.sites: site plugins (Freshservice, ConnectWise Manage, …) register an
+  // adapter that knows their pages: which URLs are theirs, how to find the open
+  // record, how to read and write the page's notes field, and how to read a record
+  // for the AI features. Feature plugins look the adapter up per tab by URL, so
+  // several sites can be open side by side. The full contract is in docs/sites.md.
+
+  const siteAdapters = [];
+  const siteRegisteredCallbacks = new Set();
+  const SITE_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,62}$/;
+
+  function isPageScript(v) { return typeof v === "string" && v.length > 0; }
+
+  function validateSiteAdapter(a) {
+    if (!a || typeof a !== "object") return "adapter must be an object";
+    if (typeof a.id !== "string" || !SITE_ID_PATTERN.test(a.id)) return "id must be a plugin-style id";
+    if (typeof a.name !== "string" || !a.name.trim()) return "name is required";
+    if (typeof a.matchesUrl !== "function") return "matchesUrl(url) is required";
+    if (a.recordScript !== undefined && !isPageScript(a.recordScript)) return "recordScript must be a script string";
+    if (a.scrapeScript !== undefined && !isPageScript(a.scrapeScript)) return "scrapeScript must be a script string";
+    if (a.readRecord !== undefined && typeof a.readRecord !== "function") return "readRecord must be a function";
+    if (a.formatTitle !== undefined && typeof a.formatTitle !== "function") return "formatTitle must be a function";
+    if (a.notes !== undefined) {
+      const n = a.notes;
+      if (!n || typeof n !== "object") return "notes must be an object";
+      if (!isPageScript(n.readScript)) return "notes.readScript is required";
+      if (typeof n.buildPushScript !== "function") return "notes.buildPushScript(text) is required";
+      if (!isPageScript(n.watcherScript)) return "notes.watcherScript is required";
+      if (typeof n.watcherPrefix !== "string" || n.watcherPrefix.length < 3) return "notes.watcherPrefix is required";
+      if (!Array.isArray(n.fieldTypes) || !n.fieldTypes.length || n.fieldTypes.some(function (t) { return typeof t !== "string"; })) {
+        return "notes.fieldTypes must list the field type names";
+      }
+      for (const k of ["fieldTypeLabel", "pushDelay", "onWatcherMessage"]) {
+        if (n[k] !== undefined && typeof n[k] !== "function") return "notes." + k + " must be a function";
+      }
+    }
+    if (a.knowledge !== undefined) {
+      const kb = a.knowledge;
+      if (!kb || typeof kb !== "object" || typeof kb.search !== "function" || typeof kb.getArticle !== "function") {
+        return "knowledge needs search(term) and getArticle(id)";
+      }
+    }
+    return null;
+  }
+
+  function freezeSiteAdapter(a) {
+    const out = Object.assign({}, a, { shortName: a.shortName || a.name });
+    if (a.notes) {
+      out.notes = Object.freeze(Object.assign({}, a.notes, {
+        fieldTypes: Object.freeze(a.notes.fieldTypes.slice()),
+        fieldTypeLabel: typeof a.notes.fieldTypeLabel === "function"
+          ? a.notes.fieldTypeLabel
+          : function (type) { return String(type || "notes field"); },
+      }));
+    }
+    if (a.knowledge) out.knowledge = Object.freeze(Object.assign({ name: "Knowledge base" }, a.knowledge));
+    return Object.freeze(out);
+  }
+
+  function siteMatches(site, url) {
+    try { return site.matchesUrl(url) === true; } catch (e) {
+      console.error("[Sites] " + site.id + " matchesUrl:", e);
+      return false;
+    }
+  }
+
+  // The adapter for a web page URL, or null. Sites are asked in registration order.
+  // If none claims the URL but it is on the configured home page's host (a custom
+  // helpdesk domain, say) and only one site is installed, that site is used.
+  function siteForUrl(url) {
+    let parsed;
+    try { parsed = new URL(url); } catch { return null; }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    const hit = siteAdapters.find(function (si) { return siteMatches(si, url); });
+    if (hit) return hit;
+    if (siteAdapters.length === 1) {
+      try {
+        if (parsed.hostname === new URL(appSettings.defaultUrl).hostname) return siteAdapters[0];
+      } catch { /* no usable home page */ }
+    }
+    return null;
+  }
+
+  function siteForWebview(webview) {
+    if (!webview) return null;
+    try { return siteForUrl(webview.getURL()); } catch { return null; }
+  }
+
+  // Reads the open record in the active tab: { site, record, text, source, label }
+  // or null when the tab isn't on a known site. text comes from the site's
+  // readRecord() (e.g. its REST API) when that returns something, else from its
+  // scrapeScript.
+  async function readActiveRecord() {
+    const webview = getActiveWebview();
+    const site = siteForWebview(webview);
+    if (!site) return null;
+    let url;
+    try { url = webview.getURL(); } catch { return null; }
+    let record = null;
+    if (site.recordScript) {
+      try { record = await webview.executeJavaScript(site.recordScript); } catch { record = null; }
+    }
+    let text = "";
+    let source = "page";
+    if (site.readRecord) {
+      try {
+        const res = await site.readRecord({ webview: webview, url: url, record: record });
+        if (res && typeof res.text === "string" && res.text.trim()) {
+          text = res.text;
+          source = res.source === "api" ? "api" : "page";
+        }
+      } catch (e) { console.warn("[Sites] " + site.id + " readRecord:", e); }
+    }
+    if (!text && site.scrapeScript) {
+      try { text = String(await webview.executeJavaScript(site.scrapeScript) || ""); } catch { text = ""; }
+      source = "page";
+    }
+    const label = record && (record.label || record.ticket) ? String(record.label || record.ticket) : "";
+    return { site: site, record: record, text: text, source: source, label: label };
+  }
+
+  const sitesFacade = Object.freeze({
+    register: function (adapter) {
+      const problem = validateSiteAdapter(adapter);
+      if (problem) throw new Error("sites.register: " + problem);
+      if (siteAdapters.some(function (si) { return si.id === adapter.id; })) {
+        throw new Error("sites.register: a site with id \"" + adapter.id + "\" is already registered");
+      }
+      const site = freezeSiteAdapter(adapter);
+      siteAdapters.push(site);
+      siteRegisteredCallbacks.forEach(function (fn) {
+        try { fn(site); } catch (e) { console.error("[Sites]", e); }
+      });
+      _busEmit("site:registered", { siteId: site.id });
+      return site;
+    },
+    list: function () { return siteAdapters.slice(); },
+    get: function (id) { return siteAdapters.find(function (si) { return si.id === id; }) || null; },
+    forUrl: siteForUrl,
+    forWebview: siteForWebview,
+    forActiveTab: function () {
+      const tab = tabs.find(function (t) { return t.id === activeTabId; });
+      if (!tab) return null;
+      const site = siteForWebview(tab.webview);
+      return site ? { site: site, tabId: tab.id, webview: tab.webview } : null;
+    },
+    readActiveRecord: readActiveRecord,
+    // Runs fn(site) for every site already registered and each one registered later.
+    // Returns a function that stops future calls.
+    onRegistered: function (fn) {
+      if (typeof fn !== "function") return function () {};
+      siteAdapters.forEach(function (si) {
+        try { fn(si); } catch (e) { console.error("[Sites]", e); }
+      });
+      siteRegisteredCallbacks.add(fn);
+      return function () { siteRegisteredCallbacks.delete(fn); };
+    },
+  });
+
   // Plugins' events.emit(): ticket:changed is also forwarded to main-process plugins.
   const RENDERER_TO_MAIN_EVENTS = new Set(["ticket:changed"]);
   function emitFromPlugin(name, data) {
@@ -633,6 +793,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         notes: notesFacade,
 
+        sites: sitesFacade,
+
         getSettings: function () { return Object.assign({}, appSettings); },
       });
 
@@ -692,11 +854,17 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch { return false; }
   }
 
-  // --- Title cleanup: strip common prefixes ---
-  function cleanTitle(raw) {
+  // --- Title cleanup: the tab's site plugin may shorten the page title ---
+  function cleanTitle(raw, webview) {
     if (!raw) return "Untitled";
-    // Strip leading "Manage: " or "Manage:" (case-insensitive)
-    const cleaned = raw.replace(/^Manage:\s*/i, "");
+    let cleaned = raw;
+    const site = siteForWebview(webview);
+    if (site && typeof site.formatTitle === "function") {
+      try {
+        const out = site.formatTitle(raw);
+        if (typeof out === "string") cleaned = out.trim();
+      } catch (e) { console.error("[Sites] formatTitle:", e); }
+    }
     return cleaned || "Untitled";
   }
 
@@ -874,7 +1042,7 @@ document.addEventListener("DOMContentLoaded", function () {
       try {
         const raw = webview.getTitle();
         if (raw && raw !== "") {
-          const display = cleanTitle(raw);
+          const display = cleanTitle(raw, webview);
           tabData.title = display;
           titleSpan.textContent = display;
         }
@@ -890,7 +1058,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     on(webview, "page-title-updated", function (e) {
       if (e.title && e.title !== "") {
-        const display = cleanTitle(e.title);
+        const display = cleanTitle(e.title, webview);
         tabData.title = display;
         titleSpan.textContent = display;
       }

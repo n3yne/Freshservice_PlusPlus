@@ -105,4 +105,58 @@ describe("plugin-manager", () => {
     delete global.__msgTest;
     delete global.__msgPing;
   });
+
+  test("collects site blocks from loaded plugins and seeds the home page default", async () => {
+    const { userData } = makeUserData();
+    const siteDir = path.join(userData, "plugins", "site-test");
+    fs.mkdirSync(siteDir, { recursive: true });
+    fs.writeFileSync(path.join(siteDir, "manifest.json"), JSON.stringify({
+      id: "site-test",
+      site: {
+        name: "Site Test",
+        hosts: ["Example-Helpdesk.net", "*.bad.com", "https://nope.com", "example-helpdesk.net"],
+        defaultUrl: "https://na.example-helpdesk.net/start",
+        chromeUserAgent: true,
+      },
+    }));
+    await pluginManager.initPlugins(userData, {}, ipcMain);
+
+    const site = pluginManager.getSites().find((si) => si.pluginId === "site-test");
+    expect(site).toEqual({
+      pluginId: "site-test",
+      name: "Site Test",
+      shortName: "Site Test",
+      hosts: ["example-helpdesk.net"],
+      defaultUrl: "https://na.example-helpdesk.net/start",
+      chromeUserAgent: true,
+    });
+    expect(pluginManager.findSiteForUrl("https://na.example-helpdesk.net/v4/ticket").pluginId).toBe("site-test");
+    expect(pluginManager.findSiteForUrl("https://example-helpdesk.net/").pluginId).toBe("site-test");
+    expect(pluginManager.findSiteForUrl("https://notexample-helpdesk.net/")).toBeNull();
+    expect(pluginManager.findSiteForUrl("not a url")).toBeNull();
+
+    // The bundled Freshservice plugin loads first (bundled before user plugins),
+    // so its start page is the default.
+    const fsSite = pluginManager.getSites().find((si) => si.pluginId === "freshservice");
+    expect(fsSite.hosts).toEqual(["freshservice.com", "freshworks.com", "myfreshworks.com"]);
+    expect(pluginManager.findSiteForUrl("https://acme.freshservice.com/a/tickets/1").pluginId).toBe("freshservice");
+    expect(pluginManager.getPluginDefaultSettings().defaultUrl).toBe("https://freshservice.com/login");
+  });
+
+  test("a disabled site plugin shapes nothing", async () => {
+    const { userData } = makeUserData();
+    fs.mkdirSync(path.join(userData, "note-backups"), { recursive: true });
+    fs.writeFileSync(path.join(userData, "note-backups", "plugins-config.json"), JSON.stringify({ freshservice: false }));
+    await pluginManager.initPlugins(userData, {}, ipcMain);
+    expect(pluginManager.getSites().map((si) => si.pluginId)).not.toContain("freshservice");
+    expect(pluginManager.findSiteForUrl("https://acme.freshservice.com/")).toBeNull();
+    expect(pluginManager.getPluginDefaultSettings().defaultUrl).toBeUndefined();
+  });
+
+  test("parseSiteManifest rejects unusable blocks", () => {
+    expect(pluginManager.parseSiteManifest("x", undefined)).toBeNull();
+    expect(pluginManager.parseSiteManifest("x", [])).toBeNull();
+    const parsed = pluginManager.parseSiteManifest("x", { hosts: "a.com", defaultUrl: "javascript:alert(1)" });
+    expect(parsed).toEqual({ pluginId: "x", name: "x", shortName: "x", hosts: [], defaultUrl: "", chromeUserAgent: false });
+  });
 });

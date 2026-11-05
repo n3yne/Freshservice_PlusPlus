@@ -8,7 +8,9 @@ const DEFAULT_SETTINGS = {
   sidePanelEnabled: true,
   panelCollapsed: false,
   sidePanelTab: "",
-  defaultUrl: "https://freshservice.com/login",
+  // The first site plugin's start page replaces this (manifest "site.defaultUrl");
+  // with no site plugin loaded, new tabs open blank.
+  defaultUrl: "about:blank",
   theme: "dark",
   dismissedReleaseVersion: "",
 };
@@ -19,10 +21,12 @@ function validateSettings(s) {
   if (typeof s.panelCollapsed !== "boolean") return false;
   if (s.sidePanelTab !== undefined && (typeof s.sidePanelTab !== "string" || s.sidePanelTab.length > 64)) return false;
   if (typeof s.defaultUrl !== "string" || s.defaultUrl.length === 0 || s.defaultUrl.length > 2048) return false;
-  try {
-    const parsed = new URL(s.defaultUrl);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
-  } catch { return false; }
+  if (s.defaultUrl !== "about:blank") {
+    try {
+      const parsed = new URL(s.defaultUrl);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    } catch { return false; }
+  }
   if (!["dark", "light"].includes(s.theme)) return false;
   if (s.dismissedReleaseVersion !== undefined && (typeof s.dismissedReleaseVersion !== "string" || s.dismissedReleaseVersion.length > 20)) return false;
   return true;

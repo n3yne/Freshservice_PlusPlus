@@ -1,0 +1,24 @@
+{
+  "id": "freshservice",
+  "name": "Freshservice",
+  "version": "0.5.7",
+  "description": "Freshservice site support: ticket detection, note editor sync, page reading for AI features, and ticket details and Solutions articles through the Freshservice REST API (v2).",
+  "main": "main.js",
+  "renderer": "renderer.js",
+  "settings": "settings.js",
+  "minAppVersion": "0.5.7",
+  "credentials": [
+    "fsApiKey"
+  ],
+  "site": {
+    "name": "Freshservice",
+    "shortName": "FS",
+    "hosts": [
+      "freshservice.com",
+      "freshworks.com",
+      "myfreshworks.com"
+    ],
+    "defaultUrl": "https://freshservice.com/login",
+    "chromeUserAgent": true
+  }
+}

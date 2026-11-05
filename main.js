@@ -34,7 +34,7 @@ function withSettingsLock(fn) {
 }
 
 // Identity-provider hostnames — these popups communicate login state back to the
-// Freshservice page via window.opener / postMessage and must open as real windows.
+// site's page via window.opener / postMessage and must open as real windows.
 const SSO_PROVIDER_PATTERNS = [
   /^login\.microsoftonline\.com$/i,
   /^login\.microsoft\.com$/i,
@@ -42,25 +42,13 @@ const SSO_PROVIDER_PATTERNS = [
   /^accounts\.google\.com$/i,
 ];
 
-// Freshservice instances (*.freshservice.com) and Freshworks accounts / org SSO
-// (*.freshworks.com, *.myfreshworks.com). Used to scope the user-agent override
-// and to recognise auth popups that start on a Freshworks domain.
-const FRESHWORKS_HOSTNAME_PATTERN = /(?:^|\.)(?:freshservice|freshworks|myfreshworks)\.com$/i;
-const FRESHWORKS_URL_FILTER = {
-  urls: [
-    "*://*.freshservice.com/*",
-    "*://*.freshworks.com/*",
-    "*://*.myfreshworks.com/*",
-  ],
-};
-
-// Freshworks' SSO flow often starts on a Freshworks domain (e.g. an auth redirect
+// A site's own SSO flow often starts on the site's domain (e.g. an auth redirect
 // endpoint) before handing off to the identity provider. Popups to these path
-// segments on Freshworks domains are allowed as real windows so the redirect chain
-// isn't broken. Everything else (attachments, reports, etc.) goes to a tab.
-// The pattern requires a path-segment boundary after the keyword so that
-// e.g. /loginhistory does not accidentally match /login.
-const FRESHWORKS_AUTH_PATH_PATTERN =
+// segments on a site plugin's hosts (manifest "site.hosts") are allowed as real
+// windows so the redirect chain isn't broken. Everything else (attachments,
+// reports, etc.) goes to a tab. The pattern requires a path-segment boundary
+// after the keyword so that e.g. /loginhistory does not match /login.
+const AUTH_PATH_PATTERN =
   /\/(?:auth|login|sso|oauth|saml|openid|signin)(?:[/?#]|$)/i;
 
 function isWebUrl(url) {
@@ -278,7 +266,7 @@ function createWindow() {
   // Intercept new-window requests from webview guest pages and redirect to tabs
   mainWindow.webContents.on("did-attach-webview", (event, webviewContents) => {
     webviewContents.setWindowOpenHandler(({ url }) => {
-      // Identity-provider popups and Freshworks auth-path popups open as real windows so the
+      // Identity-provider popups and auth-path popups on a site's hosts open as real windows so the
       // window.opener / postMessage login handshake works. Everything else goes
       // to a new tab. The console log below shows the exact URL and disposition
       // for each popup — useful if the SSO flow breaks and you need to widen the
@@ -289,11 +277,11 @@ function createWindow() {
         console.log("[Popup] window.open() from webview:", url);
 
         const isSsoProvider = SSO_PROVIDER_PATTERNS.some((re) => re.test(host));
-        const isFreshworksAuthPopup =
-          FRESHWORKS_HOSTNAME_PATTERN.test(host) &&
-          FRESHWORKS_AUTH_PATH_PATTERN.test(parsed.pathname);
+        const isSiteAuthPopup =
+          Boolean(pluginManager.findSiteForUrl(url)) &&
+          AUTH_PATH_PATTERN.test(parsed.pathname);
 
-        if (isSsoProvider || isFreshworksAuthPopup) {
+        if (isSsoProvider || isSiteAuthPopup) {
           console.log("[Popup] Allowing auth/popup window:", url);
           const parent =
             mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
@@ -889,6 +877,40 @@ function registerIpcHandlers() {
   });
 }
 
+// ===================== Site user agent =====================
+
+// Builds the webRequest URL filter for a list of bare domains: each domain and
+// every subdomain of it, over http and https.
+function siteUrlFilter(hosts) {
+  const urls = [];
+  for (const h of hosts) urls.push(`*://${h}/*`, `*://*.${h}/*`);
+  return { urls };
+}
+
+// Presents a plain Chrome user agent (no "Electron/…" token) to the hosts of site
+// plugins that ask for it ("site.chromeUserAgent": true), so those sites don't treat
+// the app as an unsupported browser. Scoped to those hosts so other services see
+// the real user agent. The Chrome version tracks the bundled Chromium so it never
+// looks outdated.
+function installSiteUserAgent() {
+  const hosts = [];
+  for (const site of pluginManager.getSites()) {
+    if (!site.chromeUserAgent) continue;
+    for (const h of site.hosts) if (!hosts.includes(h)) hosts.push(h);
+  }
+  if (!hosts.length) return;
+  const chromeUserAgent =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" +
+    process.versions.chrome + " Safari/537.36";
+  electron.session.defaultSession.webRequest.onBeforeSendHeaders(
+    siteUrlFilter(hosts),
+    (details, callback) => {
+      details.requestHeaders["User-Agent"] = chromeUserAgent;
+      callback({ requestHeaders: details.requestHeaders });
+    },
+  );
+}
+
 // ===================== App Lifecycle =====================
 
 // Prevent multiple instances - if already running, focus the existing window
@@ -916,21 +938,6 @@ electron.app.whenReady().then(async () => {
   TABS_FILE = path.join(DATA_DIR, "open-tabs.json");
   SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
   MAIN_WINDOW_STATE_FILE = path.join(DATA_DIR, "main-window-state.json");
-
-  // Present a plain Chrome user agent (no "Electron/…" token) to Freshservice and
-  // Freshworks only, so the app isn't treated as an unsupported browser. Scoped to
-  // those domains to avoid affecting other services. The Chrome version tracks the
-  // bundled Chromium so it never looks outdated.
-  const chromeUserAgent =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" +
-    process.versions.chrome + " Safari/537.36";
-  electron.session.defaultSession.webRequest.onBeforeSendHeaders(
-    FRESHWORKS_URL_FILTER,
-    (details, callback) => {
-      details.requestHeaders["User-Agent"] = chromeUserAgent;
-      callback({ requestHeaders: details.requestHeaders });
-    },
-  );
 
   electron.session.defaultSession.on("will-download", (_event, item) => {
     const itemUrl = item.getURL();
@@ -1003,6 +1010,8 @@ electron.app.whenReady().then(async () => {
 
   const initialSettings = applySettingsDefaults(effectiveRaw);
   pluginManager.updateSettings(initialSettings);
+
+  installSiteUserAgent();
 
   registerIpcHandlers();
   createWindow();

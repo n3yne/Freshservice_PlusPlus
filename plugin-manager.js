@@ -39,6 +39,15 @@ const _discoveredPlugins = [];
 const _credentialFields = [];
 const CREDENTIAL_NAME_PATTERN = /^[a-z][A-Za-z0-9]{0,40}$/;
 
+// Sites declared by loaded plugins in their manifests ("site": { ... }) — see docs/sites.md.
+// Core uses them for the things it has to do before any page loads: the home page
+// default, the user-agent override and which sign-in popups open as real windows.
+const _sites = [];
+const MAX_SITE_HOSTS = 20;
+// A bare domain such as "freshservice.com" or "eu.myconnectwise.net": matches that
+// host and every subdomain of it. No scheme, port, path or wildcard.
+const SITE_HOST_PATTERN = /^(?=.{3,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
 // Plugin enable/disable config: { "plugin-id": false } — only entries for disabled plugins.
 // Missing key = enabled by default.
 let _pluginsConfig = {};
@@ -93,6 +102,49 @@ async function savePluginsConfig() {
   } catch (err) {
     console.error("[PluginManager] Failed to save plugins config:", err);
   }
+}
+
+// ===================== Sites =====================
+
+// Validates a manifest "site" block. Returns a clean copy, or null (with a warning)
+// when the block is unusable.
+function parseSiteManifest(pluginId, site) {
+  if (site === undefined) return null;
+  if (!site || typeof site !== "object" || Array.isArray(site)) {
+    console.warn(`[PluginManager] Plugin "${pluginId}" has an invalid "site" block — ignored`);
+    return null;
+  }
+  const hosts = [];
+  for (const h of Array.isArray(site.hosts) ? site.hosts : []) {
+    const host = typeof h === "string" ? h.trim().toLowerCase() : "";
+    if (!SITE_HOST_PATTERN.test(host)) {
+      console.warn(`[PluginManager] Plugin "${pluginId}" site host "${h}" is not a bare domain — skipped`);
+      continue;
+    }
+    if (!hosts.includes(host) && hosts.length < MAX_SITE_HOSTS) hosts.push(host);
+  }
+  let defaultUrl = "";
+  if (typeof site.defaultUrl === "string" && site.defaultUrl.length <= 2048) {
+    try {
+      const u = new URL(site.defaultUrl);
+      if (u.protocol === "https:" || u.protocol === "http:") defaultUrl = u.href;
+    } catch { /* invalid — left empty */ }
+  }
+  const name = typeof site.name === "string" && site.name.trim() ? site.name.trim().slice(0, 60) : pluginId;
+  return {
+    pluginId,
+    name,
+    shortName: typeof site.shortName === "string" && site.shortName.trim() ? site.shortName.trim().slice(0, 20) : name,
+    hosts,
+    defaultUrl,
+    chromeUserAgent: site.chromeUserAgent === true,
+  };
+}
+
+// True when hostname is one of the site's hosts or a subdomain of one.
+function hostMatchesSite(hostname, site) {
+  const host = String(hostname || "").toLowerCase().replace(/\.$/, "");
+  return site.hosts.some(h => host === h || host.endsWith("." + h));
 }
 
 // ===================== Plugin API factory =====================
@@ -257,6 +309,7 @@ async function loadPlugin(pluginDir, source, ipcMain) {
     loadError: null,
     credentials: [],
     hasSettings: typeof manifest.settings === "string" && manifest.settings.length > 0,
+    site: null,
   };
   _discoveredPlugins.push(record);
 
@@ -364,6 +417,13 @@ async function loadPlugin(pluginDir, source, ipcMain) {
   } catch { /* no styles.css — fine */ }
 
   record.loaded = true;
+
+  // Only a plugin that loaded gets to shape core behaviour for its site.
+  const site = parseSiteManifest(id, manifest.site);
+  if (site) {
+    record.site = site;
+    _sites.push(site);
+  }
 }
 
 // ===================== Public API =====================
@@ -375,6 +435,7 @@ async function initPlugins(userData, initialSettings, ipcMain, rebuildMenuFn) {
   _pluginsConfigFile = path.join(userData, "note-backups", "plugins-config.json");
   _discoveredPlugins.length = 0; // Clear on re-init
   _credentialFields.length = 0;
+  _sites.length = 0;
   for (const key of Object.keys(_pluginDefaultSettings)) delete _pluginDefaultSettings[key];
   _pluginValidators.length = 0;
   _settingsTransformers.length = 0;
@@ -400,6 +461,13 @@ async function initPlugins(userData, initialSettings, ipcMain, rebuildMenuFn) {
       const pluginDir = path.join(dir, entry.name);
       await loadPlugin(pluginDir, source, ipcMain);
     }
+  }
+
+  // The first site with a start page seeds the home page default. A plugin's own
+  // defaultSettings.defaultUrl, if any, wins.
+  const startSite = _sites.find(si => si.defaultUrl);
+  if (startSite && _pluginDefaultSettings.defaultUrl === undefined) {
+    _pluginDefaultSettings.defaultUrl = startSite.defaultUrl;
   }
 
   pluginBus.emit("app:ready", {});
@@ -433,7 +501,21 @@ function getPluginInfo() {
     loadError: p.loadError,
     credentials: p.credentials.slice(),
     hasSettings: p.hasSettings,
+    site: p.site ? Object.assign({}, p.site, { hosts: p.site.hosts.slice() }) : null,
   }));
+}
+
+// [{ pluginId, name, shortName, hosts, defaultUrl, chromeUserAgent }] for loaded site plugins.
+function getSites() {
+  return _sites.map(si => Object.assign({}, si, { hosts: si.hosts.slice() }));
+}
+
+// The loaded site whose hosts include this URL's hostname, or null.
+function findSiteForUrl(url) {
+  let hostname;
+  try { hostname = new URL(url).hostname; } catch { return null; }
+  const site = _sites.find(si => hostMatchesSite(hostname, si));
+  return site ? Object.assign({}, site, { hosts: site.hosts.slice() }) : null;
 }
 
 async function setPluginEnabled(id, enabled) {
@@ -568,4 +650,7 @@ module.exports = {
   validatePluginSettings,
   transformSettingsForSave,
   getCredentialFields,
+  getSites,
+  findSiteForUrl,
+  parseSiteManifest,
 };
