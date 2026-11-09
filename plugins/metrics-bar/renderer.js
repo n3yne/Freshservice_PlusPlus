@@ -27,6 +27,11 @@
   const metricsScraperWebview = document.createElement("webview");
   metricsScraperWebview.id = "metrics-scraper-webview";
   metricsScraperWebview.className = "metrics-scraper-webview";
+  // Keep the hidden dashboard rendering at full speed even when MSP++ is
+  // minimized or behind other windows. Without this Chromium pauses animation
+  // frames and slows timers in the page, and widgets that draw their numbers
+  // that way can still show an old value or a placeholder when we read them.
+  metricsScraperWebview.setAttribute("webpreferences", "backgroundThrottling=no");
   metricsScraperWebview.src = "about:blank";
   document.body.appendChild(metricsScraperWebview);
 
@@ -35,6 +40,8 @@
   let metricsPollTimer = null;
   let metricsScraperBusy = false;
   let metricsRescheduleNeeded = false;
+  let metricsRefreshQueued = false;
+  const metricsStaleReason = {};
   const metricsValues = {};
   const metricsCache = {};
   const metricsStale = new Set();
@@ -78,6 +85,70 @@
       try { localStorage.setItem("fspp-metrics-cache", JSON.stringify(metricsCache)); } catch { /* storage unavailable */ }
     }
   }());
+
+  // Timing for reading a dashboard after it loads. Dashboards such as
+  // Freshservice's are single-page apps: the page "finishes loading" first and
+  // the widgets fetch and draw their numbers afterwards, sometimes well after.
+  // Instead of reading once after a fixed pause, read repeatedly until every
+  // field has a value that held steady across two reads, or the time runs out.
+  const SCRAPE_TIMING = {
+    loadTimeoutMs: 30000,
+    firstReadMs: 2000,
+    pollMs: 1000,
+    settleTimeoutMs: 30000,
+  };
+
+  function sleep(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  // Loads url in the scraper webview. Resolves when the main frame finishes
+  // loading; rejects on a load error or after the timeout.
+  function loadScraperPage(webview, url, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      let timer = null;
+      function cleanup() {
+        clearTimeout(timer);
+        webview.removeEventListener("did-finish-load", onFinish);
+        webview.removeEventListener("did-fail-load", onFail);
+      }
+      function onFinish() { cleanup(); resolve(); }
+      function onFail(e) {
+        // -3 (ABORTED) is a redirect or a newer navigation replacing this one;
+        // the final page still raises did-finish-load.
+        if (!e || e.isMainFrame === false || e.errorCode === -3) return;
+        cleanup();
+        reject(new Error("load failed: " + (e.errorDescription || e.errorCode)));
+      }
+      timer = setTimeout(function () { cleanup(); reject(new Error("load timeout")); }, timeoutMs);
+      webview.addEventListener("did-finish-load", onFinish);
+      webview.addEventListener("did-fail-load", onFail);
+      webview.src = url;
+    });
+  }
+
+  // Calls read() until all ids have a non-null value that matches the previous
+  // read, or until timing.settleTimeoutMs passes. Returns the last read, which
+  // may still contain nulls for fields that never appeared.
+  async function readUntilSettled(read, ids, timing) {
+    const deadline = Date.now() + timing.settleTimeoutMs;
+    await sleep(timing.firstReadMs);
+    let prev = null;
+    let last = null;
+    for (;;) {
+      let current = null;
+      try { current = await read(); } catch { current = null; }
+      if (current && typeof current === "object") {
+        last = current;
+        const complete = ids.every(function (id) { return current[id] !== null && current[id] !== undefined; });
+        const steady = prev !== null && ids.every(function (id) { return current[id] === prev[id]; });
+        if (complete && steady) return current;
+        prev = current;
+      }
+      if (Date.now() + timing.pollMs > deadline) return last;
+      await sleep(timing.pollMs);
+    }
+  }
 
   function buildMetricsScrapeScript(fields) {
     const parts = fields.map(function (f) {
@@ -201,7 +272,9 @@
           const staleEl = document.createElement("span");
           staleEl.className = "metrics-card-stale";
           const ts = new Date(metricsCache[f.id].ts);
-          staleEl.title = "Could not refresh — last updated " + ts.toLocaleString();
+          staleEl.title = "Could not refresh" +
+            (metricsStaleReason[f.id] ? " (" + metricsStaleReason[f.id] + ")" : "") +
+            " — last updated " + ts.toLocaleString();
           card.appendChild(staleEl);
         }
         const tooltipLines = [];
@@ -263,25 +336,21 @@
         const db = dashboards[i];
         const dbFieldIds = (db.fields || []).map(function (f) { return f.id; });
         try {
-          await new Promise(function (resolve, reject) {
-            const loadTimer = setTimeout(function () { reject(new Error("load timeout")); }, 30000);
-            function handler() {
-              metricsScraperWebview.removeEventListener("did-finish-load", handler);
-              clearTimeout(loadTimer);
-              resolve();
-            }
-            metricsScraperWebview.addEventListener("did-finish-load", handler);
-            const sep = db.url.includes("?") ? "&" : "?";
-            metricsScraperWebview.src = db.url + sep + "_ms=" + Date.now();
-          });
+          const sep = db.url.includes("?") ? "&" : "?";
+          await loadScraperPage(metricsScraperWebview, db.url + sep + "_ms=" + Date.now(), SCRAPE_TIMING.loadTimeoutMs);
 
-          await new Promise(function (resolve) { setTimeout(resolve, 5000); });
-
-          const live = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === db.id; });
-          const currentFields = live ? (live.fields || []) : db.fields;
-          const results = await metricsScraperWebview.executeJavaScript(
-            buildMetricsScrapeScript(currentFields)
+          // Read the dashboard's current field list on every pass, so a field
+          // added in Settings during a refresh is picked up.
+          const currentFields = function () {
+            const live = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === db.id; });
+            return live ? (live.fields || []) : db.fields;
+          };
+          const results = await readUntilSettled(
+            function () { return metricsScraperWebview.executeJavaScript(buildMetricsScrapeScript(currentFields())); },
+            currentFields().map(function (f) { return f.id; }),
+            SCRAPE_TIMING
           );
+          const missingReason = describeMissingPage(metricsScraperWebview, db.url);
 
           if (results) {
             const now = Date.now();
@@ -297,14 +366,17 @@
                     now - cached.ts < WEEK_RESET_STALE_WINDOW_MS &&
                     parseFloat(String(results[id]).replace(/[^0-9.]/g, "")) !== 0) {
                   metricsStale.add(id);
+                  metricsStaleReason[id] = "the dashboard still shows last week's value";
                 } else {
                   metricsValues[id] = results[id];
                   metricsCache[id] = { value: results[id], ts: now };
                   metricsStale.delete(id);
+                  delete metricsStaleReason[id];
                   hasNewValues = true;
                 }
               } else {
                 metricsStale.add(id);
+                metricsStaleReason[id] = missingReason || "the value wasn't found on the dashboard";
               }
             });
             if (hasNewValues) {
@@ -312,21 +384,55 @@
             }
             anySuccess = true;
           } else {
-            dbFieldIds.forEach(function (id) { metricsStale.add(id); });
+            dbFieldIds.forEach(function (id) {
+              metricsStale.add(id);
+              metricsStaleReason[id] = missingReason || "the dashboard couldn't be read";
+            });
           }
-        } catch {
-          dbFieldIds.forEach(function (id) { metricsStale.add(id); });
+        } catch (err) {
+          const reason = err && /timeout/.test(err.message) ? "the dashboard took too long to load" : "the dashboard didn't load";
+          dbFieldIds.forEach(function (id) {
+            metricsStale.add(id);
+            metricsStaleReason[id] = reason;
+          });
         }
       }
 
       const now = new Date();
+      const staleCount = dashboards.reduce(function (n, db) {
+        return n + (db.fields || []).filter(function (f) { return metricsStale.has(f.id); }).length;
+      }, 0);
       metricsBarStatus.textContent = anySuccess
-        ? "Updated " + now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        ? "Updated " + now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
+          (staleCount ? " (" + staleCount + " not refreshed)" : "")
         : "Refresh failed";
       renderMetricsBar();
     } finally {
       metricsScraperBusy = false;
     }
+    // Refresh was clicked while this pass was running: run once more so the
+    // click isn't silently dropped.
+    if (metricsRefreshQueued) {
+      metricsRefreshQueued = false;
+      await scrapeMetrics();
+    }
+  }
+
+  // When a dashboard read comes back empty, says why if the scraper ended up on
+  // a sign-in page or another site instead of the dashboard.
+  function describeMissingPage(webview, dashboardUrl) {
+    let current;
+    let expected;
+    try {
+      current = new URL(webview.getURL());
+      expected = new URL(dashboardUrl);
+    } catch {
+      return null;
+    }
+    if (/(^|\/)(login|signin|sign_in|sso)(\/|$)/i.test(current.pathname) || current.hostname !== expected.hostname) {
+      return "signed out of " + expected.hostname + "? Open the dashboard in a tab and sign in";
+    }
+    return null;
   }
 
   function scheduleNextMetricsPoll() {
@@ -399,6 +505,11 @@
   });
 
   btnMetricsRefresh.addEventListener("click", function () {
+    if (metricsScraperBusy) {
+      metricsRefreshQueued = true;
+      metricsBarStatus.textContent = "Refreshing… (again after this pass)";
+      return;
+    }
     stopMetricsPoll();
     scrapeMetrics().finally(function () {
       if (appSettings.metricsBarEnabled &&
