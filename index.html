@@ -14,9 +14,6 @@
       <div id="webview-area">
         <!-- Tab Bar -->
         <div id="tab-bar">
-          <button type="button" id="btn-back" class="nav-btn" title="Go back (Alt+Left)" disabled>&#8249;</button>
-          <button type="button" id="btn-forward" class="nav-btn" title="Go forward (Alt+Right)" disabled>&#8250;</button>
-          <button type="button" id="btn-refresh" class="nav-btn" title="Refresh (F5)">&#8635;</button>
           <div id="tab-list"></div>
           <button type="button" id="btn-new-tab" title="New tab">+</button>
           <button type="button" id="btn-downloads" class="nav-btn" title="Downloads">&#8659;</button>
@@ -25,6 +22,13 @@
               <path d="M12 22c1.1 0 2-.9 2-2h-4a2 2 0 0 0 2 2zm6-6V11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
             </svg>
           </button>
+        </div>
+        <!-- Address Bar: the active tab's URL; type a URL and press Enter to go there -->
+        <div id="address-bar">
+            <button type="button" id="btn-back" class="nav-btn" title="Go back (Alt+Left)" disabled>&#8249;</button>
+            <button type="button" id="btn-forward" class="nav-btn" title="Go forward (Alt+Right)" disabled>&#8250;</button>
+            <button type="button" id="btn-refresh" class="nav-btn" title="Refresh (F5)">&#8635;</button>
+            <input type="text" id="address-input" placeholder="Type a URL and press Enter" title="Address (Ctrl+L)" aria-label="Address" autocomplete="off" spellcheck="false" />
         </div>
         <!-- Find Bar (shown on Ctrl+F) -->
         <div id="find-bar">
@@ -129,6 +133,7 @@
       ▶<br />P<br />A<br />N<br />E<br />L
     </button>
 
+    <script src="address-bar.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

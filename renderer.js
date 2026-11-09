@@ -30,6 +30,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnBack = document.getElementById("btn-back");
   const btnForward = document.getElementById("btn-forward");
   const btnRefresh = document.getElementById("btn-refresh");
+  const addressBar = document.getElementById("address-bar");
+  const addressInput = document.getElementById("address-input");
 
   // --- Find Bar Elements ---
   const findBar = document.getElementById("find-bar");
@@ -951,6 +953,7 @@ document.addEventListener("DOMContentLoaded", function () {
       titleSpan: titleSpan,
       title: "Loading...",
       pinned: false,
+      pendingAddress: null, // URL typed in the address bar that hasn't committed yet
       _listeners: _listeners,
     };
     tabs.push(tabData);
@@ -1052,6 +1055,10 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     on(webview, "did-stop-loading", function () {
+      if (tabData.pendingAddress) {
+        tabData.pendingAddress = null;
+        if (activeTabId === id) updateAddressBar();
+      }
       updateTabTitle();
       saveTabSession();
     });
@@ -1069,15 +1076,19 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     on(webview, "did-navigate", function () {
+      tabData.pendingAddress = null;
       updateTabTitle();
       saveTabSession();
-      if (activeTabId === id) updateNavButtons();
+      if (activeTabId === id) { updateNavButtons(); updateAddressBar(); }
     });
 
-    on(webview, "did-navigate-in-page", function () {
+    on(webview, "did-navigate-in-page", function (e) {
       updateTabTitle();
       saveTabSession();
-      if (activeTabId === id) updateNavButtons();
+      if (activeTabId === id) {
+        updateNavButtons();
+        if (e.isMainFrame !== false) updateAddressBar();
+      }
     });
 
     on(webview, "found-in-page", function (e) {
@@ -1118,6 +1129,103 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  // ==================== Address Bar ====================
+  // Shows the active tab's URL. While the user is typing in it, navigation in
+  // the tab doesn't overwrite what they typed.
+  function updateAddressBar(force) {
+    if (!force && document.activeElement === addressInput) return;
+    const tab = tabs.find(function (t) { return t.id === activeTabId; });
+    const wv = tab ? tab.webview : null;
+    let url = "";
+    if (tab && tab.pendingAddress) {
+      // Until a URL typed here commits, keep showing it rather than the old page.
+      url = tab.pendingAddress;
+    } else if (wv) {
+      try { url = wv.getURL(); } catch { /* webview not ready yet */ }
+    }
+    addressInput.value = window.AddressBar.displayAddress(url);
+    addressInput.classList.remove("invalid");
+  }
+
+  function focusAddressBar() {
+    const wv = getActiveWebview();
+    if (wv) try { wv.blur(); } catch { /* ignore */ }
+    window.focus();
+    addressInput.focus();
+    addressInput.select();
+  }
+
+  function navigateFromAddressBar() {
+    const url = window.AddressBar.parseAddress(addressInput.value);
+    if (!url) {
+      addressInput.classList.add("invalid");
+      addressInput.select();
+      return;
+    }
+    const tab = tabs.find(function (t) { return t.id === activeTabId; });
+    if (!tab) { createTab(url, { activate: true }); return; }
+    const wv = tab.webview;
+    addressInput.classList.remove("invalid");
+    addressInput.value = url;
+    tab.pendingAddress = url;
+    try {
+      const loading = wv.loadURL(url);
+      // loadURL rejects when a load is cut short (e.g. a redirect); the page
+      // still navigates, so only log it.
+      if (loading && typeof loading.catch === "function") {
+        loading.catch(function (err) { console.warn("[Address] loadURL:", err && err.message); });
+      }
+    } catch (err) { console.warn("[Address] loadURL:", err && err.message); }
+    wv.focus();
+  }
+
+  addressInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      navigateFromAddressBar();
+    } else if (e.key === "Escape") {
+      // Put back the tab's URL and hand focus back to the page.
+      e.stopPropagation();
+      updateAddressBar(true);
+      const wv = getActiveWebview();
+      if (wv) wv.focus(); else addressInput.blur();
+    }
+  });
+
+  addressInput.addEventListener("input", function () {
+    addressInput.classList.remove("invalid");
+  });
+
+  // Clicking in the box selects the whole URL the first time, like a browser.
+  let addressSelectOnClick = false;
+  addressInput.addEventListener("mousedown", function () {
+    addressSelectOnClick = document.activeElement !== addressInput;
+  });
+  addressInput.addEventListener("mouseup", function (e) {
+    if (addressSelectOnClick && addressInput.selectionStart === addressInput.selectionEnd) {
+      e.preventDefault();
+      addressInput.select();
+    }
+    addressSelectOnClick = false;
+  });
+
+  addressInput.addEventListener("blur", function () {
+    updateAddressBar();
+  });
+
+  // As with the side panel: a focused webview keeps keyboard focus unless the
+  // window explicitly takes it back before the click lands.
+  addressBar.addEventListener("mousedown", function (e) {
+    if (e.target !== addressInput) return;
+    const wv = getActiveWebview();
+    if (wv && document.activeElement === wv) {
+      try { wv.blur(); } catch { /* ignore */ }
+      window.focus();
+    }
+  });
+
+  window.backupAPI.onFocusAddressBar(focusAddressBar);
+
   function activateTab(id) {
     // Stop an active find so it doesn't persist in a background tab.
     if (findActive && activeTabId && activeTabId !== id) {
@@ -1148,6 +1256,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     updateNavButtons();
+    updateAddressBar(true);
     const activated = tabs.find(function (t) { return t.id === id; });
     if (activated) _busEmit("tab:activated", { tabId: id, webview: activated.webview });
 
