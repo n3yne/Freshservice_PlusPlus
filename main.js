@@ -6,6 +6,7 @@ const fs = require("fs");
 const fsp = fs.promises;
 const { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings, findLegacyUserDataDir } = require("./utils");
 const pluginManager = require("./plugin-manager");
+const { installPasskeyAccountChooser } = require("./webauthn");
 
 // Keep using the Freshservice++ data folder after the rename to MSP++. This must
 // run before anything touches userData (the single-instance lock, sessions).
@@ -1026,6 +1027,14 @@ electron.app.whenReady().then(async () => {
   pluginManager.updateSettings(initialSettings);
 
   installSiteUserAgent();
+
+  // Passkey sign-in with no username typed can find several accounts on a security
+  // key; Electron has no chooser of its own and would fail the sign-in without this.
+  installPasskeyAccountChooser(
+    electron.session.defaultSession,
+    electron.dialog,
+    () => electron.BrowserWindow.getFocusedWindow() || mainWindow || null,
+  );
 
   registerIpcHandlers();
   createWindow();
