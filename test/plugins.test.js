@@ -68,6 +68,16 @@ describe("metrics-bar validateSettings", () => {
     })).toBe(false);
   });
 
+  test("accepts an optional apiQuery string on a field and rejects bad ones", () => {
+    const withQuery = (apiQuery) => ({
+      metricsBarDashboards: [{ id: "db1", url: "https://x.com", fields: [{ id: "f1", label: "L", selector: ".s", apiQuery }] }],
+    });
+    expect(validateMetrics(withQuery("agent_id:1 AND status:2"))).toBe(true);
+    expect(validateMetrics(withQuery(""))).toBe(true);
+    expect(validateMetrics(withQuery(5))).toBe(false);
+    expect(validateMetrics(withQuery("x".repeat(501)))).toBe(false);
+  });
+
   // metricsProgressEnabled
   test("accepts boolean metricsProgressEnabled", () => {
     expect(validateMetrics({ metricsProgressEnabled: true })).toBe(true);

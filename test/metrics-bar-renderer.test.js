@@ -34,7 +34,7 @@ function makeElement(tag) {
 
 // reads: array of results executeJavaScript returns in turn (the last repeats).
 // loadEvent: "finish" (default), or a did-fail-load event object, or "never".
-function setup({ settings, reads, finalUrl, loadEvent = "finish", cached }) {
+function setup({ settings, reads, finalUrl, loadEvent = "finish", cached, invoke }) {
   const byId = {};
   const getById = (id) => (byId[id] = byId[id] || makeElement("div"));
   let scraper = null;
@@ -80,6 +80,7 @@ function setup({ settings, reads, finalUrl, loadEvent = "finish", cached }) {
       getSettings: () => settings,
       events: { on: (name, fn) => { listeners[name] = fn; } },
       browser: { newTab: () => {} },
+      invoke: invoke || (async () => { throw new Error("no handler"); }),
     },
     backupAPI: { saveSettings: () => {} },
   };
@@ -197,5 +198,68 @@ describe("metrics bar scraping", () => {
     // Two passes, each needs two matching reads.
     expect(t.reads()).toBe(4);
     expect(t.status.textContent).toMatch(/^Updated /);
+  });
+
+  describe("Freshservice API queries", () => {
+    const API_SETTINGS = {
+      metricsBarEnabled: true,
+      metricsBarInterval: 15,
+      metricsWorkDays: [1, 2, 3, 4, 5],
+      metricsWorkWeekEndDay: 5,
+      metricsBarDashboards: [{
+        id: "db1",
+        url: "https://acme.freshservice.com/a/dashboard/7",
+        fields: [
+          { id: "open", label: "Open", selector: ".open", apiQuery: "status:2" },
+          { id: "done", label: "Closed", selector: ".done", apiQuery: "status:4 AND updated_at:>'{weekStart}'" },
+        ],
+      }],
+    };
+
+    test("uses the API counts and skips loading the dashboard when every field has a query", async () => {
+      jest.setSystemTime(new Date(2026, 10, 12, 10, 0)); // Thursday 12 Nov 2026
+      const calls = [];
+      const t = setup({
+        settings: API_SETTINGS,
+        reads: [{ open: "1", done: "1" }],
+        invoke: async (plugin, action, data) => {
+          calls.push([plugin, action, data]);
+          return { count: data.query === "status:2" ? 17 : 5 };
+        },
+      });
+      await jest.advanceTimersByTimeAsync(100);
+      expect(calls).toHaveLength(2);
+      expect(calls[0][0]).toBe("freshservice");
+      expect(calls[0][1]).toBe("count-tickets");
+      expect(calls[1][2].vars).toEqual({ today: "2026-11-12", weekStart: "2026-11-09", monthStart: "2026-11-01" });
+      expect(cardValues(t.items)).toEqual(["17", "5"]);
+      expect(t.items.children[0].title).toMatch(/From the Freshservice API/);
+      expect(t.reads()).toBe(0);
+      expect(t.scraper.src).toBe("about:blank");
+      expect(t.status.textContent).toMatch(/^Updated /);
+    });
+
+    test("scrapes only the fields whose API query failed, and keeps the API error in the reason", async () => {
+      const t = setup({
+        settings: API_SETTINGS,
+        reads: [{ done: null }],
+        invoke: async (plugin, action, data) => (data.query === "status:2"
+          ? { count: 3 }
+          : { error: "Freshservice API rate limit reached (429)." }),
+        cached: { done: { value: "4", ts: Date.now() } },
+      });
+      await jest.advanceTimersByTimeAsync(40000);
+      expect(cardValues(t.items)).toEqual(["3", "4"]);
+      const staleMarker = t.items.children[1].children[2];
+      expect(staleMarker.title).toMatch(/API: Freshservice API rate limit reached \(429\)\.; dashboard: the value wasn't found/);
+      expect(t.status.textContent).toMatch(/\(1 not refreshed\)/);
+    });
+
+    test("falls back to the dashboard when the Freshservice plugin isn't there", async () => {
+      const t = setup({ settings: API_SETTINGS, reads: [{ open: "8", done: "9" }] });
+      await jest.advanceTimersByTimeAsync(10000);
+      expect(cardValues(t.items)).toEqual(["8", "9"]);
+      expect(t.items.children[0].title).toMatch(/From the dashboard/);
+    });
   });
 });

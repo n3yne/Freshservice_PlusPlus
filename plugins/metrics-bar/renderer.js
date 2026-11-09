@@ -42,6 +42,8 @@
   let metricsRescheduleNeeded = false;
   let metricsRefreshQueued = false;
   const metricsStaleReason = {};
+  // "api" or "dashboard": where each field's current value came from.
+  const metricsSource = {};
   const metricsValues = {};
   const metricsCache = {};
   const metricsStale = new Set();
@@ -306,6 +308,9 @@
           }
         }
 
+        if (metricsSource[f.id] === "api") tooltipLines.push("From the Freshservice API");
+        else if (metricsSource[f.id] === "dashboard") tooltipLines.push("From the dashboard");
+
         if (db.url) {
           card.style.cursor = "pointer";
           tooltipLines.push("Click to open dashboard");
@@ -320,6 +325,72 @@
     });
   }
 
+  function localDateString(d) {
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+
+  // Dates that API queries can use as {today}, {weekStart} and {monthStart}.
+  // The work week starts on the first work day after the configured week-end day.
+  function metricsDateVars(settings, now) {
+    now = now || new Date();
+    const workDays = settings.metricsWorkDays || [1, 2, 3, 4, 5];
+    const weekEndDay = typeof settings.metricsWorkWeekEndDay === "number" ? settings.metricsWorkWeekEndDay : 5;
+    let weekStartDay = 1;
+    for (let i = 1; i <= 7; i++) {
+      const c = (weekEndDay + i) % 7;
+      if (workDays.includes(c)) { weekStartDay = c; break; }
+    }
+    const weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() - (now.getDay() - weekStartDay + 7) % 7);
+    return {
+      today: localDateString(now),
+      weekStart: localDateString(weekStart),
+      monthStart: localDateString(new Date(now.getFullYear(), now.getMonth(), 1)),
+    };
+  }
+
+  // Reads every field that has an API query through the Freshservice plugin.
+  // Returns the ids it filled and the error for each one it couldn't, so the
+  // dashboard scrape can cover those.
+  async function readApiFields(dashboards) {
+    const done = new Set();
+    const errors = {};
+    let anySuccess = false;
+    const fields = [];
+    dashboards.forEach(function (db) {
+      (db.fields || []).forEach(function (f) {
+        if (typeof f.apiQuery === "string" && f.apiQuery.trim()) fields.push(f);
+      });
+    });
+    if (!fields.length) return { done, errors, anySuccess };
+    const vars = metricsDateVars(appSettings);
+    const now = Date.now();
+    for (const f of fields) {
+      let res;
+      try {
+        res = await window.pluginAPI.invoke("freshservice", "count-tickets", { query: f.apiQuery, vars: vars });
+      } catch {
+        res = { error: "the Freshservice plugin isn't available" };
+      }
+      if (res && typeof res.count === "number") {
+        const value = String(res.count);
+        metricsValues[f.id] = value;
+        metricsCache[f.id] = { value: value, ts: now };
+        metricsStale.delete(f.id);
+        delete metricsStaleReason[f.id];
+        metricsSource[f.id] = "api";
+        done.add(f.id);
+        anySuccess = true;
+      } else {
+        errors[f.id] = (res && res.error) || "no count returned";
+      }
+    }
+    if (anySuccess) {
+      try { localStorage.setItem("fspp-metrics-cache", JSON.stringify(metricsCache)); } catch { /* storage unavailable */ }
+    }
+    return { done, errors, anySuccess };
+  }
+
   async function scrapeMetrics() {
     if (metricsScraperBusy) return;
     const dashboards = (appSettings.metricsBarDashboards || []).filter(function (db) {
@@ -332,9 +403,20 @@
     let anySuccess = false;
 
     try {
+      // 1. Fields with a Freshservice API query: ask the API first.
+      const api = await readApiFields(dashboards);
+      if (api.anySuccess) anySuccess = true;
+
+      // 2. Everything else, and API fields whose query failed: scrape the dashboard.
       for (let i = 0; i < dashboards.length; i++) {
         const db = dashboards[i];
-        const dbFieldIds = (db.fields || []).map(function (f) { return f.id; });
+        const dbFieldIds = (db.fields || []).map(function (f) { return f.id; })
+          .filter(function (id) { return !api.done.has(id); });
+        if (!dbFieldIds.length) continue;
+        const markStale = function (id, reason) {
+          metricsStale.add(id);
+          metricsStaleReason[id] = api.errors[id] ? "API: " + api.errors[id] + "; dashboard: " + reason : reason;
+        };
         try {
           const sep = db.url.includes("?") ? "&" : "?";
           await loadScraperPage(metricsScraperWebview, db.url + sep + "_ms=" + Date.now(), SCRAPE_TIMING.loadTimeoutMs);
@@ -343,7 +425,7 @@
           // added in Settings during a refresh is picked up.
           const currentFields = function () {
             const live = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === db.id; });
-            return live ? (live.fields || []) : db.fields;
+            return (live ? (live.fields || []) : db.fields).filter(function (f) { return !api.done.has(f.id); });
           };
           const results = await readUntilSettled(
             function () { return metricsScraperWebview.executeJavaScript(buildMetricsScrapeScript(currentFields())); },
@@ -365,18 +447,17 @@
                 if (cached && cached.prevValue !== undefined && results[id] === cached.prevValue &&
                     now - cached.ts < WEEK_RESET_STALE_WINDOW_MS &&
                     parseFloat(String(results[id]).replace(/[^0-9.]/g, "")) !== 0) {
-                  metricsStale.add(id);
-                  metricsStaleReason[id] = "the dashboard still shows last week's value";
+                  markStale(id, "the dashboard still shows last week's value");
                 } else {
                   metricsValues[id] = results[id];
                   metricsCache[id] = { value: results[id], ts: now };
                   metricsStale.delete(id);
                   delete metricsStaleReason[id];
+                  metricsSource[id] = "dashboard";
                   hasNewValues = true;
                 }
               } else {
-                metricsStale.add(id);
-                metricsStaleReason[id] = missingReason || "the value wasn't found on the dashboard";
+                markStale(id, missingReason || "the value wasn't found on the dashboard");
               }
             });
             if (hasNewValues) {
@@ -384,17 +465,11 @@
             }
             anySuccess = true;
           } else {
-            dbFieldIds.forEach(function (id) {
-              metricsStale.add(id);
-              metricsStaleReason[id] = missingReason || "the dashboard couldn't be read";
-            });
+            dbFieldIds.forEach(function (id) { markStale(id, missingReason || "the dashboard couldn't be read"); });
           }
         } catch (err) {
           const reason = err && /timeout/.test(err.message) ? "the dashboard took too long to load" : "the dashboard didn't load";
-          dbFieldIds.forEach(function (id) {
-            metricsStale.add(id);
-            metricsStaleReason[id] = reason;
-          });
+          dbFieldIds.forEach(function (id) { markStale(id, reason); });
         }
       }
 

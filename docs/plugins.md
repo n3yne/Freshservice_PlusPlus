@@ -297,6 +297,7 @@ Renderer scripts can also call the bundled plugins, so a plugin can use the app'
 | `invoke("freshservice", "get-ticket", { ticketId, host })` | `{ text }` or `{ error, skipped? }` | Plain-text ticket, description and conversation. |
 | `invoke("freshservice", "search-solutions", { term })` | `{ articles }` or `{ error }` | Up to 10 Solutions articles: `{ id, title, status, updatedAt, url, text }`, with `text` cut to a short snippet. |
 | `invoke("freshservice", "get-solution-article", { id })` | `{ article }` or `{ error }` | One article with its text (up to 6,000 characters) and a `truncated` flag. |
+| `invoke("freshservice", "count-tickets", { query, vars? })` | `{ count, query }` or `{ error, skipped? }` | Number of tickets matching a [ticket filter query](https://api.freshservice.com/) (no double quotes, 512 characters at most). `{name}` placeholders are filled from `vars`, which may only hold `YYYY-MM-DD` dates. |
 
 See `plugins/solutions-chat/renderer.js` for a plugin built on `pluginAPI.sites` and the AI Features handler.
 

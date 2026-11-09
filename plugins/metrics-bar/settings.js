@@ -311,6 +311,7 @@
 
       wrap.appendChild(row);
       wrap.appendChild(selRow);
+      wrap.appendChild(buildApiQueryRow(dbId, f));
 
       if (appSettings.metricsProgressEnabled) {
         const targetRow = document.createElement("div");
@@ -339,6 +340,100 @@
 
       containerEl.appendChild(wrap);
     });
+  }
+
+  function localDateString(d) {
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+
+  // Same dates the metrics bar passes for {today}, {weekStart} and {monthStart}.
+  function metricsDateVars(settings) {
+    const now = new Date();
+    const workDays = settings.metricsWorkDays || [1, 2, 3, 4, 5];
+    const weekEndDay = typeof settings.metricsWorkWeekEndDay === "number" ? settings.metricsWorkWeekEndDay : 5;
+    let weekStartDay = 1;
+    for (let i = 1; i <= 7; i++) {
+      const c = (weekEndDay + i) % 7;
+      if (workDays.includes(c)) { weekStartDay = c; break; }
+    }
+    const weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() - (now.getDay() - weekStartDay + 7) % 7);
+    return {
+      today: localDateString(now),
+      weekStart: localDateString(weekStart),
+      monthStart: localDateString(new Date(now.getFullYear(), now.getMonth(), 1)),
+    };
+  }
+
+  // Optional Freshservice ticket filter query for a field. When set, the
+  // metrics bar shows the query's ticket count and only scrapes the dashboard
+  // for this field if the API call fails.
+  function buildApiQueryRow(dbId, f) {
+    const apiRow = document.createElement("div");
+    apiRow.className = "metrics-field-selector-row";
+    const apiLabel = document.createElement("span");
+    apiLabel.className = "metrics-field-selector-label";
+    apiLabel.textContent = "API query:";
+    const apiInput = document.createElement("input");
+    apiInput.type = "text";
+    apiInput.className = "settings-text-input metrics-field-selector-input";
+    apiInput.value = f.apiQuery || "";
+    apiInput.maxLength = 500;
+    apiInput.spellcheck = false;
+    apiInput.placeholder = "optional, e.g. agent_id:123 AND status:2";
+    apiInput.title =
+      "Freshservice ticket filter query. When set, the bar shows how many tickets match it, " +
+      "and reads the dashboard only if the API call fails.\n" +
+      "Fields: agent_id, group_id, status (2 Open, 3 Pending, 4 Resolved, 5 Closed), priority, " +
+      "tag, created_at, updated_at, due_by and custom fields. Use single quotes for text and dates.\n" +
+      "Placeholders: {today}, {weekStart}, {monthStart}, e.g. updated_at:>'{weekStart}'.\n" +
+      "Needs the API key in Settings → Freshservice.";
+    const apiTest = document.createElement("button");
+    apiTest.type = "button";
+    apiTest.className = "btn btn-small btn-secondary";
+    apiTest.textContent = "Test";
+    const apiResult = document.createElement("span");
+    apiResult.className = "metrics-field-selector-label";
+
+    apiInput.addEventListener("change", function () {
+      const updated = apiInput.value.replace(/\s+/g, " ").trim();
+      const db_ = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
+      if (db_) db_.fields = (db_.fields || []).map(function (x) {
+        if (x.id !== f.id) return x;
+        const next = Object.assign({}, x);
+        if (updated) next.apiQuery = updated; else delete next.apiQuery;
+        return next;
+      });
+      apiResult.textContent = "";
+      saveSettings();
+    });
+
+    apiTest.addEventListener("click", async function () {
+      const query = apiInput.value.trim();
+      if (!query) { apiInput.focus(); return; }
+      apiTest.disabled = true;
+      apiResult.textContent = "Testing…";
+      try {
+        const res = await window.backupAPI.pluginInvoke("plugin:freshservice:count-tickets", {
+          query: query,
+          vars: metricsDateVars(appSettings),
+        });
+        apiResult.textContent = res && typeof res.count === "number"
+          ? "→ " + res.count + " tickets"
+          : "✗ " + ((res && res.error) || "No count returned");
+        apiResult.title = res && res.query ? "Sent: " + res.query : "";
+      } catch {
+        apiResult.textContent = "✗ The Freshservice plugin isn't available";
+      } finally {
+        apiTest.disabled = false;
+      }
+    });
+
+    apiRow.appendChild(apiLabel);
+    apiRow.appendChild(apiInput);
+    apiRow.appendChild(apiTest);
+    apiRow.appendChild(apiResult);
+    return apiRow;
   }
 
   function renderDashboardList() {
