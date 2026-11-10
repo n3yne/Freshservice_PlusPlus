@@ -17,6 +17,7 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 - **Tab management** – Pin tabs, duplicate, close others, reopen closed tabs, copy URL, open in default browser (right-click any tab)
 - **Find in page** – `Ctrl+F` to search text on the current page
 - **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions; a badge on the download icon shows how many files finished since you last opened the panel (resets when you open it)
+- **Passkey sign-in** – Sites that offer "sign in with a passkey" (for example Microsoft sign-in) work in tabs. On Windows the Windows Hello prompt handles this PC's passkeys, security keys and phones (scan the QR code); when a security key holds several accounts for a site, the app asks which one to use
 - **Image context menu** – Right-click any image for **Copy Image** (copies pixel data to clipboard) and **Save Image As…** (native save dialog); image links open as downloads instead of new tabs
 
 ### Side Panel
@@ -288,4 +289,5 @@ For plugin development documentation — including the full API reference and a 
 - **Ticket number not detected** – Detection relies on the record URL (`/a/tickets/<id>`, `/a/changes/<id>`, …). You can always type an ID into the **Ticket / Reference ID** box manually.
 - **Metrics bar shows `—` or `(not found)`** – Open Settings → Metrics Bar, click **Test selectors** next to the relevant dashboard to trigger an immediate scrape and see per-field results. If a field still shows `(not found — check selector)`, use **Re-pick** on that field, wait for the dashboard to fully load in the picker, then click the correct value to recapture the selector.
 - **Metrics bar shows `⚠` on a card** – The last refresh for that field failed (network issue, dashboard changed, etc.). The value shown is the last successfully cached value. Hover the `⚠` to see when it was last updated. The app will retry on the next poll interval.
+- **Passkey sign-in doesn't offer Touch ID on macOS** – Electron only supports Touch ID passkeys in a signed build with a keychain entitlement, which the macOS build doesn't have yet. USB security keys still work. On Windows, passkeys go through Windows Hello, so check that Windows Hello is set up in Windows Settings → Accounts → Sign-in options.
 - **Blank screen or errors** – Press `Ctrl+Shift+I` to open DevTools and check the console.

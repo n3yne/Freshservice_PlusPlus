@@ -41,6 +41,7 @@
       "settings_renderer.js",
       "launch.js",
       "utils.js",
+      "webauthn.js",
       "plugin-manager.js",
       "index.html",
       "settings.html",
