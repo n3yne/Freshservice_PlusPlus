@@ -885,7 +885,7 @@ function registerIpcHandlers() {
     const currentVersion = electron.app.getVersion();
     try {
       const resp = await fetch(
-        "https://api.github.com/repos/n3yne/Freshservice_PlusPlus/releases/latest",
+        "https://api.github.com/repos/n3yne/MSP_PlusPlus/releases/latest",
         { headers: { "User-Agent": "MSP-PP/" + currentVersion } },
       );
       if (!resp.ok) return { error: `GitHub API error ${resp.status}`, currentVersion };

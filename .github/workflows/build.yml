@@ -121,7 +121,7 @@ jobs:
             echo "- **macOS** — \`.dmg\` disk image, drag to Applications to install"
             if [ -n "$PREV" ]; then
               echo ""
-              echo "**Full Changelog:** https://github.com/n3yne/Freshservice_PlusPlus/compare/${PREV}...${CURRENT}"
+              echo "**Full Changelog:** https://github.com/n3yne/MSP_PlusPlus/compare/${PREV}...${CURRENT}"
             fi
           } > release_notes.md
 
