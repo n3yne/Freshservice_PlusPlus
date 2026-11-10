@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld("backupAPI", {
   onFindInPage: (callback) => onIpc("find-in-page", () => callback()),
   onFocusAddressBar: (callback) => onIpc("focus-address-bar", () => callback()),
   onRefreshAllTabs: (callback) => onIpc("refresh-all-tabs", () => callback()),
+  onReloadActiveTab: (callback) =>
+    onIpc("reload-active-tab", (event, options) => callback(options || {})),
   onSettingsChanged: (callback) =>
     onIpc("settings-changed", (event, settings) => callback(settings)),
   openSettingsWindow: () => ipcRenderer.invoke("open-settings-window"),

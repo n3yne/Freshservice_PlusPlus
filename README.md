@@ -131,7 +131,8 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 | `Ctrl+,` | Open Settings |
 | `Alt+Left` | Navigate back |
 | `Alt+Right` | Navigate forward |
-| `F5` | Refresh active tab |
+| `F5` or `Ctrl+R` | Refresh active tab |
+| `Ctrl+Shift+R` | Refresh active tab, ignoring the cache |
 | `Ctrl+Alt+R` | Refresh all tabs |
 | `Ctrl+T` | New tab |
 | `Ctrl+W` | Close tab |

@@ -613,6 +613,8 @@
         pushInFlight: false,
         pullInFlight: false,
         lastWatcherMsgAt: 0,
+        queuedWatcherMsgs: new Map(), // kind → newest message that arrived too soon
+        watcherFlushTimer: null,
         consecutivePushFailures: 0,
       });
     }
@@ -623,6 +625,7 @@
     const s = syncStates.get(tabId);
     if (s) {
       clearTimeout(s.pushTimer);
+      clearTimeout(s.watcherFlushTimer);
       clearTimeout(s.pullTimer);
       syncStates.delete(tabId);
     }
@@ -1867,12 +1870,31 @@
       const site = siteForTab(tabData);
       if (!site || !site.notes || !msg.startsWith(site.notes.watcherPrefix)) return;
       const wState = getSyncState(tabId);
-      const now = Date.now();
-      if (now - wState.lastWatcherMsgAt < SYNC_WATCHER_MIN_INTERVAL) return;
-      wState.lastWatcherMsgAt = now;
       let payload;
       try { payload = JSON.parse(msg.slice(site.notes.watcherPrefix.length)); } catch { return; /* malformed payload */ }
-      handleWatcherMessage(tabId, payload, site);
+      const now = Date.now();
+      const wait = SYNC_WATCHER_MIN_INTERVAL - (now - wState.lastWatcherMsgAt);
+      if (wait <= 0 && wState.queuedWatcherMsgs.size === 0) {
+        wState.lastWatcherMsgAt = now;
+        handleWatcherMessage(tabId, payload, site);
+        return;
+      }
+      // Too soon after the last one. Dropping it could lose the only "fields" or
+      // final "input" message, leaving sync stuck or a step behind, so keep the
+      // newest message of each kind and handle them when the gap has passed.
+      const kind = String(payload && payload.kind);
+      if (!wState.queuedWatcherMsgs.has(kind) && wState.queuedWatcherMsgs.size >= 8) return;
+      wState.queuedWatcherMsgs.set(kind, payload);
+      if (wState.watcherFlushTimer) return;
+      wState.watcherFlushTimer = setTimeout(function () {
+        wState.watcherFlushTimer = null;
+        const queued = Array.from(wState.queuedWatcherMsgs.values());
+        wState.queuedWatcherMsgs.clear();
+        wState.lastWatcherMsgAt = Date.now();
+        const siteNow = siteForTab(tabData);
+        if (!siteNow || siteNow !== site || !tabs.includes(tabData)) return;
+        queued.forEach(function (p) { handleWatcherMessage(tabId, p, site); });
+      }, Math.max(wait, 1));
     });
 
     on("did-navigate", function () {
@@ -1886,6 +1908,10 @@
         navState.fsFocused = false;
         navState.siteId = null;
         navState.siteState = {};
+        // Messages still waiting belong to the page that was just left.
+        clearTimeout(navState.watcherFlushTimer);
+        navState.watcherFlushTimer = null;
+        navState.queuedWatcherMsgs.clear();
       }
       if (activeTabId === tabId) updateSyncButtons();
     });
