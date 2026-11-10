@@ -4,7 +4,7 @@
 
 An Electron-based wrapper for MSP and ticketing web apps (Freshservice and ConnectWise Manage today) that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
 
-**Current version:** 0.7.0
+**Current version:** 0.7.1
 
 > MSP++ was called **Freshservice++** before 0.6.0. Your settings, notes and sign-ins carry over: the app keeps using the existing Freshservice++ data folder.
 
@@ -170,7 +170,7 @@ Click **📁 Open Folder** in the app to jump there directly.
 
 Each release has two Windows downloads:
 
-- **`MSP-PlusPlus-Setup-<version>.exe`** – Installer (called `MSP++ Setup <version>.exe` up to 0.7.0). It asks whether to install just for you (default: `%LOCALAPPDATA%\Programs\MSP++`, no admin rights needed) or for everyone on the PC (`C:\Program Files\MSP++`, needs admin), and lets you change the folder. It adds Start menu and desktop shortcuts. Running a newer installer updates the folder you picked the first time without asking again, so the path to `MSP++.exe` never changes. From the version after 0.7.0 on, the installed app updates itself (see [Notifications](#notifications)); on 0.7.0 or earlier, install the next version by hand once. Close MSP++ before running an installer by hand. Uninstall from Windows Settings → Apps; your data folder is kept.
+- **`MSP-PlusPlus-Setup-<version>.exe`** – Installer (called `MSP++ Setup <version>.exe` up to 0.7.0). It asks whether to install just for you (default: `%LOCALAPPDATA%\Programs\MSP++`, no admin rights needed) or for everyone on the PC (`C:\Program Files\MSP++`, needs admin), and lets you change the folder. It adds Start menu and desktop shortcuts. Running a newer installer updates the folder you picked the first time without asking again, so the path to `MSP++.exe` never changes. From 0.7.1 on, the installed app updates itself (see [Notifications](#notifications)); on 0.7.0 or earlier, install the next version by hand once. Close MSP++ before running an installer by hand. Uninstall from Windows Settings → Apps; your data folder is kept.
 - **`MSP++ <version>.exe`** – Portable. Runs from wherever you put it, nothing is installed. It tells you when a new version is out but can't update itself.
 
 Both use the same data folder (see [Where Are Backups Stored?](#where-are-backups-stored)), so you can switch between them.
