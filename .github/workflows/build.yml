@@ -117,7 +117,7 @@ jobs:
             echo "## MSP++ ${CURRENT}"
             echo ""
             echo "### Downloads"
-            echo "- **Windows installer** — \`MSP++ Setup ${CURRENT#v}.exe\`, installs to \`%LOCALAPPDATA%\\Programs\\MSP++\` (no admin needed); updates install over the same folder"
+            echo "- **Windows installer** — \`MSP++ Setup ${CURRENT#v}.exe\`, installs for just you (\`%LOCALAPPDATA%\\Programs\\MSP++\`, no admin) or everyone (\`C:\\Program Files\\MSP++\`); updates install over the same folder"
             echo "- **Windows portable** — \`MSP++ ${CURRENT#v}.exe\`, no installation required"
             echo "- **macOS** — \`.dmg\` disk image, drag to Applications to install"
             if [ -n "$PREV" ]; then

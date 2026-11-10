@@ -170,7 +170,7 @@ Click **📁 Open Folder** in the app to jump there directly.
 
 Each release has two Windows downloads:
 
-- **`MSP++ Setup <version>.exe`** – Installer. Installs to `%LOCALAPPDATA%\Programs\MSP++\MSP++.exe` for the current user (no admin rights needed) and adds Start menu and desktop shortcuts. Running a newer installer updates that same folder, so the path to `MSP++.exe` never changes. Close MSP++ before updating. Uninstall from Windows Settings → Apps; your data folder is kept.
+- **`MSP++ Setup <version>.exe`** – Installer. It asks whether to install just for you (default: `%LOCALAPPDATA%\Programs\MSP++`, no admin rights needed) or for everyone on the PC (`C:\Program Files\MSP++`, needs admin), and lets you change the folder. It adds Start menu and desktop shortcuts. Running a newer installer updates the folder you picked the first time without asking again, so the path to `MSP++.exe` never changes. Close MSP++ before updating. Uninstall from Windows Settings → Apps; your data folder is kept.
 - **`MSP++ <version>.exe`** – Portable. Runs from wherever you put it, nothing is installed.
 
 Both use the same data folder (see [Where Are Backups Stored?](#where-are-backups-stored)), so you can switch between them.
