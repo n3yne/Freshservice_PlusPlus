@@ -39,6 +39,7 @@
       "preload.js",
       "renderer.js",
       "address-bar.js",
+      "page-zoom.js",
       "settings_renderer.js",
       "launch.js",
       "utils.js",

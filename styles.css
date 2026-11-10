@@ -239,6 +239,29 @@ body {
   border-color: var(--warning);
 }
 
+/* Page zoom level, shown only when the active tab is not at 100%. Click to reset. */
+.zoom-badge {
+  height: 22px;
+  margin-left: 4px;
+  padding: 0 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 11px;
+  color: var(--text);
+  font-size: 11px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.zoom-badge:hover {
+  border-color: var(--primary);
+}
+
+.zoom-badge[hidden] {
+  display: none;
+}
+
 /* ===== Find Bar ===== */
 #find-bar {
   display: none;
