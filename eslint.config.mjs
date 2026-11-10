@@ -38,6 +38,20 @@ export default [
     },
   },
 
+  // Shared by the window (script tag) and the tests (require)
+  {
+    files: ["address-bar.js"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "script",
+      globals: { ...globals.browser, module: "writable" },
+    },
+    rules: {
+      "no-var": "error",
+      "prefer-const": "error",
+    },
+  },
+
   // Tests
   {
     files: ["test/**/*.js"],

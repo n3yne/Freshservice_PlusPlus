@@ -559,6 +559,15 @@ function setApplicationMenu() {
             }
           },
         },
+        {
+          label: "Focus Address Bar",
+          accelerator: "CmdOrCtrl+L",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("focus-address-bar");
+            }
+          },
+        },
         { role: "toggleDevTools" },
         { type: "separator" },
         { role: "resetZoom" },
