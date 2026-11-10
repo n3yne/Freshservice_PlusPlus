@@ -32,7 +32,7 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build portable EXE
+      - name: Build portable EXE and installer
         run: npx electron-builder --win --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -117,7 +117,8 @@ jobs:
             echo "## MSP++ ${CURRENT}"
             echo ""
             echo "### Downloads"
-            echo "- **Windows** — Portable \`.exe\`, no installation required"
+            echo "- **Windows installer** — \`MSP++ Setup ${CURRENT#v}.exe\`, installs to \`%LOCALAPPDATA%\\Programs\\MSP++\` (no admin needed); updates install over the same folder"
+            echo "- **Windows portable** — \`MSP++ ${CURRENT#v}.exe\`, no installation required"
             echo "- **macOS** — \`.dmg\` disk image, drag to Applications to install"
             if [ -n "$PREV" ]; then
               echo ""

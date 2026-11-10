@@ -166,6 +166,16 @@ Click **📁 Open Folder** in the app to jump there directly.
 
 ## Getting Started
 
+### Installing on Windows
+
+Each release has two Windows downloads:
+
+- **`MSP++ Setup <version>.exe`** – Installer. Installs to `%LOCALAPPDATA%\Programs\MSP++\MSP++.exe` for the current user (no admin rights needed) and adds Start menu and desktop shortcuts. Running a newer installer updates that same folder, so the path to `MSP++.exe` never changes. Close MSP++ before updating. Uninstall from Windows Settings → Apps; your data folder is kept.
+- **`MSP++ <version>.exe`** – Portable. Runs from wherever you put it, nothing is installed.
+
+Both use the same data folder (see [Where Are Backups Stored?](#where-are-backups-stored)), so you can switch between them.
+
+
 ### Prerequisites
 - [Node.js](https://nodejs.org/) v20.19 or later (the release builds use Node 22)
 
@@ -188,8 +198,12 @@ npm test
 ### Build a Distributable
 
 ```bash
-# Windows portable .exe
-npm run build          # or: npm run build-portable
+# Windows portable .exe and installer
+npm run build
+
+# Just one of them
+npm run build-portable
+npm run build-installer
 
 # macOS .dmg
 npm run build-mac
