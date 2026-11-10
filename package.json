@@ -9,6 +9,7 @@
     "test": "jest",
     "build": "electron-builder --win",
     "build-portable": "electron-builder --win portable",
+    "build-installer": "electron-builder --win nsis",
     "build-mac": "electron-builder --mac"
   },
   "author": "",
@@ -51,9 +52,23 @@
     ],
     "win": {
       "target": [
-        "portable"
+        "portable",
+        "nsis"
       ],
       "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "selectPerMachineByDefault": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName} Setup ${version}.${ext}",
+      "shortcutName": "MSP++",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
     },
     "mac": {
       "target": [
