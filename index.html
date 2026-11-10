@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: blob: https: http:; font-src 'self' file: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: blob: https: http:; font-src 'self' file: data:; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />
     <title>MSP++</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -134,6 +134,7 @@
     </button>
 
     <script src="address-bar.js"></script>
+    <script src="safe-html.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

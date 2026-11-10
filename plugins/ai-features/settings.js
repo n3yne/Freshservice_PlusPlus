@@ -150,7 +150,14 @@
     function hasKeyFor(s, provider) {
       if (keyEnteredFor) return keyEnteredFor === provider;
       if (!s.aiApiKeySet) return false;
-      if (s.aiApiKeyProvider) return s.aiApiKeyProvider === provider;
+      if (s.aiApiKeyProvider) {
+        if (s.aiApiKeyProvider !== provider) return false;
+        // An Azure key only counts for the endpoint it was entered for.
+        if (provider === "azure" && s.aiApiKeyEndpoint && s.aiAzureEndpoint) {
+          try { return new URL(s.aiAzureEndpoint).origin === s.aiApiKeyEndpoint; } catch { return false; }
+        }
+        return true;
+      }
       return providerUsesModelList(provider);
     }
 

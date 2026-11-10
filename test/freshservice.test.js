@@ -122,6 +122,43 @@ describe("freshservice handlers", () => {
     expect(out.fsApiDomain).toBe("acme.freshservice.com");
   });
 
+  test("a new key is tied to the domain saved with it", () => {
+    const out = transformer({ fsApiKey: FAKE_KEY, fsApiDomain: "other.freshservice.com", fsApiKeyHost: "acme.freshservice.com" });
+    expect(out.fsApiKeyHost).toBe("other.freshservice.com");
+  });
+
+  test("changing the domain keeps the saved key tied to the old one, whatever the caller sends", () => {
+    const out = transformer({
+      fsApiDomain: "evil.example.com",
+      fsApiKeyEncrypted: "enc:" + FAKE_KEY,
+      fsApiKeyHost: "evil.example.com",
+    });
+    expect(out.fsApiKeyHost).toBe("acme.freshservice.com");
+
+    settings = { ...settings, fsApiKeyHost: "acme.freshservice.com" };
+    const again = transformer({ fsApiDomain: "evil.example.com", fsApiKeyEncrypted: "enc:" + FAKE_KEY });
+    expect(again.fsApiKeyHost).toBe("acme.freshservice.com");
+  });
+
+  test("a key saved before any domain is tied to the first domain entered", () => {
+    settings = { fsApiEnabled: true, fsApiDomain: "", fsApiKeyEncrypted: "enc:" + FAKE_KEY };
+    const out = transformer({ fsApiDomain: "acme.freshservice.com", fsApiKeyEncrypted: "enc:" + FAKE_KEY });
+    expect(out.fsApiKeyHost).toBe("acme.freshservice.com");
+  });
+
+  test("removing the key removes its tie", () => {
+    const out = transformer({ fsApiDomain: "acme.freshservice.com", fsApiKeyHost: "acme.freshservice.com" });
+    expect(out.fsApiKeyHost).toBeUndefined();
+  });
+
+  test("the saved key is never sent to a domain it was not entered for", async () => {
+    settings = { ...settings, fsApiKeyHost: "acme.freshservice.com", fsApiDomain: "evil.example.com" };
+    global.fetch = jest.fn();
+    const res = await handlers["get-ticket"]({ ticketId: "123" });
+    expect(res.error).toMatch(/entered for acme\.freshservice\.com/);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   test("get-ticket calls the v2 ticket and conversation endpoints with Basic auth", async () => {
     global.fetch = jest.fn(async (url) => {
       if (url.includes("/conversations")) {

@@ -40,19 +40,36 @@ module.exports = {
     }
     if (s.fsApiKey !== undefined && (typeof s.fsApiKey !== "string" || s.fsApiKey.length > 200)) return false;
     if (s.fsApiKeyEncrypted !== undefined && (typeof s.fsApiKeyEncrypted !== "string" || s.fsApiKeyEncrypted.length > 2000)) return false;
+    if (s.fsApiKeyHost !== undefined && (typeof s.fsApiKeyHost !== "string" || s.fsApiKeyHost.length > 300)) return false;
     return true;
   },
 
   init: function (api) {
 
     // Encrypt a newly entered key before it reaches disk; never write it in plain text.
+    //
+    // The key is also tied to the domain it was entered for (fsApiKeyHost), so
+    // changing the domain later can never send the saved key to a different
+    // server: the key has to be entered again. The tie comes from what is already
+    // saved, never from what the caller sent.
     api.registerSettingsTransformer(function (settings) {
-      if (settings.fsApiKey) {
+      const current = api.getSettings();
+      const newKey = Boolean(settings.fsApiKey);
+      if (newKey) {
         const encrypted = api.encryptCredential(settings.fsApiKey);
         if (encrypted) settings.fsApiKeyEncrypted = encrypted;
       }
       delete settings.fsApiKey;
       if (settings.fsApiDomain) settings.fsApiDomain = normalizeDomain(settings.fsApiDomain) || "";
+
+      if (newKey) {
+        settings.fsApiKeyHost = settings.fsApiDomain || "";
+      } else if (settings.fsApiKeyEncrypted) {
+        // A key saved before a domain was set is tied to the first domain entered.
+        settings.fsApiKeyHost = keyHost(current) || settings.fsApiDomain || "";
+      } else {
+        delete settings.fsApiKeyHost;
+      }
       return settings;
     });
 
@@ -70,6 +87,13 @@ module.exports = {
       if (!domain) return { skipped: true, error: "Enter your Freshservice domain in Settings → Freshservice." };
       const key = getApiKey(s);
       if (!key) return { skipped: true, error: "Enter your Freshservice API key in Settings → Freshservice." };
+      const boundTo = keyHost(s);
+      if (boundTo && boundTo !== domain) {
+        return {
+          skipped: true,
+          error: "The saved API key was entered for " + boundTo + ". Enter the API key again in Settings → Freshservice to use it with " + domain + ".",
+        };
+      }
       return { domain, key };
     }
 
@@ -201,6 +225,7 @@ module.exports = {
 
   // Exported for tests.
   normalizeDomain,
+  keyHost,
   buildFilterQuery,
   formatTicketText,
   formatArticle,
@@ -217,6 +242,14 @@ function normalizeDomain(raw) {
   if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
   const host = url.hostname.toLowerCase();
   return HOSTNAME_PATTERN.test(host) ? host : null;
+}
+
+// The domain a saved API key belongs to, or "" when there is no key or no domain
+// yet. Keys saved before the tie was recorded belong to the domain saved with them.
+function keyHost(settings) {
+  if (!settings || !(settings.fsApiKeyEncrypted || settings.fsApiKey)) return "";
+  if (typeof settings.fsApiKeyHost === "string" && settings.fsApiKeyHost) return settings.fsApiKeyHost;
+  return normalizeDomain(settings.fsApiDomain || "") || "";
 }
 
 // Checks a ticket filter query and fills in its {name} placeholders from vars.

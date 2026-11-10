@@ -106,8 +106,22 @@
 
   // Loads url in the scraper webview. Resolves when the main frame finishes
   // loading; rejects on a load error or after the timeout.
+  // Dashboards are web pages. Anything else (a file on this PC, a script) is never loaded.
+  function isWebAddress(url) {
+    try {
+      const protocol = new URL(String(url)).protocol;
+      return protocol === "http:" || protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
   function loadScraperPage(webview, url, timeoutMs) {
     return new Promise(function (resolve, reject) {
+      if (!isWebAddress(url)) {
+        reject(new Error("the dashboard address is not a web address"));
+        return;
+      }
       let timer = null;
       function cleanup() {
         clearTimeout(timer);

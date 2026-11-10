@@ -96,6 +96,16 @@
     window.pluginSettingsAPI.saveSettings(appSettings);
   }
 
+  // Dashboards are web pages. Anything else (a file on this PC, a script) is never loaded.
+  function isWebAddress(url) {
+    try {
+      const protocol = new URL(String(url)).protocol;
+      return protocol === "http:" || protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
   function buildMetricsScrapeScript(fields) {
     const parts = fields.map(function (f) {
       const idJ = JSON.stringify(f.id);
@@ -621,6 +631,12 @@
           resolve();
         }
         metricsScraperWebview.addEventListener("did-finish-load", handler);
+        if (!isWebAddress(db.url)) {
+          metricsScraperWebview.removeEventListener("did-finish-load", handler);
+          clearTimeout(loadTimer);
+          reject(new Error("the dashboard address is not a web address"));
+          return;
+        }
         const sep = db.url.includes("?") ? "&" : "?";
         metricsScraperWebview.src = db.url + sep + "_ms=" + Date.now();
       });
@@ -667,7 +683,7 @@
     metricsPickerCaptureBar.classList.remove("visible");
     metricsPickerOverlay.classList.add("visible");
     const db = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
-    metricsPickerWebview.src = db ? db.url : "about:blank";
+    metricsPickerWebview.src = db && isWebAddress(db.url) ? db.url : "about:blank";
   }
 
   function closeMetricsPicker() {
