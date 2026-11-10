@@ -40,12 +40,17 @@ document.addEventListener("DOMContentLoaded", function () {
     defaultUrl: "about:blank",
     theme: "dark",
     dismissedReleaseVersion: "",
+    autoUpdate: true,
   };
 
   // ==================== Element References ====================
   const settingSidePanel      = document.getElementById("setting-side-panel");
   const settingDefaultUrl     = document.getElementById("setting-default-url");
   const settingTheme          = document.getElementById("setting-theme");
+  const settingAutoUpdate     = document.getElementById("setting-auto-update");
+  const updateModeNote        = document.getElementById("update-mode-note");
+  const btnCheckUpdates       = document.getElementById("btn-check-updates");
+  const updateStatusEl        = document.getElementById("update-status");
   const pluginList            = document.getElementById("plugin-list");
   const pluginRestartNotice   = document.getElementById("plugin-restart-notice");
   const btnImportPlugin       = document.getElementById("btn-import-plugin");
@@ -69,6 +74,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const theme = settings.theme || "dark";
     document.body.setAttribute("data-theme", theme);
     settingTheme.checked = theme === "light";
+    settingAutoUpdate.checked = settings.autoUpdate !== false;
 
     if (document.activeElement !== settingDefaultUrl) {
       settingDefaultUrl.value = settings.defaultUrl && settings.defaultUrl !== "about:blank" ? settings.defaultUrl : "";
@@ -86,6 +92,54 @@ document.addEventListener("DOMContentLoaded", function () {
     appSettings.theme = settingTheme.checked ? "light" : "dark";
     document.body.setAttribute("data-theme", appSettings.theme);
     saveSettings();
+  });
+
+  settingAutoUpdate.addEventListener("change", function () {
+    appSettings.autoUpdate = settingAutoUpdate.checked;
+    saveSettings();
+  });
+
+  // ==================== Updates ====================
+
+  const UPDATE_MODE_NOTES = {
+    portable: "This is the portable copy, which can't update itself. You'll get a notification with a link to the new version. Use the installer to get automatic updates.",
+    mac: "The Mac app can't update itself yet. You'll get a notification with a link to the new version.",
+    dev: "Running from source: updates aren't installed, you'll only be told about new releases.",
+    "no-config": "This build has no update information, so it can't update itself. You'll get a notification with a link to the new version.",
+    platform: "Automatic updates aren't available on this system. You'll get a notification with a link to the new version.",
+  };
+
+  function showUpdateStatus(st) {
+    if (!st) return;
+    const note = st.mode === "auto" ? "" : (UPDATE_MODE_NOTES[st.reason] || "");
+    updateModeNote.textContent = note;
+    updateModeNote.hidden = !note;
+    settingAutoUpdate.disabled = st.mode !== "auto";
+
+    let text;
+    let cls = "";
+    switch (st.state) {
+      case "checking": text = "Checking…"; break;
+      case "none": text = "You're on the latest version (v" + st.currentVersion + ")."; cls = "success"; break;
+      case "available": text = "v" + st.version + " is available. You have v" + st.currentVersion + "."; break;
+      case "downloading": text = "Downloading v" + st.version + (st.percent ? " (" + st.percent + "%)" : "") + "…"; break;
+      case "downloaded": text = "v" + st.version + " is ready and installs when you close MSP++."; cls = "success"; break;
+      case "error": text = "Couldn't check for updates: " + (st.error || "unknown error"); cls = "error"; break;
+      default: text = "Version v" + st.currentVersion + ".";
+    }
+    updateStatusEl.textContent = text;
+    updateStatusEl.className = "plugin-import-status" + (cls ? " " + cls : "");
+  }
+
+  window.backupAPI.onAppUpdateStatus(showUpdateStatus);
+  window.backupAPI.getUpdateStatus().then(showUpdateStatus).catch(function () {});
+
+  btnCheckUpdates.addEventListener("click", function () {
+    btnCheckUpdates.disabled = true;
+    window.backupAPI.checkForUpdates()
+      .then(showUpdateStatus)
+      .catch(function () {})
+      .finally(function () { btnCheckUpdates.disabled = false; });
   });
 
   const defaultUrlSave = debounce(function () {

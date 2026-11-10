@@ -21,6 +21,11 @@ contextBridge.exposeInMainWorld("backupAPI", {
   loadSettings: () => ipcRenderer.invoke("load-settings"),
   saveSettings: (settings) => ipcRenderer.invoke("save-settings", settings),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+  getUpdateStatus: () => ipcRenderer.invoke("get-update-status"),
+  downloadAppUpdate: () => ipcRenderer.invoke("download-app-update"),
+  installAppUpdate: () => ipcRenderer.invoke("install-app-update"),
+  onAppUpdateStatus: (callback) =>
+    onIpc("app-update-status", (event, status) => callback(status)),
   getDownloads: () => ipcRenderer.invoke("get-downloads"),
   openDownloadFile: (savePath) => ipcRenderer.invoke("open-download-file", savePath),
   showDownloadFolder: (savePath) => ipcRenderer.invoke("show-download-folder", savePath),

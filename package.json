@@ -42,6 +42,7 @@
       "settings_renderer.js",
       "launch.js",
       "utils.js",
+      "updater.js",
       "webauthn.js",
       "plugin-manager.js",
       "index.html",
@@ -63,7 +64,7 @@
       "selectPerMachineByDefault": false,
       "allowElevation": true,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "${productName} Setup ${version}.${ext}",
+      "artifactName": "MSP-PlusPlus-Setup-${version}.${ext}",
       "shortcutName": "MSP++",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
@@ -77,8 +78,19 @@
       "icon": "icon.png",
       "category": "public.app-category.business"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "n3yne",
+        "repo": "MSP_PlusPlus",
+        "releaseType": "release"
+      }
+    ],
     "directories": {
       "output": "dist"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
   }
 }

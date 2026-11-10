@@ -7,6 +7,7 @@ const fsp = fs.promises;
 const { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings, findLegacyUserDataDir } = require("./utils");
 const pluginManager = require("./plugin-manager");
 const { installPasskeyAccountChooser } = require("./webauthn");
+const { createUpdater } = require("./updater");
 
 // Keep using the Freshservice++ data folder after the rename to MSP++. This must
 // run before anything touches userData (the single-instance lock, sessions).
@@ -23,6 +24,7 @@ try {
 }
 
 let mainWindow;
+let updater = null;
 // App data folder. Still named "note-backups" from when note backup was built in:
 // it holds settings.json, open tabs and window state, and the Note Backup plugin
 // keeps its snapshots here too, so existing installs keep working.
@@ -881,24 +883,12 @@ function registerIpcHandlers() {
     return { ok: true };
   });
 
-  electron.ipcMain.handle("check-for-updates", async () => {
-    const currentVersion = electron.app.getVersion();
-    try {
-      const resp = await fetch(
-        "https://api.github.com/repos/n3yne/MSP_PlusPlus/releases/latest",
-        { headers: { "User-Agent": "MSP-PP/" + currentVersion } },
-      );
-      if (!resp.ok) return { error: `GitHub API error ${resp.status}`, currentVersion };
-      const json = await resp.json();
-      const tagName = typeof json.tag_name === "string" ? json.tag_name : "";
-      const latestVersion = tagName.replace(/^v/, "");
-      const releaseUrl = typeof json.html_url === "string" ? json.html_url : "";
-      const releaseName = typeof json.name === "string" ? json.name : tagName;
-      return { currentVersion, latestVersion, releaseUrl, releaseName };
-    } catch (err) {
-      return { error: err.message || String(err), currentVersion };
-    }
-  });
+  // App updates (updater.js). check-for-updates runs a check now and returns the
+  // status; the same status is also pushed to the windows as "app-update-status".
+  electron.ipcMain.handle("check-for-updates", () => (updater ? updater.check() : null));
+  electron.ipcMain.handle("get-update-status", () => (updater ? updater.getStatus() : null));
+  electron.ipcMain.handle("download-app-update", () => (updater ? updater.download() : null));
+  electron.ipcMain.handle("install-app-update", () => (updater ? updater.install() : null));
 }
 
 // ===================== Site user agent =====================
@@ -1045,8 +1035,24 @@ electron.app.whenReady().then(async () => {
     () => electron.BrowserWindow.getFocusedWindow() || mainWindow || null,
   );
 
+  updater = createUpdater({
+    currentVersion: electron.app.getVersion(),
+    isPackaged: electron.app.isPackaged,
+    platform: process.platform,
+    env: process.env,
+    resourcesPath: process.resourcesPath,
+    exists: fs.existsSync,
+    getSettings: loadSettings,
+    broadcast: (status) => {
+      for (const win of [mainWindow, settingsWindow]) {
+        if (win && !win.isDestroyed()) win.webContents.send("app-update-status", status);
+      }
+    },
+  });
+
   registerIpcHandlers();
   createWindow();
+  updater.start();
 
   electron.app.on("activate", () => {
     if (electron.BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -32,16 +32,30 @@ jobs:
       - name: Test
         run: npm test
 
+      # With the "publish" block in package.json, electron-builder also writes
+      # latest.yml and the installer's .blockmap. The installed app reads latest.yml
+      # from the release to find updates, so both must be attached to the release.
       - name: Build portable EXE and installer
         run: npx electron-builder --win --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
+      - name: Check update metadata
+        shell: bash
+        run: |
+          test -f dist/latest.yml || { echo "dist/latest.yml is missing"; exit 1; }
+          INSTALLER=$(sed -n 's/^path: //p' dist/latest.yml)
+          echo "latest.yml points at: $INSTALLER"
+          test -f "dist/$INSTALLER" || { echo "dist/$INSTALLER is missing"; exit 1; }
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-build
-          path: dist/*.exe
+          path: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml
           retention-days: 90
 
   build-mac:
@@ -117,8 +131,8 @@ jobs:
             echo "## MSP++ ${CURRENT}"
             echo ""
             echo "### Downloads"
-            echo "- **Windows installer** — \`MSP++ Setup ${CURRENT#v}.exe\`, installs for just you (\`%LOCALAPPDATA%\\Programs\\MSP++\`, no admin) or everyone (\`C:\\Program Files\\MSP++\`); updates install over the same folder"
-            echo "- **Windows portable** — \`MSP++ ${CURRENT#v}.exe\`, no installation required"
+            echo "- **Windows installer** — \`MSP-PlusPlus-Setup-${CURRENT#v}.exe\`, installs for just you (\`%LOCALAPPDATA%\\Programs\\MSP++\`, no admin) or everyone (\`C:\\Program Files\\MSP++\`); after that, MSP++ downloads and installs new versions itself"
+            echo "- **Windows portable** — \`MSP++ ${CURRENT#v}.exe\`, no installation required (tells you about new versions but can't install them)"
             echo "- **macOS** — \`.dmg\` disk image, drag to Applications to install"
             if [ -n "$PREV" ]; then
               echo ""

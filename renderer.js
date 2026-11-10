@@ -79,6 +79,7 @@ document.addEventListener("DOMContentLoaded", function () {
     defaultUrl: "about:blank",
     theme: "dark",
     dismissedReleaseVersion: "",
+    autoUpdate: true,
   };
 
   function applySettings(settings) {
@@ -223,19 +224,13 @@ document.addEventListener("DOMContentLoaded", function () {
   // ==================== Notifications ====================
   // Notification shape: { id, type, title, desc, action?: { label, kind, url? } }
   //   action.kind: "open-url" | "callback" (plugin notifications, via pluginAPI.ui.notify)
-  //   type === "update" also has a `version` field for "don't remind me" persistence
+  //                | "download-update" | "install-update" (app updates)
+  //   type === "update" also has a `version` field for "don't remind me" persistence,
+  //   and `ready: true` once the update is downloaded (no "don't remind me" then,
+  //   since it installs when the app closes anyway)
 
   const pendingNotifications = [];
   let notifNextId = 1;
-
-  function isNewerVersion(current, latest) {
-    const parse = (v) => v.replace(/^v/, "").split(".").map(Number);
-    const [ca, cb, cc] = parse(current);
-    const [la, lb, lc] = parse(latest);
-    if (la !== ca) return la > ca;
-    if (lb !== cb) return lb > cb;
-    return lc > cc;
-  }
 
   function addUniqueNotification(notif) {
     if (pendingNotifications.some((n) => n.type === notif.type)) return;
@@ -263,8 +258,9 @@ document.addEventListener("DOMContentLoaded", function () {
         const actionBtn = n.action
           ? `<button class="btn btn-small btn-primary notif-btn-open" data-notif-id="${n.id}">${esc(n.action.label)}</button>`
           : "";
-        const dismissLabel = n.type === "update" ? "Don't remind me" : "Dismiss";
-        const hideBtn = n.type === "update"
+        const remindable = n.type === "update" && !n.ready;
+        const dismissLabel = remindable ? "Don't remind me" : n.type === "update" ? "Later" : "Dismiss";
+        const hideBtn = remindable
           ? `<button class="btn btn-small notif-btn-hide" data-notif-id="${n.id}">Hide for now</button>`
           : "";
         return `<div class="notif-item" data-notif-id="${n.id}">
@@ -318,6 +314,11 @@ document.addEventListener("DOMContentLoaded", function () {
         window.backupAPI.openInBrowser(notif.action.url);
       } else if (notif?.action?.kind === "callback" && typeof notif.action.onClick === "function") {
         try { notif.action.onClick(); } catch (err) { console.error("[Notifications] Action failed:", err); }
+      } else if (notif?.action?.kind === "download-update") {
+        removeUpdateNotification();
+        window.backupAPI.downloadAppUpdate().catch(() => {});
+      } else if (notif?.action?.kind === "install-update") {
+        window.backupAPI.installAppUpdate().catch(() => {});
       }
     }
 
@@ -332,7 +333,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (dismissBtn) {
       const id = parseInt(dismissBtn.dataset.notifId, 10);
       const notif = pendingNotifications.find((n) => n.id === id);
-      if (notif?.type === "update") {
+      if (notif?.type === "update" && !notif.ready) {
         appSettings.dismissedReleaseVersion = notif.version;
         window.backupAPI.saveSettings(appSettings);
       }
@@ -343,24 +344,63 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  async function checkForUpdates() {
-    try {
-      const result = await window.backupAPI.checkForUpdates();
-      if (result.error || !result.latestVersion || !result.currentVersion) return;
-      if (!isNewerVersion(result.currentVersion, result.latestVersion)) return;
-      if (appSettings.dismissedReleaseVersion === result.latestVersion) return;
+  // ==================== App Updates ====================
+  // main.js (updater.js) checks for updates on startup and every few hours and
+  // sends its status here. The installed Windows build downloads and installs
+  // updates itself; other builds only get a link to the release.
+
+  function removeUpdateNotification() {
+    const idx = pendingNotifications.findIndex((n) => n.type === "update");
+    if (idx === -1) return;
+    pendingNotifications.splice(idx, 1);
+    renderNotifications();
+    updateNotificationsBadge();
+  }
+
+  const NOTIFY_ONLY_HINTS = {
+    portable: "This portable copy can't update itself: download the new version from the release page.",
+    mac: "Download the new .dmg from the release page and drag it to Applications.",
+  };
+
+  function showUpdateStatus(st) {
+    if (!st || !st.version) return;
+    if (st.state === "downloaded") {
+      const existing = pendingNotifications.find((n) => n.type === "update");
+      if (existing && existing.ready && existing.version === st.version) return;
+      removeUpdateNotification();
       addUniqueNotification({
         id: notifNextId++,
         type: "update",
-        version: result.latestVersion,
-        title: `Update Available: v${result.latestVersion}`,
-        desc: `A newer version is available. You are running v${result.currentVersion}.`,
-        action: { label: "View Release", kind: "open-url", url: result.releaseUrl },
+        version: st.version,
+        ready: true,
+        title: `Update Ready: v${st.version}`,
+        desc: `MSP++ v${st.version} has been downloaded. Restart now to install it, or it installs the next time you close MSP++.`,
+        action: { label: "Restart to Update", kind: "install-update" },
       });
-    } catch {
-      // Network failure — silently skip
+      return;
     }
+    if (st.state !== "available") return;
+    if (appSettings.dismissedReleaseVersion === st.version) return;
+    if (pendingNotifications.some((n) => n.type === "update" && n.version === st.version)) return;
+    removeUpdateNotification();
+    const notif = {
+      id: notifNextId++,
+      type: "update",
+      version: st.version,
+      title: `Update Available: v${st.version}`,
+    };
+    if (st.mode === "auto") {
+      notif.desc = `A newer version is available. You are running v${st.currentVersion}. Download it now and restart when it's ready.`;
+      notif.action = { label: "Download Update", kind: "download-update" };
+    } else {
+      const hint = NOTIFY_ONLY_HINTS[st.reason];
+      notif.desc = `A newer version is available. You are running v${st.currentVersion}.` + (hint ? " " + hint : "");
+      notif.action = { label: "View Release", kind: "open-url", url: st.releaseUrl };
+    }
+    addUniqueNotification(notif);
   }
+
+  window.backupAPI.onAppUpdateStatus(showUpdateStatus);
 
   // ==================== Side Panel Host ====================
   //
@@ -722,7 +762,8 @@ document.addEventListener("DOMContentLoaded", function () {
     .loadSettings()
     .then(function (settings) {
       applySettings(settings);
-      checkForUpdates();
+      // Catch up on a check that finished before this listener was ready.
+      window.backupAPI.getUpdateStatus().then(showUpdateStatus).catch(() => {});
 
       // Construct the frozen plugin API surface (depends on element refs + helpers
       // defined above, so it must be built here inside DOMContentLoaded).
