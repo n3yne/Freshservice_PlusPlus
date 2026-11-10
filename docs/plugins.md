@@ -617,7 +617,7 @@ pluginSettingsAPI.onSettingsChanged(fn: (settings: AppSettings) => void): void
 Place your plugin directory inside the `plugins/` folder at the root of the project:
 
 ```
-Freshservice_PlusPlus/
+MSP_PlusPlus/
   plugins/
     my-plugin/
       manifest.json

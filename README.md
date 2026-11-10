@@ -4,7 +4,7 @@
 
 An Electron-based wrapper for MSP and ticketing web apps (Freshservice and ConnectWise Manage today) that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
 
-**Current version:** 0.6.0
+**Current version:** 0.6.1
 
 > MSP++ was called **Freshservice++** before 0.6.0. Your settings, notes and sign-ins carry over: the app keeps using the existing Freshservice++ data folder.
 
@@ -14,6 +14,8 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 
 ### Browser
 - **Multi-tab browsing** – Open multiple ticketing pages simultaneously; tabs persist between launches
+- **Address bar** – A row under the tab bar shows the active tab's URL, with back, forward and reload beside it. Type an address and press `Enter` to go there (`Ctrl+L` jumps to it, `Escape` puts the page's URL back). Only `http` and `https` pages open; a bare host such as `example.com` gets `https://` added. There is no web search, so plain words are ignored
+- **Refresh all tabs** – **View → Refresh All Tabs** (`Ctrl+Alt+R`) reloads every open tab at once
 - **Tab management** – Pin tabs, duplicate, close others, reopen closed tabs, copy URL, open in default browser (right-click any tab)
 - **Find in page** – `Ctrl+F` to search text on the current page
 - **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions; a badge on the download icon shows how many files finished since you last opened the panel (resets when you open it)
@@ -69,7 +71,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes. After a suggestion is returned, a **Refine** textarea appears — type follow-up instructions (e.g. "make it shorter", "keep this as a client-facing message") and click **↺ Refine** to generate a revised version without losing the Apply option
-- **📋 Summarize** – Reads the ticket description, replies and notes from the open Freshservice ticket (through the Freshservice API when it's set up, otherwise from the page) and asks the AI to produce a concise bullet-point summary
+- **📋 Summarize** – Reads the ticket description, replies and notes from the open ticket (on Freshservice through the Freshservice API when it's set up, otherwise from the page; on ConnectWise Manage from the page) and asks the AI to produce a concise bullet-point summary
 - Supports **Hatz AI**, **OpenAI**, **Anthropic**, **Azure OpenAI**, and **Microsoft 365 Copilot** as providers; for Hatz, OpenAI and Anthropic the model dropdown is populated automatically from the provider's API once an API key is entered
 - **Delivered as a bundled plugin** — AI Features is implemented via the plugin system; it can be disabled independently from Settings → Plugins
 
@@ -85,14 +87,14 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 - **Says when nothing is documented** – If no article matches, it tells you instead of making up steps. Draft articles are marked as drafts
 - **Copy** or **Add to note** puts the answer and its article links into your clipboard or the note in the Notes tab (a snapshot is saved first; **Add to note** needs Note Backup turned on)
 - **Setup check** – **Settings → Plugins → Solutions Chat** shows whether AI Features and the Freshservice API are ready, and has a test search to confirm your API key can read Solutions articles
-- **Requirements** – uses the provider set up in **Settings → AI Features** and the domain and API key in **Settings → Plugins → Freshservice**; the API key needs permission to view Solutions articles. Each question makes two AI requests (one to choose search terms, one to answer)
+- **Requirements** – uses the provider set up in **Settings → Plugins → AI Features** and the domain and API key in **Settings → Plugins → Freshservice**; the API key needs permission to view Solutions articles. Each question makes two AI requests (one to choose search terms, one to answer)
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
 
 ### Plugin System
 
 Extend the app with self-contained plugin directories — no build step required.
 
-- **Bundled plugins** – Ship with the app and are always available (e.g. the Metrics Bar)
+- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **AI Features** and **Solutions Chat**
 - **User-installed plugins** – Drop a plugin folder into `%APPDATA%\MSP++\plugins\` (or `%APPDATA%\Freshservice++\plugins\` if you upgraded) for plugins that survive app updates
 - **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply. Every plugin gets a settings tab, and one with nothing to set up says so
 - **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed
@@ -104,7 +106,7 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 - **Update available** – Checks GitHub Releases on startup and alerts you when a newer version is published; includes View Release, Hide for now, and Don't remind me for this version actions
 - **Auto-save failed** – Fires once if a note cannot be written to disk (permissions or disk-full)
 - **Backup storage warning** – Alerts when the backup folder exceeds a configurable size threshold (default: 100 MB; set to 0 to disable)
-- **Live sync push failed** – Fires once when the first push to a Freshservice notes field fails (e.g. session expired)
+- **Live sync push failed** – Fires once when the first push to a site's notes field fails (e.g. session expired)
 
 ### Appearance & Settings
 - **Dark / Light theme**
@@ -125,9 +127,12 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 | `Ctrl+Shift+B` | Toggle side panel |
 | `Ctrl+Shift+V` | Paste as plain text (in note editor) |
 | `Ctrl+F` | Find in page |
+| `Ctrl+L` | Focus the address bar |
+| `Ctrl+,` | Open Settings |
 | `Alt+Left` | Navigate back |
 | `Alt+Right` | Navigate forward |
 | `F5` | Refresh active tab |
+| `Ctrl+Alt+R` | Refresh all tabs |
 | `Ctrl+T` | New tab |
 | `Ctrl+W` | Close tab |
 | `Ctrl+Shift+T` | Reopen closed tab |
@@ -152,6 +157,7 @@ Inside you'll find:
 - `autosave.json` – Latest auto-saved draft for each ticket
 - `settings.json` – All app settings
 - `open-tabs.json` – Tab URLs restored on next launch
+- `main-window-state.json` – The main window's last size and position
 - A folder per ticket ID containing timestamped `.html` snapshot files
 
 Click **📁 Open Folder** in the app to jump there directly.
@@ -161,7 +167,7 @@ Click **📁 Open Folder** in the app to jump there directly.
 ## Getting Started
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) v18 or later
+- [Node.js](https://nodejs.org/) v20.19 or later (the release builds use Node 22)
 
 ### Install & Run
 
@@ -170,17 +176,26 @@ npm install
 npm start
 ```
 
-On first launch, open **Settings** (`Ctrl+,`) → **General** and set the **Home URL** to your Freshservice instance (e.g. `https://yourcompany.freshservice.com/`). Log in once; the session persists across launches.
+On first launch, open **Settings** (`Ctrl+,`) → **General** and set the **Home URL** to the page you want new tabs to open, such as your Freshservice instance (e.g. `https://yourcompany.freshservice.com/`) or ConnectWise Manage. It starts as the Freshservice login page. Log in once; the session persists across launches.
+
+### Lint & Test
+
+```bash
+npm run lint
+npm test
+```
 
 ### Build a Distributable
 
 ```bash
 # Windows portable .exe
-npm run build
+npm run build          # or: npm run build-portable
 
 # macOS .dmg
 npm run build-mac
 ```
+
+Pushing a `v*` tag runs the GitHub Actions workflow, which lints, tests and builds both platforms and attaches them to a GitHub release.
 
 Output is placed in the `dist/` folder.
 
@@ -188,7 +203,7 @@ Output is placed in the `dist/` folder.
 
 ## Metrics Bar Setup
 
-1. Open **Settings** (`Ctrl+,`) and go to the **Metrics Bar** section
+1. Open **Settings** (`Ctrl+,`) and go to **Plugins → Metrics Bar**
 2. Enable the toggle and choose a **Refresh interval**
 3. Click **+ Add Dashboard** and paste the URL of your BrightGauge public dashboard
 4. Click **+ Add Field** — the dashboard opens in a picker overlay
@@ -204,7 +219,7 @@ Output is placed in the `dist/` folder.
 - Clicking a metric card in the bar opens that card's source dashboard in a new tab
 - A Freshservice dashboard widget is drawn after the page loads, so the bar keeps reading until the numbers hold steady (up to 30 seconds)
 
-**Freshservice API queries (optional):** with the API key set in Settings → Freshservice, fill in a field's **API query** and click **Test** to see the count. Freshservice has no API for dashboard widgets, so the query has to describe the same tickets as the widget. Filterable fields are `agent_id`, `group_id`, `requester_id`, `status` (2 Open, 3 Pending, 4 Resolved, 5 Closed), `priority`, `impact`, `urgency`, `tag`, `due_by`, `fr_due_by`, `created_at`, `updated_at` and custom fields. Text and dates go in single quotes, e.g. `agent_id:123 AND status:4 AND updated_at:>'{weekStart}'`. There is no "resolved on" date, so counts of tickets resolved this week can only be approximated with `updated_at`, and dates are compared in UTC.
+**Freshservice API queries (optional):** with the API key set in **Settings → Plugins → Freshservice**, fill in a field's **API query** and click **Test** to see the count. Freshservice has no API for dashboard widgets, so the query has to describe the same tickets as the widget. Filterable fields are `agent_id`, `group_id`, `requester_id`, `status` (2 Open, 3 Pending, 4 Resolved, 5 Closed), `priority`, `impact`, `urgency`, `tag`, `due_by`, `fr_due_by`, `created_at`, `updated_at` and custom fields. Text and dates go in single quotes, e.g. `agent_id:123 AND status:4 AND updated_at:>'{weekStart}'`. There is no "resolved on" date, so counts of tickets resolved this week can only be approximated with `updated_at`, and dates are compared in UTC.
 
 ---
 
@@ -266,7 +281,7 @@ Your sign-in is stored encrypted with the operating system's credential store in
 
 ## Plugins
 
-The **Freshservice** site plugin, **Note Backup**, **Metrics Bar**, **AI Features** and **Solutions Chat** are delivered as bundled plugins and are always available. To install additional plugins, drop a plugin directory into the app's user data folder:
+The **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **AI Features** and **Solutions Chat** are delivered as bundled plugins and are always available. To install additional plugins, drop a plugin directory into the app's user data folder:
 
 ```
 %APPDATA%\MSP++\plugins\        (or %APPDATA%\Freshservice++\plugins\ if you upgraded)
@@ -284,10 +299,11 @@ For plugin development documentation — including the full API reference and a 
 ## Troubleshooting
 
 - **Freshservice doesn't load** – The app sends a standard Chrome user-agent to `*.freshservice.com`, `*.freshworks.com` and `*.myfreshworks.com`. Ensure you have network access to your Freshservice instance, and set your instance URL (e.g. `https://yourcompany.freshservice.com/`) as the **Home URL** in Settings → General.
+- **ConnectWise Manage doesn't load** – The app sends the same Chrome user-agent to `*.myconnectwise.net`. Check that the **ConnectWise Manage** plugin is enabled in Settings → Plugins.
 - **Login issues** – The embedded browser keeps its own session cookies. Log in once and the session will persist across launches.
-- **Live sync not working** – Freshservice only shows a note editor after you click **Add note** or **Reply** on a ticket, so open one first. The sync status pill at the bottom of the panel shows the current state (`⇅ Synced`, `⇅ Pushing…`, `⇅ No FS field`).
-- **Ticket number not detected** – Detection relies on the record URL (`/a/tickets/<id>`, `/a/changes/<id>`, …). You can always type an ID into the **Ticket / Reference ID** box manually.
-- **Metrics bar shows `—` or `(not found)`** – Open Settings → Metrics Bar, click **Test selectors** next to the relevant dashboard to trigger an immediate scrape and see per-field results. If a field still shows `(not found — check selector)`, use **Re-pick** on that field, wait for the dashboard to fully load in the picker, then click the correct value to recapture the selector.
+- **Live sync not working** – Freshservice only shows a note editor after you click **Add note** or **Reply** on a ticket, so open one first. On ConnectWise Manage, open a time entry or the stopwatch. The sync status pill at the bottom of the panel shows the current state (`⇅ Synced`, `⇅ Pushing…`, `⇅ No notes field`).
+- **Ticket number not detected** – On Freshservice, detection relies on the record URL (`/a/tickets/<id>`, `/a/changes/<id>`, …); on ConnectWise Manage it uses the URL or the ticket page. You can always type an ID into the **Ticket / Reference ID** box manually.
+- **Metrics bar shows `—` or `(not found)`** – Open Settings → Plugins → Metrics Bar, click **Test selectors** next to the relevant dashboard to trigger an immediate scrape and see per-field results. If a field still shows `(not found — check selector)`, use **Re-pick** on that field, wait for the dashboard to fully load in the picker, then click the correct value to recapture the selector.
 - **Metrics bar shows `⚠` on a card** – The last refresh for that field failed (network issue, dashboard changed, etc.). The value shown is the last successfully cached value. Hover the `⚠` to see when it was last updated. The app will retry on the next poll interval.
 - **Passkey sign-in doesn't offer Touch ID on macOS** – Electron only supports Touch ID passkeys in a signed build with a keychain entitlement, which the macOS build doesn't have yet. USB security keys still work. On Windows, passkeys go through Windows Hello, so check that Windows Hello is set up in Windows Settings → Accounts → Sign-in options.
 - **Blank screen or errors** – Press `Ctrl+Shift+I` to open DevTools and check the console.
