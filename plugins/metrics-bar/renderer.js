@@ -596,7 +596,8 @@
 
   btnMetricsHide.addEventListener("click", function () {
     const updated = Object.assign({}, appSettings, { metricsBarEnabled: false });
-    window.backupAPI.saveSettings(updated);
+    // Send only the changed key: this copy of the settings can be out of date.
+    window.backupAPI.saveSettings({ metricsBarEnabled: false });
     appSettings = updated;
     applyMetrics(updated);
   });

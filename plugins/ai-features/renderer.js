@@ -180,7 +180,9 @@
   btnAiCancel.addEventListener("click", closeAiOverlay);
 
   btnAiApply.addEventListener("click", async function () {
-    if (aiApplyCallback && (await aiApplyCallback()) === false) {
+    const outcome = aiApplyCallback ? await aiApplyCallback() : undefined;
+    if (outcome === "stay") return; // declined; leave the result on screen
+    if (outcome === false) {
       aiDialogBody.innerHTML = TICKET_CHANGED_HTML;
       aiApplyCallback = null;
       btnAiApply.style.display = "none";
@@ -211,7 +213,13 @@
         if (ticketChanged(req)) return false;
         // Always snapshot: a rewrite is often about the same length as the
         // original, which the normal size threshold would skip.
-        await api.notes.saveSnapshot(text, { force: true });
+        const backedUp = await api.notes.saveSnapshot(text, { force: true });
+        if (backedUp === false) {
+          const anyway = await api.ui.confirm(
+            "The current note could not be backed up first. Replace it with the AI text anyway? The original cannot be brought back."
+          );
+          if (!anyway) return "stay";
+        }
         api.notes.setContent(sig ? esc + "<br>" + sig : esc);
       };
     }(resultText, escaped, sigHtml));

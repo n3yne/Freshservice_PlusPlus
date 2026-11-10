@@ -18,7 +18,17 @@
 
   // ==================== Main-process calls ====================
   const store = {
-    saveNote: (data) => api.invoke(PLUGIN_ID, "save-note", data),
+    // Rejects when the note was not written, so no caller can mistake a refused
+    // save (a note over the size limit, a plugin error) for a saved note.
+    saveNote: async (data) => {
+      const result = await api.invoke(PLUGIN_ID, "save-note", data);
+      if (!result || result.success !== true) {
+        const err = new Error((result && result.error) || "The note could not be saved");
+        err.code = (result && result.code) || "save-failed";
+        throw err;
+      }
+      return result;
+    },
     loadAutosave: () => api.invoke(PLUGIN_ID, "load-autosave"),
     getHistory: (ticketId) => api.invoke(PLUGIN_ID, "get-history", ticketId),
     getAllTickets: () => api.invoke(PLUGIN_ID, "get-all-tickets"),
@@ -353,6 +363,21 @@
     return api.ui.confirm(message, { defaultYes });
   }
 
+  // The name a ticket's notes are stored under. Mirrors sanitizeTicketId in
+  // main.js: an ID such as "SR#12" or "INC 7" is saved as "SR_12" / "INC_7", so
+  // drafts and the ticket list have to be looked up by that name, not the raw ID.
+  function storageKey(ticketId) {
+    return String(ticketId || "no-ticket").replace(/[^a-zA-Z0-9_-]/g, "_");
+  }
+
+  // What to tell the person when a note could not be written to disk.
+  const NOTE_TOO_LARGE = "This note is too large to save (over 10 MB). Remove some pictures from it.";
+  function saveFailureText(err) {
+    return err && err.code === "too-large"
+      ? NOTE_TOO_LARGE
+      : "The note could not be saved to disk. Check that the backup folder is accessible.";
+  }
+
   function notify(type, title, desc, action) {
     api.ui.notify({ type, title, desc, action });
   }
@@ -495,7 +520,11 @@
     }
 
     // Snapshot current content before overwriting if the change is substantial
-    await snapshotBeforeBulkImport(result.text);
+    if (!(await snapshotBeforeBulkImport(result.text))) {
+      autosaveStatus.textContent = "Not pulled: the current note could not be backed up first";
+      autosaveStatus.className = "";
+      return;
+    }
 
     // Convert plain text to safe HTML for the contenteditable panel
     const html = result.text
@@ -522,6 +551,7 @@
     // Queue an autosave so the pulled content is persisted
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+    autosavePending = true;
   });
 
   btnPushToFs.addEventListener("click", async function () {
@@ -699,9 +729,16 @@
     if (state.pullInFlight) return;             // previous pull not yet complete
 
     state.pullInFlight = true;
+    const previousPulledText = state.lastPulledText;
     state.lastPulledText = text;
     try {
-      await snapshotBeforeBulkImport(text);
+      if (!(await snapshotBeforeBulkImport(text))) {
+        // Keep the panel as it is rather than replace a note that has no backup.
+        state.lastPulledText = previousPulledText;
+        autosaveStatus.textContent = "Not pulled: the current note could not be backed up first";
+        autosaveStatus.className = "";
+        return;
+      }
       const html = text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -717,6 +754,7 @@
 
       clearTimeout(autosaveTimer);
       autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+      autosavePending = true;
     } finally {
       state.pullInFlight = false;
     }
@@ -852,7 +890,13 @@
             isManual: true,
           });
           lastSnapshotContent.set(currentPanelTicket, outgoingHtml);
-        } catch { /* non-fatal */ }
+        } catch (err) {
+          // Loading the next ticket would replace notes that are not on disk.
+          console.error("[Notes] Could not save the note before switching tickets:", err);
+          autosaveStatus.textContent = "Still on #" + currentPanelTicket + ": " + saveFailureText(err);
+          autosaveStatus.className = "";
+          return;
+        }
       }
     }
 
@@ -871,7 +915,7 @@
 
     const state = getSyncState(tabId);
     if (fsResult && fsResult.text && fsResult.text.trim()) {
-      await snapshotBeforeBulkImport(fsResult.text);
+      if (!(await snapshotBeforeBulkImport(fsResult.text))) return;
       if (tabId !== activeTabId) return;
       const html = fsResult.text
         .replace(/&/g, "&amp;")
@@ -906,6 +950,7 @@
 
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+    autosavePending = true;
 
     await refreshTicketList(newTicket);
   }
@@ -914,11 +959,13 @@
   // Prevents losing panel content when live sync or a manual pull overwrites it.
   // force skips the size check — used before replacing the note with a rewrite of
   // similar length (e.g. an AI suggestion), which the threshold would let through.
+  // Resolves to false when a snapshot was needed and could not be saved; the
+  // caller must then leave the panel alone. True otherwise.
   async function snapshotBeforeBulkImport(incomingPlainText, force) {
-    if (isEditorEmpty()) return;
+    if (isEditorEmpty()) return true;
     const currentText = getEditorPlainText();
     const threshold = appSettings.snapshotThreshold ?? 5;
-    if (!force && Math.abs(currentText.length - incomingPlainText.length) < threshold) return;
+    if (!force && Math.abs(currentText.length - incomingPlainText.length) < threshold) return true;
     const ticketId = ticketIdInput.value.trim() || "general";
     try {
       const html = getEditorContent();
@@ -927,7 +974,12 @@
         lastSnapshotContent.set(ticketId, html);
         refreshTicketList();
       }
-    } catch { /* non-fatal */ }
+      return true;
+    } catch (err) {
+      console.error("[Notes] Snapshot before replacing the note failed:", err);
+      notify("autosave-failure", "Note Not Backed Up", saveFailureText(err));
+      return false;
+    }
   }
 
   // Returns the saved HTML for a ticket: its autosaved draft, else its newest
@@ -935,8 +987,9 @@
   async function readLocalTicketContent(ticketId) {
     try {
       const autosaveData = await store.loadAutosave();
-      if (autosaveData[ticketId] && autosaveData[ticketId].content) {
-        return autosaveData[ticketId].content;
+      const key = storageKey(ticketId);
+      if (Object.prototype.hasOwnProperty.call(autosaveData, key) && autosaveData[key] && autosaveData[key].content) {
+        return autosaveData[key].content;
       }
       const history = await store.getHistory(ticketId);
       return history.length > 0 ? history[0].content : "";
@@ -1140,6 +1193,7 @@
     if (saveContent !== false) {
       clearTimeout(autosaveTimer);
       autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+      autosavePending = true;
     }
   }
 
@@ -1312,8 +1366,12 @@
   let autosaveTimer = null;
   const AUTOSAVE_DELAY = 1500;
   let lastSavedTicketId = null;
+  // True while a change is waiting for the autosave timer. If the window closes
+  // in that gap, the note is written straight away instead (see beforeunload).
+  let autosavePending = false;
 
   async function performAutosave() {
+    autosavePending = false;
     const ticketId = ticketIdInput.value.trim() || "general";
     const content = getEditorContent();
 
@@ -1339,11 +1397,10 @@
       autosaveStatus.className = "saved";
       api.events.emit("note:saved", { ticketId, timestamp: result.timestamp });
     } catch (err) {
-      autosaveStatus.textContent = "Auto-save error!";
+      autosaveStatus.textContent = err && err.code === "too-large" ? "Not saved: note too large" : "Auto-save error!";
       autosaveStatus.className = "";
       console.error("Autosave error:", err);
-      notify("autosave-failure", "Auto-save Failed",
-        "A note could not be saved to disk. Check that the backup folder is accessible and you have write permissions.");
+      notify("autosave-failure", "Auto-save Failed", saveFailureText(err));
     }
   }
 
@@ -1364,6 +1421,7 @@
     autosaveStatus.className = "saving";
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+    autosavePending = true;
     if (activeTabId) schedulePush(activeTabId);
   });
 
@@ -1436,12 +1494,13 @@
         "Snapshot saved at " + new Date(result.timestamp).toLocaleTimeString();
       autosaveStatus.className = "saved";
 
-      if (ticketSelect.value === ticketId) {
+      if (ticketSelect.value === storageKey(ticketId)) {
         loadHistory(ticketId);
       }
       refreshTicketList();
     } catch (err) {
-      autosaveStatus.textContent = "Save error!";
+      autosaveStatus.textContent = err && err.code === "too-large" ? "Not saved: note too large (over 10 MB)" : "Save error!";
+      autosaveStatus.className = "";
       console.error("Save error:", err);
     }
   });
@@ -1457,6 +1516,7 @@
       if (!confirmed) return;
     }
     clearTimeout(autosaveTimer);
+    autosavePending = false;
 
     const snapTicketId = ticketIdInput.value.trim() || "general";
     try {
@@ -1464,6 +1524,15 @@
       refreshTicketList();
     } catch (err) {
       console.error("[Clear] Auto-snapshot error:", err);
+      // Without the snapshot, clearing throws the note away for good. Ask first.
+      const anyway = isEditorEmpty() || await showConfirm(
+        saveFailureText(err) + " No snapshot was saved. Clear the note anyway? It cannot be brought back."
+      );
+      if (!anyway) {
+        autosaveStatus.textContent = "Not cleared: the note could not be backed up";
+        autosaveStatus.className = "";
+        return;
+      }
     }
 
     // Delete the autosave entry so the next launch doesn't restore a note the user explicitly cleared.
@@ -1562,6 +1631,7 @@
         return sortDir === "desc" ? -result : result;
       });
 
+      if (selectTicketId) selectTicketId = storageKey(selectTicketId);
       const previousValue = selectTicketId || ticketSelect.value;
       ticketSelect.innerHTML =
         '<option value="">-- Select a ticket --</option>';
@@ -1985,6 +2055,15 @@
   });
 
   window.addEventListener("beforeunload", function () {
+    // The last second or so of typing is still waiting for the autosave timer.
+    // Hand it to the main process now, which writes it before the app exits.
+    if (autosavePending && !(isEditorEmpty() && !ticketIdInput.value.trim())) {
+      autosavePending = false;
+      api.send(PLUGIN_ID, "save-note-now", {
+        ticketId: ticketIdInput.value.trim() || "general",
+        noteContent: getEditorContent(),
+      });
+    }
     // Persisted so the next launch can skip draft restoration when the user closed cleanly.
     const blankAtClose = isEditorEmpty() && !ticketIdInput.value.trim();
     api.send(PLUGIN_ID, "save-editor-state", { blankAtClose });
@@ -2016,6 +2095,7 @@
       setEditorContent(html);
       clearTimeout(autosaveTimer);
       autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DELAY);
+      autosavePending = true;
     },
     getTicketId: function () { return ticketIdInput.value.trim() || null; },
     getPlainText: function () { return getEditorPlainText(); },
