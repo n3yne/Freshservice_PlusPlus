@@ -61,6 +61,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 - **View dashboard** – Click any metric card to open that card's source dashboard in a new tab
 - **Editable selectors** – Each field's captured selector is shown in Settings and can be manually corrected; a **Test selectors** button per dashboard re-scrapes immediately and updates the "→ found value" badges
 - **Re-pick** – Individual fields can be re-picked at any time without losing the others
+- **Freshservice API counts** – A field can carry a Freshservice ticket filter query (e.g. `agent_id:123 AND status:2`). The bar then shows how many tickets match it, straight from the Freshservice API, and reads the dashboard for that field only if the API call fails. Queries can use `{today}`, `{weekStart}` and `{monthStart}`
 - **Progress tracking** – Each field can have a configurable weekly target. Values turn green when the goal is reached, yellow when slightly behind pace, and red when significantly behind. Hover any card to see the exact on-track value for the current point in the week.
 - **Cached values** – The last successfully scraped value for each field is persisted across launches; if a refresh fails the bar continues showing the cached value with a `⚠` indicator and a tooltip showing when it was last updated
 - **Delivered as a bundled plugin** — the Metrics Bar is implemented via the plugin system; it can be disabled independently from Settings → Plugins
@@ -200,6 +201,9 @@ Output is placed in the `dist/` folder.
 - If a field shows `(not found — check selector)`, click **Test selectors** next to that dashboard to trigger an immediate scrape and see per-field results
 - The **Re-pick** button on any field lets you re-capture its selector without deleting and re-adding it
 - Clicking a metric card in the bar opens that card's source dashboard in a new tab
+- A Freshservice dashboard widget is drawn after the page loads, so the bar keeps reading until the numbers hold steady (up to 30 seconds)
+
+**Freshservice API queries (optional):** with the API key set in Settings → Freshservice, fill in a field's **API query** and click **Test** to see the count. Freshservice has no API for dashboard widgets, so the query has to describe the same tickets as the widget. Filterable fields are `agent_id`, `group_id`, `requester_id`, `status` (2 Open, 3 Pending, 4 Resolved, 5 Closed), `priority`, `impact`, `urgency`, `tag`, `due_by`, `fr_due_by`, `created_at`, `updated_at` and custom fields. Text and dates go in single quotes, e.g. `agent_id:123 AND status:4 AND updated_at:>'{weekStart}'`. There is no "resolved on" date, so counts of tickets resolved this week can only be approximated with `updated_at`, and dates are compared in UTC.
 
 ---
 

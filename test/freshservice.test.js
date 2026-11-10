@@ -2,7 +2,7 @@
 
 const fsApi = require("../plugins/freshservice/main");
 
-const { validateSettings, defaultSettings, normalizeDomain, formatTicketText, formatArticle } = fsApi;
+const { validateSettings, defaultSettings, normalizeDomain, formatTicketText, formatArticle, buildFilterQuery } = fsApi;
 
 // Placeholder only — never a real key.
 const FAKE_KEY = "test-key-not-real";
@@ -209,5 +209,47 @@ describe("freshservice handlers", () => {
     global.fetch = jest.fn(async () => jsonResponse({ article: { id: 5, title: "Printer SOP", status: 2, description_text: "Do the thing." } }));
     const res = await handlers["get-solution-article"]({ id: 5 });
     expect(res.article).toEqual(expect.objectContaining({ id: "5", title: "Printer SOP", text: "Do the thing." }));
+  });
+
+  test("count-tickets sends the filter query in double quotes and returns the total", async () => {
+    global.fetch = jest.fn(async () => jsonResponse({ tickets: [{ id: 1 }], total: 42 }));
+    const res = await handlers["count-tickets"]({
+      query: "agent_id:9 AND status:4 AND updated_at:>'{weekStart}'",
+      vars: { weekStart: "2026-11-09" },
+    });
+    expect(res).toEqual({ count: 42, query: "agent_id:9 AND status:4 AND updated_at:>'2026-11-09'" });
+    const url = global.fetch.mock.calls[0][0];
+    expect(url.startsWith("https://acme.freshservice.com/api/v2/tickets/filter?query=")).toBe(true);
+    expect(decodeURIComponent(url.split("query=")[1].split("&")[0])).toBe("\"agent_id:9 AND status:4 AND updated_at:>'2026-11-09'\"");
+  });
+
+  test("count-tickets reports a rejected query and a missing total", async () => {
+    global.fetch = jest.fn(async () => jsonResponse({}, 400));
+    expect((await handlers["count-tickets"]({ query: "bogus:1" })).error).toMatch(/filter query \(400\)/);
+    global.fetch = jest.fn(async () => jsonResponse({ tickets: [] }));
+    expect((await handlers["count-tickets"]({ query: "status:2" })).error).toMatch(/no ticket count/);
+  });
+
+  test("count-tickets checks the query before calling the API", async () => {
+    global.fetch = jest.fn();
+    expect((await handlers["count-tickets"]({ query: "" })).error).toMatch(/Enter/);
+    expect((await handlers["count-tickets"]({ query: "{me}" })).error).toMatch(/Unknown placeholder \{me\}/);
+    settings.fsApiKeyEncrypted = "";
+    expect((await handlers["count-tickets"]({ query: "status:2" })).skipped).toBe(true);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("freshservice buildFilterQuery", () => {
+  test("fills date placeholders and collapses whitespace", () => {
+    expect(buildFilterQuery("  status:2\n AND created_at:>'{today}' ", { today: "2026-11-09" }))
+      .toEqual({ query: "status:2 AND created_at:>'2026-11-09'" });
+  });
+
+  test("rejects double quotes, non-date placeholder values and long queries", () => {
+    expect(buildFilterQuery("tag:\"x\"").error).toMatch(/single quotes/);
+    expect(buildFilterQuery("created_at:>'{today}'", { today: "' OR status:2" }).error).toMatch(/Unknown placeholder/);
+    expect(buildFilterQuery("created_at:>'{toString}'", {}).error).toMatch(/Unknown placeholder/);
+    expect(buildFilterQuery("status:2 OR ".repeat(50) + "status:2").error).toMatch(/longer than 512/);
   });
 });

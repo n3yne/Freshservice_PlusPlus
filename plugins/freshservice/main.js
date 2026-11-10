@@ -15,6 +15,9 @@ const MAX_SEARCH_TERM_CHARS = 200;
 const MAX_SEARCH_RESULTS = 10;
 const MAX_ARTICLE_CHARS = 6000;
 const MAX_SNIPPET_CHARS = 500;
+// Freshservice caps a filter query at 512 characters.
+const MAX_FILTER_QUERY_CHARS = 512;
+const DATE_VAR_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const STATUS_LABELS = { 2: "Open", 3: "Pending", 4: "Resolved", 5: "Closed" };
 const PRIORITY_LABELS = { 1: "Low", 2: "Medium", 3: "High", 4: "Urgent" };
@@ -164,6 +167,26 @@ module.exports = {
       }
     });
 
+    // Counts the tickets matching a Freshservice filter query, such as
+    // "agent_id:123 AND status:2" or "status:4 AND updated_at:>'{weekStart}'".
+    // {name} placeholders are filled from data.vars (dates only). Used by the
+    // Metrics Bar, which falls back to its dashboard scrape on any error.
+    api.handle("count-tickets", async function (data) {
+      const built = buildFilterQuery(data && data.query, data && data.vars);
+      if (built.error) return built;
+      const conn = connection();
+      if (conn.error) return conn;
+      try {
+        const json = await apiGet(Object.assign({ what: "Ticket filter" }, conn),
+          "/tickets/filter?query=" + encodeURIComponent("\"" + built.query + "\"") + "&page=1");
+        if (typeof json.total !== "number") return { error: "Freshservice returned no ticket count." };
+        return { count: json.total, query: built.query };
+      } catch (err) {
+        api.log("count-tickets failed:", err.message);
+        return { error: err.message || String(err) };
+      }
+    });
+
     api.handle("test-connection", async function () {
       const conn = connection();
       if (conn.error) return { error: conn.error };
@@ -178,6 +201,7 @@ module.exports = {
 
   // Exported for tests.
   normalizeDomain,
+  buildFilterQuery,
   formatTicketText,
   formatArticle,
 };
@@ -195,9 +219,32 @@ function normalizeDomain(raw) {
   return HOSTNAME_PATTERN.test(host) ? host : null;
 }
 
+// Checks a ticket filter query and fills in its {name} placeholders from vars.
+// Returns { query } or { error }. Double quotes aren't allowed because the
+// whole query is sent wrapped in them.
+function buildFilterQuery(raw, vars) {
+  const template = String(raw || "").replace(/\s+/g, " ").trim();
+  if (!template) return { error: "Enter a ticket filter query." };
+  if (template.includes("\"")) return { error: "Use single quotes in the query, not double quotes." };
+  const values = vars && typeof vars === "object" ? vars : {};
+  let unknown = null;
+  const query = template.replace(/\{([a-zA-Z]+)\}/g, function (whole, name) {
+    const v = Object.prototype.hasOwnProperty.call(values, name) ? values[name] : undefined;
+    if (typeof v === "string" && DATE_VAR_PATTERN.test(v)) return v;
+    unknown = unknown || whole;
+    return whole;
+  });
+  if (unknown) return { error: `Unknown placeholder ${unknown}. Use {today}, {weekStart} or {monthStart}.` };
+  if (query.length > MAX_FILTER_QUERY_CHARS) return { error: `The query is longer than ${MAX_FILTER_QUERY_CHARS} characters.` };
+  return { query };
+}
+
 function describeHttpError(resp, what) {
   const noun = what || "Ticket";
   switch (resp.status) {
+    case 400: return what === "Ticket filter"
+      ? "Freshservice didn't accept the filter query (400). Check the field names and quotes."
+      : "Freshservice rejected the request (400).";
     case 401: return "Freshservice rejected the API key (401). Check it in Settings → Freshservice.";
     case 403: return `This API key isn't allowed to view that ${noun.toLowerCase()} (403).`;
     case 404: return `${noun} not found in Freshservice (404).`;
