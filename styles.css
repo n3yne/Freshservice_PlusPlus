@@ -1409,6 +1409,10 @@ body[data-theme="light"] .downloads-panel {
   margin-top: 2px;
 }
 
+.settings-update-row {
+  margin-top: 10px;
+}
+
 .plugin-import-status {
   font-size: 12px;
   color: var(--text-muted);

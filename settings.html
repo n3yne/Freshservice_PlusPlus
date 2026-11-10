@@ -64,6 +64,29 @@
 
           </div>
 
+          <div class="settings-section">
+            <h3 class="settings-section-title">Updates</h3>
+
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-auto-update" />
+              <span class="settings-toggle-slider"></span>
+              <span class="settings-toggle-label">Download Updates Automatically</span>
+            </label>
+            <p class="settings-description">
+              When a new version is out, download it in the background and install it the next time you close
+              MSP++ (or right away from the notification). Turn this off to be asked before anything downloads.
+              MSP++ checks when it starts and every 6 hours.
+            </p>
+            <p class="settings-description" id="update-mode-note" hidden></p>
+
+            <div class="plugin-import-row settings-update-row">
+              <button type="button" id="btn-check-updates" class="btn btn-small btn-secondary">
+                Check for Updates
+              </button>
+              <span id="update-status" class="plugin-import-status"></span>
+            </div>
+          </div>
+
         </div><!-- #panel-general -->
 
         <!-- Plugins panel -->

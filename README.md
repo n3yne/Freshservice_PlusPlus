@@ -4,7 +4,7 @@
 
 An Electron-based wrapper for MSP and ticketing web apps (Freshservice and ConnectWise Manage today) that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
 
-**Current version:** 0.7.0
+**Current version:** 0.7.1
 
 > MSP++ was called **Freshservice++** before 0.6.0. Your settings, notes and sign-ins carry over: the app keeps using the existing Freshservice++ data folder.
 
@@ -103,7 +103,7 @@ Extend the app with self-contained plugin directories — no build step required
 
 ### Notifications
 A bell icon in the tab bar shows a badge when there are unread notifications. Current notification types:
-- **Update available** – Checks GitHub Releases on startup and alerts you when a newer version is published; includes View Release, Hide for now, and Don't remind me for this version actions
+- **Updates** – Checks GitHub Releases on startup and every 6 hours. The installed Windows app downloads new versions in the background and shows **Update Ready** with a **Restart to Update** button; if you don't restart, the update installs the next time you close MSP++. Turn off **Settings → General → Download Updates Automatically** to be asked before anything downloads. The portable .exe and the Mac app can't update themselves, so they show **Update Available** with a link to the release. Hide for now and Don't remind me for this version work as before.
 - **Auto-save failed** – Fires once if a note cannot be written to disk (permissions or disk-full)
 - **Backup storage warning** – Alerts when the backup folder exceeds a configurable size threshold (default: 100 MB; set to 0 to disable)
 - **Live sync push failed** – Fires once when the first push to a site's notes field fails (e.g. session expired)
@@ -170,8 +170,8 @@ Click **📁 Open Folder** in the app to jump there directly.
 
 Each release has two Windows downloads:
 
-- **`MSP++ Setup <version>.exe`** – Installer. It asks whether to install just for you (default: `%LOCALAPPDATA%\Programs\MSP++`, no admin rights needed) or for everyone on the PC (`C:\Program Files\MSP++`, needs admin), and lets you change the folder. It adds Start menu and desktop shortcuts. Running a newer installer updates the folder you picked the first time without asking again, so the path to `MSP++.exe` never changes. Close MSP++ before updating. Uninstall from Windows Settings → Apps; your data folder is kept.
-- **`MSP++ <version>.exe`** – Portable. Runs from wherever you put it, nothing is installed.
+- **`MSP-PlusPlus-Setup-<version>.exe`** – Installer (called `MSP++ Setup <version>.exe` up to 0.7.0). It asks whether to install just for you (default: `%LOCALAPPDATA%\Programs\MSP++`, no admin rights needed) or for everyone on the PC (`C:\Program Files\MSP++`, needs admin), and lets you change the folder. It adds Start menu and desktop shortcuts. Running a newer installer updates the folder you picked the first time without asking again, so the path to `MSP++.exe` never changes. From 0.7.1 on, the installed app updates itself (see [Notifications](#notifications)); on 0.7.0 or earlier, install the next version by hand once. Close MSP++ before running an installer by hand. Uninstall from Windows Settings → Apps; your data folder is kept.
+- **`MSP++ <version>.exe`** – Portable. Runs from wherever you put it, nothing is installed. It tells you when a new version is out but can't update itself.
 
 Both use the same data folder (see [Where Are Backups Stored?](#where-are-backups-stored)), so you can switch between them.
 
@@ -209,7 +209,7 @@ npm run build-installer
 npm run build-mac
 ```
 
-Pushing a `v*` tag runs the GitHub Actions workflow, which lints, tests and builds both platforms and attaches them to a GitHub release.
+Pushing a `v*` tag runs the GitHub Actions workflow, which lints, tests and builds both platforms and attaches them to a GitHub release. The release also gets `latest.yml` and the installer's `.blockmap`: installed copies read `latest.yml` to find and download updates, so a release without it won't reach them.
 
 Output is placed in the `dist/` folder.
 

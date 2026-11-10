@@ -13,6 +13,9 @@ const DEFAULT_SETTINGS = {
   defaultUrl: "about:blank",
   theme: "dark",
   dismissedReleaseVersion: "",
+  // Installed Windows build: download new versions in the background and install
+  // them when the app closes. Off: ask before downloading. See updater.js.
+  autoUpdate: true,
 };
 
 function validateSettings(s) {
@@ -28,6 +31,7 @@ function validateSettings(s) {
     } catch { return false; }
   }
   if (!["dark", "light"].includes(s.theme)) return false;
+  if (s.autoUpdate !== undefined && typeof s.autoUpdate !== "boolean") return false;
   if (s.dismissedReleaseVersion !== undefined && (typeof s.dismissedReleaseVersion !== "string" || s.dismissedReleaseVersion.length > 20)) return false;
   return true;
 }
