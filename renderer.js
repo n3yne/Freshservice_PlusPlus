@@ -335,7 +335,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const notif = pendingNotifications.find((n) => n.id === id);
       if (notif?.type === "update" && !notif.ready) {
         appSettings.dismissedReleaseVersion = notif.version;
-        window.backupAPI.saveSettings(appSettings);
+        window.backupAPI.saveSettings({ dismissedReleaseVersion: notif.version });
       }
       const idx = pendingNotifications.findIndex((n) => n.id === id);
       if (idx !== -1) pendingNotifications.splice(idx, 1);
@@ -441,7 +441,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (previous !== tab) tab.onShow.forEach(function (fn) { try { fn(); } catch (e) { console.error("[SidePanel]", e); } });
     if (remember && appSettings.sidePanelTab !== id) {
       appSettings.sidePanelTab = id;
-      window.backupAPI.saveSettings(appSettings);
+      window.backupAPI.saveSettings({ sidePanelTab: id });
     }
   }
 
@@ -1733,7 +1733,7 @@ document.addEventListener("DOMContentLoaded", function () {
     updateSidePanelVisibility();
 
     appSettings.panelCollapsed = panelCollapsed;
-    window.backupAPI.saveSettings(appSettings);
+    window.backupAPI.saveSettings({ panelCollapsed: panelCollapsed });
   }
 
   btnToggle.addEventListener("click", togglePanel);

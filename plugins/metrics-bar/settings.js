@@ -92,8 +92,14 @@
     };
   }
 
+  // Saves this plugin's own settings only (they all start with "metrics"). The
+  // rest of this copy can be out of date and must not overwrite newer values.
   function saveSettings() {
-    window.pluginSettingsAPI.saveSettings(appSettings);
+    const patch = {};
+    Object.keys(appSettings).forEach(function (key) {
+      if (key.indexOf("metrics") === 0) patch[key] = appSettings[key];
+    });
+    window.pluginSettingsAPI.saveSettings(patch);
   }
 
   // Dashboards are web pages. Anything else (a file on this PC, a script) is never loaded.

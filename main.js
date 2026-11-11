@@ -751,13 +751,19 @@ function registerIpcHandlers() {
     return toPublicSettings(await loadSettings());
   });
 
-  // Save settings to disk and notify the renderer
+  // Save settings to disk and notify the renderer.
+  //
+  // The payload is a patch: only the keys in it change, everything else keeps
+  // the value on disk. Each window (and each plugin in it) holds its own copy of
+  // the settings, and those copies go out of date; replacing the whole file with
+  // one of them used to undo changes made elsewhere. Callers should send just
+  // the keys they changed. A caller that still sends a whole copy keeps working.
   electron.ipcMain.handle("save-settings", (event, settings) => withSettingsLock(async () => {
     if (typeof settings !== "object" || settings === null || Array.isArray(settings)) {
       return { success: false };
     }
     const existing = await loadSettings();
-    const merged = Object.assign({}, DEFAULT_SETTINGS, pluginManager.getPluginDefaultSettings(), settings);
+    const merged = Object.assign({}, existing, settings);
     // If caller didn't supply a new plaintext key, preserve whatever encrypted key
     // is on disk. Saving with "<name>Remove": true deletes the stored key instead.
     const credentialFields = pluginManager.getCredentialFields();
