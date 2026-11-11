@@ -18,6 +18,11 @@ const MAX_SNIPPET_CHARS = 500;
 // Freshservice caps a filter query at 512 characters.
 const MAX_FILTER_QUERY_CHARS = 512;
 const DATE_VAR_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+// The filter endpoint returns 30 tickets a page.
+const FILTER_PAGE_SIZE = 30;
+const MAX_FILTER_PAGES = 10;
+const MAX_CONVERSATION_SNIPPET_CHARS = 300;
+const EMAIL_PATTERN = /^[^\s@"<>]{1,64}@[^\s@"<>]{1,253}$/;
 
 const STATUS_LABELS = { 2: "Open", 3: "Pending", 4: "Resolved", 5: "Closed" };
 const PRIORITY_LABELS = { 1: "Low", 2: "Medium", 3: "High", 4: "Urgent" };
@@ -211,6 +216,70 @@ module.exports = {
       }
     });
 
+    // Looks up an agent by email, so a plugin can tell which tickets are
+    // "mine" (the API has no endpoint for the agent who owns the key).
+    api.handle("find-agent", async function (data) {
+      const email = String((data && data.email) || "").trim().toLowerCase();
+      if (!EMAIL_PATTERN.test(email)) return { error: "Enter the email address you sign in to Freshservice with." };
+      const conn = connection();
+      if (conn.error) return conn;
+      try {
+        const json = await apiGet(Object.assign({ what: "Agent" }, conn), "/agents?email=" + encodeURIComponent(email));
+        const agent = (Array.isArray(json.agents) ? json.agents : []).map(formatAgent).find(Boolean);
+        if (!agent) return { error: "No Freshservice agent has the email " + email + "." };
+        return { agent };
+      } catch (err) {
+        api.log("find-agent failed:", err.message);
+        return { error: err.message || String(err) };
+      }
+    });
+
+    // Lists the tickets matching a filter query (see count-tickets), newest
+    // pages first as Freshservice returns them, up to maxPages pages of 30.
+    api.handle("filter-tickets", async function (data) {
+      const built = buildFilterQuery(data && data.query, data && data.vars);
+      if (built.error) return built;
+      const conn = connection();
+      if (conn.error) return conn;
+      const maxPages = Math.min(Math.max(parseInt(data && data.maxPages, 10) || 1, 1), MAX_FILTER_PAGES);
+      const what = Object.assign({ what: "Ticket filter" }, conn);
+      const q = encodeURIComponent("\"" + built.query + "\"");
+      try {
+        const tickets = [];
+        let total = 0;
+        for (let page = 1; page <= maxPages; page++) {
+          const json = await apiGet(what, "/tickets/filter?query=" + q + "&page=" + page);
+          const batch = Array.isArray(json.tickets) ? json.tickets : [];
+          if (typeof json.total === "number") total = json.total;
+          tickets.push(...batch.map(formatTicketSummary).filter(Boolean));
+          if (batch.length < FILTER_PAGE_SIZE || tickets.length >= total) break;
+        }
+        return { tickets, total: Math.max(total, tickets.length), query: built.query };
+      } catch (err) {
+        api.log("filter-tickets failed:", err.message);
+        return { error: err.message || String(err) };
+      }
+    });
+
+    // A ticket's replies and notes, oldest first, each cut to a short snippet.
+    api.handle("get-conversations", async function (data) {
+      const ticketId = String((data && data.ticketId) || "");
+      if (!/^\d{1,12}$/.test(ticketId)) return { error: "Invalid ticket ID." };
+      const conn = connection();
+      if (conn.error) return conn;
+      try {
+        const list = await fetchConversations(conn, ticketId);
+        return {
+          ticketId,
+          conversations: list.map(formatConversation).filter(Boolean)
+            .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+        };
+      } catch (err) {
+        api.log("get-conversations failed:", err.message);
+        return { error: err.message || String(err) };
+      }
+    });
+
     api.handle("test-connection", async function () {
       const conn = connection();
       if (conn.error) return { error: conn.error };
@@ -229,6 +298,9 @@ module.exports = {
   buildFilterQuery,
   formatTicketText,
   formatArticle,
+  formatAgent,
+  formatTicketSummary,
+  formatConversation,
 };
 
 // Accepts "acme.freshservice.com", "https://acme.freshservice.com/a/tickets/1", etc.
@@ -321,6 +393,48 @@ function formatArticle(a, domain, maxChars) {
     url: domain ? `https://${domain}/support/solutions/articles/${id}` : "",
     text: text.substring(0, maxChars || MAX_ARTICLE_CHARS),
     truncated: text.length > (maxChars || MAX_ARTICLE_CHARS),
+  };
+}
+
+function isId(v) {
+  return Number.isSafeInteger(v) && v > 0;
+}
+
+function formatAgent(a) {
+  if (!a || typeof a !== "object" || !isId(a.id)) return null;
+  const name = [a.first_name, a.last_name].filter((p) => typeof p === "string" && p.trim()).join(" ").trim();
+  return {
+    id: a.id,
+    name: name.substring(0, 200),
+    email: typeof a.email === "string" ? a.email.substring(0, 254) : "",
+  };
+}
+
+function formatTicketSummary(t) {
+  if (!t || typeof t !== "object" || !isId(t.id)) return null;
+  return {
+    id: t.id,
+    subject: typeof t.subject === "string" ? t.subject.substring(0, 300) : "",
+    status: Number.isInteger(t.status) ? t.status : null,
+    priority: Number.isInteger(t.priority) ? t.priority : null,
+    responderId: isId(t.responder_id) ? t.responder_id : null,
+    requesterId: isId(t.requester_id) ? t.requester_id : null,
+    createdAt: typeof t.created_at === "string" ? t.created_at : "",
+    updatedAt: typeof t.updated_at === "string" ? t.updated_at : "",
+  };
+}
+
+function formatConversation(c) {
+  if (!c || typeof c !== "object" || !isId(c.id)) return null;
+  const text = bodyText(c, "body_text", "body").replace(/\s+/g, " ").trim();
+  return {
+    id: c.id,
+    userId: isId(c.user_id) ? c.user_id : null,
+    incoming: c.incoming === true,
+    private: c.private === true,
+    fromEmail: typeof c.from_email === "string" ? c.from_email.substring(0, 254) : "",
+    createdAt: typeof c.created_at === "string" ? c.created_at : "",
+    snippet: text.substring(0, MAX_CONVERSATION_SNIPPET_CHARS),
   };
 }
 

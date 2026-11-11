@@ -1198,6 +1198,10 @@ electron.app.whenReady().then(async () => {
   // migration write, backup cleanup) against the first instance's files.
   if (!gotTheLock) return;
 
+  // Windows only shows desktop notifications for an app whose ID matches its
+  // Start menu shortcut, which the installer creates with the appId.
+  if (process.platform === "win32") electron.app.setAppUserModelId("com.n3yne.freshservicepp");
+
   // Initialize paths now that app is ready
   DATA_DIR = path.join(electron.app.getPath("userData"), "note-backups");
   TABS_FILE = path.join(DATA_DIR, "open-tabs.json");
