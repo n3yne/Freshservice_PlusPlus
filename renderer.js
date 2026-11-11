@@ -612,6 +612,11 @@ document.addEventListener("DOMContentLoaded", function () {
         return "knowledge needs search(term) and getArticle(id)";
       }
     }
+    if (a.timeEntry !== undefined) {
+      const te = a.timeEntry;
+      if (!te || typeof te !== "object" || typeof te.log !== "function") return "timeEntry needs log(ctx)";
+      if (te.label !== undefined && typeof te.label !== "string") return "timeEntry.label must be a string";
+    }
     return null;
   }
 
@@ -626,6 +631,12 @@ document.addEventListener("DOMContentLoaded", function () {
       }));
     }
     if (a.knowledge) out.knowledge = Object.freeze(Object.assign({ name: "Knowledge base" }, a.knowledge));
+    if (a.timeEntry) {
+      out.timeEntry = Object.freeze(Object.assign({}, a.timeEntry, {
+        label: a.timeEntry.label || "Log in " + (a.shortName || a.name),
+        billable: a.timeEntry.billable === true,
+      }));
+    }
     return Object.freeze(out);
   }
 

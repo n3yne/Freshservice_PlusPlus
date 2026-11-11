@@ -1,0 +1,192 @@
+/* ===== Time Tracker: its side panel tab ===== */
+.tt-panel {
+  background: var(--panel-content-bg);
+  overflow-y: auto;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.tt-header,
+.tt-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.tt-header {
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tt-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tt-muted {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.tt-flash {
+  margin: 8px 12px 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.tt-ok { color: var(--success); }
+.tt-error { color: var(--warning); }
+
+.tt-current {
+  margin: 10px 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tt-current-empty {
+  color: var(--text-muted);
+}
+
+.tt-current-label,
+.tt-row-label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+a.tt-row-label {
+  text-decoration: none;
+}
+
+a.tt-row-label:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.tt-current-title,
+.tt-row-title {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tt-current-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.tt-clock {
+  font-family: "Source Code Pro", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tt-clock-big {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.tt-running {
+  color: var(--success);
+}
+
+.tt-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tt-list-header {
+  font-weight: 600;
+  padding-bottom: 4px;
+}
+
+.tt-empty {
+  padding: 0 12px 12px;
+}
+
+.tt-row {
+  margin: 0 12px 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tt-row-current {
+  border-color: var(--primary);
+}
+
+.tt-row-running {
+  border-left: 3px solid var(--success);
+}
+
+.tt-row-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tt-row-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.tt-log {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+
+.tt-log-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tt-log-label {
+  font-weight: 600;
+}
+
+.tt-log-time.settings-text-input {
+  flex: 0 0 80px;
+  width: 80px;
+}
+
+.tt-log-note {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  padding: 6px;
+  font: inherit;
+}
+
+.tt-log-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tt-log-status:empty {
+  display: none;
+}

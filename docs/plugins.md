@@ -297,6 +297,7 @@ Renderer scripts can also call the bundled plugins, so a plugin can use the app'
 | `invoke("freshservice", "get-ticket", { ticketId, host })` | `{ text }` or `{ error, skipped? }` | Plain-text ticket, description and conversation. |
 | `invoke("freshservice", "search-solutions", { term })` | `{ articles }` or `{ error }` | Up to 10 Solutions articles: `{ id, title, status, updatedAt, url, text }`, with `text` cut to a short snippet. |
 | `invoke("freshservice", "get-solution-article", { id })` | `{ article }` or `{ error }` | One article with its text (up to 6,000 characters) and a `truncated` flag. |
+| `invoke("freshservice", "add-time-entry", { kind, id, minutes, note?, billable?, host? })` | `{ ok, id, timeSpent }` or `{ error, skipped? }` | Adds a time entry (`minutes` 1 to 1,440) to a ticket, change, problem or release (`kind`) for the agent the API key belongs to. Prefer the site's `timeEntry` adapter. |
 | `invoke("freshservice", "count-tickets", { query, vars? })` | `{ count, query }` or `{ error, skipped? }` | Number of tickets matching a [ticket filter query](https://api.freshservice.com/) (no double quotes, 512 characters at most). `{name}` placeholders are filled from `vars`, which may only hold `YYYY-MM-DD` dates. |
 
 See `plugins/solutions-chat/renderer.js` for a plugin built on `pluginAPI.sites` and the AI Features handler.
@@ -311,7 +312,7 @@ Adds a tab to the side panel on the right of the window and returns a handle for
 | `label` | Text on the tab. |
 | `icon` | Optional emoji or short text shown before the label. |
 | `title` | Optional tooltip. |
-| `order` | Optional number; lower comes first. Notes uses `10`, Solutions Chat `20`, the default is `100`. |
+| `order` | Optional number; lower comes first. Notes uses `10`, Solutions Chat `20`, Time Tracker `30`, the default is `100`. |
 
 The handle:
 

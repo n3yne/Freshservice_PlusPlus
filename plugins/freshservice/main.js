@@ -98,24 +98,52 @@ module.exports = {
     }
 
     async function apiGet(conn, pathAndQuery) {
+      return apiRequest(conn, pathAndQuery);
+    }
+
+    async function apiRequest(conn, pathAndQuery, options) {
+      const opts = options || {};
       let resp;
       try {
-        resp = await fetch("https://" + conn.domain + "/api/v2" + pathAndQuery, {
+        const init = {
+          method: opts.method || "GET",
           headers: {
             // Freshservice uses Basic auth with the API key as the user name and any password.
             "Authorization": "Basic " + Buffer.from(conn.key + ":X").toString("base64"),
             "Content-Type": "application/json",
           },
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        });
+        };
+        if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
+        resp = await fetch("https://" + conn.domain + "/api/v2" + pathAndQuery, init);
       } catch (err) {
         if (err && (err.name === "TimeoutError" || err.name === "AbortError")) {
           throw new Error(`Freshservice did not respond within ${REQUEST_TIMEOUT_MS / 1000} seconds`, { cause: err });
         }
         throw new Error("Could not reach Freshservice: " + (err && err.message ? err.message : String(err)), { cause: err });
       }
-      if (!resp.ok) throw new Error(describeHttpError(resp, conn.what));
+      if (!resp.ok) {
+        let detail = "";
+        if (resp.status === 400 && opts.method === "POST") {
+          try { detail = describeValidationErrors(await resp.json()); } catch { /* no JSON body */ }
+        }
+        throw new Error(describeHttpError(resp, conn.what) + (detail ? " " + detail : ""));
+      }
       return resp.json();
+    }
+
+    // The signed-in agent's id, which a time entry has to name. Looked up once
+    // per domain through /agents/me (the agent the API key belongs to).
+    const agentIdByDomain = new Map();
+    async function currentAgentId(conn) {
+      if (agentIdByDomain.has(conn.domain)) return agentIdByDomain.get(conn.domain);
+      const json = await apiGet(Object.assign({}, conn, { what: "Agent" }), "/agents/me");
+      const id = json && json.agent && json.agent.id;
+      if (typeof id !== "number" && !(typeof id === "string" && /^\d{1,20}$/.test(id))) {
+        throw new Error("Freshservice didn't say which agent the API key belongs to.");
+      }
+      agentIdByDomain.set(conn.domain, id);
+      return id;
     }
 
     async function fetchConversations(conn, ticketId) {
@@ -211,6 +239,31 @@ module.exports = {
       }
     });
 
+    // Adds a time entry to a ticket, change, problem or release, for the agent
+    // the API key belongs to. Used by the Time Tracker plugin through the site
+    // adapter's timeEntry.log(). data: { kind, id, minutes, note?, billable?, host? }.
+    api.handle("add-time-entry", async function (data) {
+      const entry = buildTimeEntry(data);
+      if (entry.error) return entry;
+      const conn = connection();
+      if (conn.error) return conn;
+      const host = data && typeof data.host === "string" ? data.host.toLowerCase() : "";
+      if (host && host !== conn.domain) {
+        return { skipped: true, error: `The open page (${host}) isn't the configured Freshservice domain (${conn.domain}).` };
+      }
+      try {
+        const agentId = await currentAgentId(conn);
+        const body = Object.assign({ agent_id: agentId }, entry.body);
+        const json = await apiRequest(Object.assign({}, conn, { what: "Time entry" }),
+          `/${entry.collection}/${entry.id}/time_entries`, { method: "POST", body: body });
+        const saved = json && (json.time_entry || json);
+        return { ok: true, id: saved && saved.id != null ? String(saved.id) : "", timeSpent: body.time_spent };
+      } catch (err) {
+        api.log("add-time-entry failed:", err.message);
+        return { error: err.message || String(err) };
+      }
+    });
+
     api.handle("test-connection", async function () {
       const conn = connection();
       if (conn.error) return { error: conn.error };
@@ -227,6 +280,8 @@ module.exports = {
   normalizeDomain,
   keyHost,
   buildFilterQuery,
+  buildTimeEntry,
+  formatTimeSpent,
   formatTicketText,
   formatArticle,
 };
@@ -272,14 +327,58 @@ function buildFilterQuery(raw, vars) {
   return { query };
 }
 
+// Record kinds the API takes time entries on, and their URL collection.
+const TIME_ENTRY_COLLECTIONS = { ticket: "tickets", change: "changes", problem: "problems", release: "releases" };
+const MAX_TIME_ENTRY_MINUTES = 24 * 60;
+const MAX_TIME_ENTRY_NOTE_CHARS = 4000;
+
+// 65 → "01:05", the "hh:mm" form Freshservice's time_spent takes.
+function formatTimeSpent(minutes) {
+  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+}
+
+// Checks a time entry request from the renderer.
+// Returns { collection, id, body } or { error }.
+function buildTimeEntry(data) {
+  const d = data && typeof data === "object" ? data : {};
+  const kind = typeof d.kind === "string" ? d.kind.toLowerCase() : "ticket";
+  const collection = Object.prototype.hasOwnProperty.call(TIME_ENTRY_COLLECTIONS, kind) ? TIME_ENTRY_COLLECTIONS[kind] : null;
+  if (!collection) return { error: "Time can only be logged on tickets, changes, problems and releases." };
+  const id = String(d.id == null ? "" : d.id);
+  if (!/^\d{1,12}$/.test(id)) return { error: "Open a ticket to log time on." };
+  const minutes = Number(d.minutes);
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > MAX_TIME_ENTRY_MINUTES) {
+    return { error: "The time must be between 1 minute and 24 hours." };
+  }
+  const body = { time_spent: formatTimeSpent(minutes) };
+  if (typeof d.note === "string" && d.note.trim()) body.note = d.note.trim().substring(0, MAX_TIME_ENTRY_NOTE_CHARS);
+  if (typeof d.billable === "boolean") body.billable = d.billable;
+  return { collection, id, body };
+}
+
+// The field errors in a Freshservice 400 reply, e.g. "(agent_id: It should be a/an Integer)".
+function describeValidationErrors(json) {
+  const list = json && Array.isArray(json.errors) ? json.errors : [];
+  const parts = list.slice(0, 3).map(function (e) {
+    const field = e && typeof e.field === "string" ? e.field : "";
+    const msg = e && typeof e.message === "string" ? e.message : "";
+    return [field, msg].filter(Boolean).join(": ").substring(0, 200);
+  }).filter(Boolean);
+  return parts.length ? "(" + parts.join("; ") + ")" : "";
+}
+
 function describeHttpError(resp, what) {
   const noun = what || "Ticket";
   switch (resp.status) {
-    case 400: return what === "Ticket filter"
-      ? "Freshservice didn't accept the filter query (400). Check the field names and quotes."
-      : "Freshservice rejected the request (400).";
+    case 400:
+      if (what === "Ticket filter") return "Freshservice didn't accept the filter query (400). Check the field names and quotes.";
+      if (what === "Time entry") return "Freshservice didn't accept the time entry (400).";
+      return "Freshservice rejected the request (400).";
     case 401: return "Freshservice rejected the API key (401). Check it in Settings → Freshservice.";
-    case 403: return `This API key isn't allowed to view that ${noun.toLowerCase()} (403).`;
+    case 403: return what === "Time entry"
+      ? "This API key's agent isn't allowed to add time entries to that record (403)."
+      : `This API key isn't allowed to view that ${noun.toLowerCase()} (403).`;
     case 404: return `${noun} not found in Freshservice (404).`;
     case 429: {
       const retry = resp.headers && typeof resp.headers.get === "function" ? resp.headers.get("retry-after") : null;

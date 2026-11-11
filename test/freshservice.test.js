@@ -2,7 +2,7 @@
 
 const fsApi = require("../plugins/freshservice/main");
 
-const { validateSettings, defaultSettings, normalizeDomain, formatTicketText, formatArticle, buildFilterQuery } = fsApi;
+const { validateSettings, defaultSettings, normalizeDomain, formatTicketText, formatArticle, buildFilterQuery, buildTimeEntry, formatTimeSpent } = fsApi;
 
 // Placeholder only — never a real key.
 const FAKE_KEY = "test-key-not-real";
@@ -275,6 +275,46 @@ describe("freshservice handlers", () => {
     expect((await handlers["count-tickets"]({ query: "status:2" })).skipped).toBe(true);
     expect(global.fetch).not.toHaveBeenCalled();
   });
+
+  test("add-time-entry looks up the agent once and posts the entry", async () => {
+    global.fetch = jest.fn(async (url, init) => {
+      if (url.endsWith("/agents/me")) return jsonResponse({ agent: { id: 21000418005 } });
+      return jsonResponse({ time_entry: { id: 77, time_spent: JSON.parse(init.body).time_spent } }, 201);
+    });
+    const res = await handlers["add-time-entry"]({ kind: "ticket", id: "42", minutes: 65, note: " Fixed it ", billable: false, host: "acme.freshservice.com" });
+    expect(res).toEqual({ ok: true, id: "77", timeSpent: "01:05" });
+    const [meUrl] = global.fetch.mock.calls[0];
+    expect(meUrl).toBe("https://acme.freshservice.com/api/v2/agents/me");
+    const [postUrl, init] = global.fetch.mock.calls[1];
+    expect(postUrl).toBe("https://acme.freshservice.com/api/v2/tickets/42/time_entries");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ agent_id: 21000418005, time_spent: "01:05", note: "Fixed it", billable: false });
+
+    await handlers["add-time-entry"]({ kind: "change", id: "9", minutes: 30 });
+    const urls = global.fetch.mock.calls.map((c) => c[0]);
+    expect(urls.filter((u) => u.endsWith("/agents/me"))).toHaveLength(1);
+    expect(urls[urls.length - 1]).toBe("https://acme.freshservice.com/api/v2/changes/9/time_entries");
+  });
+
+  test("add-time-entry checks the request before calling the API", async () => {
+    global.fetch = jest.fn();
+    expect((await handlers["add-time-entry"]({ kind: "asset", id: "1", minutes: 5 })).error).toMatch(/tickets, changes/);
+    expect((await handlers["add-time-entry"]({ id: "1/../2", minutes: 5 })).error).toMatch(/Open a ticket/);
+    expect((await handlers["add-time-entry"]({ id: "1", minutes: 0 })).error).toMatch(/between 1 minute/);
+    expect((await handlers["add-time-entry"]({ id: "1", minutes: 1.5 })).error).toMatch(/between 1 minute/);
+    expect((await handlers["add-time-entry"]({ id: "1", minutes: 5, host: "other.freshservice.com" })).skipped).toBe(true);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("add-time-entry reports Freshservice's field errors", async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (url.endsWith("/agents/me")) return jsonResponse({ agent: { id: 5 } });
+      return jsonResponse({ description: "Validation failed", errors: [{ field: "time_spent", message: "It should be in hh:mm format" }] }, 400);
+    });
+    const res = await handlers["add-time-entry"]({ id: "42", minutes: 5 });
+    expect(res.error).toBe("Freshservice didn't accept the time entry (400). (time_spent: It should be in hh:mm format)");
+    expect(res.error).not.toContain(FAKE_KEY);
+  });
 });
 
 describe("freshservice buildFilterQuery", () => {
@@ -288,5 +328,15 @@ describe("freshservice buildFilterQuery", () => {
     expect(buildFilterQuery("created_at:>'{today}'", { today: "' OR status:2" }).error).toMatch(/Unknown placeholder/);
     expect(buildFilterQuery("created_at:>'{toString}'", {}).error).toMatch(/Unknown placeholder/);
     expect(buildFilterQuery("status:2 OR ".repeat(50) + "status:2").error).toMatch(/longer than 512/);
+  });
+});
+
+describe("freshservice buildTimeEntry", () => {
+  test("formats hh:mm and keeps only the fields it knows", () => {
+    expect(formatTimeSpent(5)).toBe("00:05");
+    expect(formatTimeSpent(1440)).toBe("24:00");
+    expect(buildTimeEntry({ kind: "Problem", id: 3, minutes: 90, note: "  ", billable: "yes", agent_id: 1 }))
+      .toEqual({ collection: "problems", id: "3", body: { time_spent: "01:30" } });
+    expect(buildTimeEntry({ id: "3", minutes: 1441 }).error).toMatch(/24 hours/);
   });
 });
