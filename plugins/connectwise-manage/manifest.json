@@ -1,7 +1,7 @@
 {
   "id": "connectwise-manage",
   "name": "ConnectWise Manage",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Site support for ConnectWise Manage: ticket detection, live note sync with time-entry and stopwatch notes, and ticket notes for AI Summarize.",
   "renderer": "renderer.js",
   "minAppVersion": "0.5.7",
