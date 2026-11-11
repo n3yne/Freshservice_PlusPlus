@@ -4,7 +4,8 @@ const electron = require("electron");
 const path = require("path");
 const fs = require("fs");
 const fsp = fs.promises;
-const { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings, findLegacyUserDataDir } = require("./utils");
+const { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings, findLegacyUserDataDir, tabsToRestore } = require("./utils");
+const { tabShortcutForKey } = require("./tab-shortcuts");
 const pluginManager = require("./plugin-manager");
 const { installPasskeyAccountChooser } = require("./webauthn");
 const { createUpdater } = require("./updater");
@@ -287,6 +288,15 @@ function createWindow() {
       if (zoomAction) {
         e.preventDefault();
         mainWindow.webContents.send("page-zoom", { webContentsId: webviewContents.id, action: zoomAction });
+        return;
+      }
+      // Tab shortcuts (Ctrl+T, Ctrl+W, Ctrl+Shift+T, Ctrl+Tab, Ctrl+1 to 9) and
+      // Ctrl+F. Key presses in a page never reach the app window's document, and
+      // a page that handles Ctrl+F itself would stop the Edit menu's Find.
+      const shortcut = tabShortcutForKey(input);
+      if (shortcut) {
+        e.preventDefault();
+        mainWindow.webContents.send("tab-shortcut", shortcut);
       }
     });
     // Ctrl+mouse wheel over a page. Electron reports it here but does not zoom
@@ -925,14 +935,16 @@ function registerIpcHandlers() {
     return pluginManager.importPlugin(result.filePaths[0]);
   });
 
-  // Load saved tab URLs from disk
+  // The tabs to open at startup: { tabs: [{ url, pinned }], openHome, homeUrl }. With
+  // "Restore tabs from last session" off, only pinned tabs come back.
   electron.ipcMain.handle("load-tabs", async () => {
+    let saved = [];
     try {
-      const raw = await fsp.readFile(TABS_FILE, "utf-8");
-      return JSON.parse(raw);
-    } catch {
-      return [];
-    }
+      saved = JSON.parse(await fsp.readFile(TABS_FILE, "utf-8"));
+    } catch { /* no saved tabs yet */ }
+    const settings = applySettingsDefaults(await readSettingsFile());
+    // homeUrl: the renderer's own settings copy may not have loaded yet.
+    return Object.assign(tabsToRestore(sanitizeTabUrls(saved), settings.restoreTabs), { homeUrl: settings.defaultUrl });
   });
 
   // Download manager IPC

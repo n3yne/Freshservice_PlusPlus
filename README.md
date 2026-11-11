@@ -13,12 +13,12 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 ## Features
 
 ### Browser
-- **Multi-tab browsing** – Open multiple ticketing pages simultaneously; tabs persist between launches
+- **Multi-tab browsing** – Open multiple ticketing pages simultaneously. The tabs you had open come back the next time the app starts; turn off **Settings → General → Restore Tabs from Last Session** to start on the Home URL instead (pinned tabs always come back)
 - **Address bar** – A row under the tab bar shows the active tab's URL, with back, forward and reload beside it. Type an address and press `Enter` to go there (`Ctrl+L` jumps to it, `Escape` puts the page's URL back). Only `http` and `https` pages open; a bare host such as `example.com` gets `https://` added. There is no web search, so plain words are ignored
 - **Refresh all tabs** – **View → Refresh All Tabs** (`Ctrl+Alt+R`) reloads every open tab at once
-- **Tab management** – Pin tabs, duplicate, close others, reopen closed tabs, copy URL, open in default browser (right-click any tab)
+- **Tab management** – Pin tabs, duplicate (the copy opens next to the original), close others, reopen closed tabs (`Ctrl+Shift+T` puts a tab back where it was), copy URL, open in default browser (right-click any tab). Tab shortcuts work while you're typing in a page too
 - **Page zoom** – `Ctrl`+mouse wheel, `Ctrl+=` / `Ctrl+-`, or **View → Zoom In / Zoom Out** zooms the page in the active tab (the app's own toolbar and side panel stay the same size). Zoom is kept per site, so other tabs on the same site follow along. When a tab isn't at 100%, its zoom level shows at the end of the address bar; click it or press `Ctrl+0` to reset
-- **Find in page** – `Ctrl+F` to search text on the current page
+- **Find in page** – `Ctrl+F` to search text on the current page, even on sites that use `Ctrl+F` for their own search; press it again to select the search text, `Escape` to close
 - **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions; a badge on the download icon shows how many files finished since you last opened the panel (resets when you open it)
 - **Passkey sign-in** – Sites that offer "sign in with a passkey" (for example Microsoft sign-in) work in tabs. On Windows the Windows Hello prompt handles this PC's passkeys, security keys and phones (scan the QR code); when a security key holds several accounts for a site, the app asks which one to use
 - **Permission prompts** – A site in a tab has to ask before it uses the microphone, camera, your location, notifications or the clipboard, or opens a link in another program. Harmless permissions (such as copying to the clipboard) are allowed without asking, and the app's own windows are never asked. Your **Allow** or **Block** answer is saved for that site and kept between launches; click **Forget Saved Answers** under **Settings → General → Site Permissions** to be asked again
@@ -143,9 +143,10 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 | `Ctrl+T` | New tab |
 | `Ctrl+W` | Close tab |
 | `Ctrl+Shift+T` | Reopen closed tab |
-| `Ctrl+Tab` | Next tab |
-| `Ctrl+Shift+Tab` | Previous tab |
-| `Ctrl+1` – `Ctrl+9` | Switch to tab by position |
+| `Ctrl+Tab` or `Ctrl+PageDown` | Next tab |
+| `Ctrl+Shift+Tab` or `Ctrl+PageUp` | Previous tab |
+| `Ctrl+1` – `Ctrl+8` | Switch to tab by position |
+| `Ctrl+9` | Switch to the last tab |
 
 ---
 
@@ -163,7 +164,7 @@ If you used the app when it was called Freshservice++, it keeps using that folde
 Inside you'll find:
 - `autosave.json` – Latest auto-saved draft for each ticket
 - `settings.json` – All app settings
-- `open-tabs.json` – Tab URLs restored on next launch
+- `open-tabs.json` – Tabs open when the app last closed, reopened on next launch
 - `main-window-state.json` – The main window's last size and position
 - `site-permissions.json` – Saved Allow / Block answers to site permission prompts
 - A folder per ticket ID containing timestamped `.html` snapshot files

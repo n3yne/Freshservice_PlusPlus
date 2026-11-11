@@ -16,6 +16,9 @@ const DEFAULT_SETTINGS = {
   // Installed Windows build: download new versions in the background and install
   // them when the app closes. Off: ask before downloading. See updater.js.
   autoUpdate: true,
+  // Reopen the tabs that were open when the app last closed. Off: start on the
+  // Home URL. Pinned tabs come back either way.
+  restoreTabs: true,
 };
 
 function validateSettings(s) {
@@ -32,6 +35,7 @@ function validateSettings(s) {
   }
   if (!["dark", "light"].includes(s.theme)) return false;
   if (s.autoUpdate !== undefined && typeof s.autoUpdate !== "boolean") return false;
+  if (s.restoreTabs !== undefined && typeof s.restoreTabs !== "boolean") return false;
   if (s.dismissedReleaseVersion !== undefined && (typeof s.dismissedReleaseVersion !== "string" || s.dismissedReleaseVersion.length > 20)) return false;
   return true;
 }
@@ -48,6 +52,19 @@ function migrateCoreSettings(raw) {
     delete raw.notePanelEnabled;
   }
   return raw;
+}
+
+// Which saved tabs to open at startup, from open-tabs.json's entries (old
+// builds saved bare URL strings) and the restoreTabs setting. Returns
+// { tabs: [{ url, pinned }], openHome } where openHome means also open a Home
+// URL tab and show it, because the last session's other tabs were left closed.
+function tabsToRestore(saved, restoreTabs) {
+  const list = (Array.isArray(saved) ? saved : [])
+    .map((item) => (typeof item === "string" ? { url: item, pinned: false } : item))
+    .filter((item) => item && typeof item.url === "string" && item.url)
+    .map((item) => ({ url: item.url, pinned: item.pinned === true }));
+  if (restoreTabs !== false) return { tabs: list, openHome: list.length === 0 };
+  return { tabs: list.filter((t) => t.pinned), openHome: true };
 }
 
 // The app was called Freshservice++ before it became MSP++. Electron names the
@@ -68,4 +85,4 @@ function findLegacyUserDataDir(appDataDir, currentDir, exists, join) {
   return null;
 }
 
-module.exports = { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings, findLegacyUserDataDir };
+module.exports = { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings, findLegacyUserDataDir, tabsToRestore };
