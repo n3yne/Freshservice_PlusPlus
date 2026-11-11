@@ -1,10 +1,10 @@
 {
   "id": "bookmarks-bar",
   "name": "Bookmarks Bar",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "A bar of bookmarked sites under the address bar. Drag to reorder, middle-click for a new tab, right-click for more.",
   "main": "main.js",
   "renderer": "renderer.js",
   "settings": "settings.js",
-  "minAppVersion": "0.7.2"
+  "minAppVersion": "0.7.3"
 }
