@@ -410,6 +410,40 @@
     return m ? parsed.origin + "/" + m[1].toLowerCase() + "/" + m[2].toLowerCase() + "/" + m[3] : null;
   }
 
+  // Ticket quick-open (typing a number in the address bar): a link to that record
+  // on the Freshservice instance in use. Accepts "12345", "#12345", "INC-12345",
+  // "SR-12345", "FS-12345" for tickets and "CHN-45", "PRB-67", "RL-89" for
+  // changes, problems and releases. The instance comes from an open Freshservice
+  // tab (active tab first), then the API domain, then the Home URL. Freshworks
+  // sign-in hosts (freshworks.com, myfreshworks.com) aren't instances, so skipped.
+  const QUICK_OPEN_PATTERN = /^#?(?:(INC|SR|FS|CHN|PRB|RL)-?)?(\d{1,12})$/i;
+  const QUICK_OPEN_KINDS = { CHN: "changes", PRB: "problems", RL: "releases" };
+  const SIGN_IN_HOSTNAME_PATTERN = /(?:^|\.)(?:freshworks|myfreshworks)\.com$/i;
+
+  function instanceBase(url) {
+    let parsed;
+    try { parsed = new URL(url); } catch { return null; }
+    if (!matchesUrl(parsed.href) || SIGN_IN_HOSTNAME_PATTERN.test(parsed.hostname)) return null;
+    const portal = /^\/(helpdesk|itil)\//i.exec(parsed.pathname);
+    return { origin: parsed.origin, portal: portal ? portal[1].toLowerCase() : "a" };
+  }
+
+  function ticketUrl(query, ctx) {
+    const m = QUICK_OPEN_PATTERN.exec(String(query || "").trim());
+    if (!m) return null;
+    const c = ctx || {};
+    const candidates = (Array.isArray(c.tabUrls) ? c.tabUrls : []).slice();
+    if (apiHost()) candidates.push("https://" + apiHost() + "/");
+    candidates.push(c.homeUrl || settings.defaultUrl || "");
+    let base = null;
+    for (const u of candidates) { base = instanceBase(u); if (base) break; }
+    if (!base) return null;
+    const kind = QUICK_OPEN_KINDS[(m[1] || "").toUpperCase()] || "tickets";
+    // The old /helpdesk portal has no changes/problems/releases; use /a there.
+    const portal = kind === "tickets" || base.portal !== "helpdesk" ? base.portal : "a";
+    return base.origin + "/" + portal + "/" + kind + "/" + Number(m[2]);
+  }
+
   // ==================== Register ====================
 
   api.sites.register({
@@ -418,6 +452,7 @@
     shortName: "FS",
     matchesUrl: matchesUrl,
     recordLink: recordLink,
+    ticketUrl: ticketUrl,
     recordScript: TICKET_GRAB_SCRIPT,
     scrapeScript: SCRAPE_SCRIPT,
     readRecord: readRecord,
