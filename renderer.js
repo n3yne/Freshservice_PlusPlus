@@ -1151,7 +1151,7 @@ document.addEventListener("DOMContentLoaded", function () {
       tabData.pendingAddress = null;
       updateTabTitle();
       saveTabSession();
-      if (activeTabId === id) { updateNavButtons(); updateAddressBar(); }
+      if (activeTabId === id) { updateNavButtons(); updateAddressBar(); updateZoomBadge(); }
     });
 
     on(webview, "did-navigate-in-page", function (e) {
@@ -1298,6 +1298,50 @@ document.addEventListener("DOMContentLoaded", function () {
 
   window.backupAPI.onFocusAddressBar(focusAddressBar);
 
+  // --- Page zoom (Ctrl+wheel, Ctrl+=/-/0, View menu) ---
+  // Chromium keeps zoom per site, so other tabs on the same site follow along,
+  // like a normal browser.
+  function updateZoomBadge() {
+    const zoomBadge = document.getElementById("btn-zoom-reset");
+    if (!zoomBadge) return;
+    const wv = getActiveWebview();
+    let factor = 1;
+    if (wv) try { factor = wv.getZoomFactor(); } catch { /* webview not ready yet */ }
+    const off = Math.abs(factor - 1) > 0.001;
+    zoomBadge.hidden = !off;
+    zoomBadge.textContent = window.PageZoom.zoomPercent(factor);
+  }
+
+  function zoomWebview(wv, action) {
+    if (!wv) return;
+    try {
+      wv.setZoomFactor(window.PageZoom.nextZoomFactor(wv.getZoomFactor(), action));
+    } catch { /* webview not ready yet */ }
+    updateZoomBadge();
+  }
+
+  function findWebviewByContentsId(webContentsId) {
+    for (let i = 0; i < tabs.length; i++) {
+      try {
+        if (tabs[i].webview.getWebContentsId() === webContentsId) return tabs[i].webview;
+      } catch { /* webview may not be ready */ }
+    }
+    return null;
+  }
+
+  window.backupAPI.onPageZoom(function (data) {
+    if (!data) return;
+    // From a page (wheel or keys): zoom that page. From the menu: the active tab.
+    const wv = typeof data.webContentsId === "number"
+      ? findWebviewByContentsId(data.webContentsId)
+      : getActiveWebview();
+    zoomWebview(wv, data.action);
+  });
+
+  document.getElementById("btn-zoom-reset").addEventListener("click", function () {
+    zoomWebview(getActiveWebview(), "reset");
+  });
+
   function activateTab(id) {
     // Stop an active find so it doesn't persist in a background tab.
     if (findActive && activeTabId && activeTabId !== id) {
@@ -1329,6 +1373,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     updateNavButtons();
     updateAddressBar(true);
+    updateZoomBadge();
     const activated = tabs.find(function (t) { return t.id === id; });
     if (activated) _busEmit("tab:activated", { tabId: id, webview: activated.webview });
 

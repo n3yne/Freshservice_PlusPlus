@@ -40,7 +40,7 @@ export default [
 
   // Shared by the window (script tag) and the tests (require)
   {
-    files: ["address-bar.js", "safe-html.js"],
+    files: ["address-bar.js", "page-zoom.js", "safe-html.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script",

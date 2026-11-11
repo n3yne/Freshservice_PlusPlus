@@ -8,6 +8,7 @@ const { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings, findLegacyUserD
 const pluginManager = require("./plugin-manager");
 const { installPasskeyAccountChooser } = require("./webauthn");
 const { createUpdater } = require("./updater");
+const { zoomActionForKey } = require("./page-zoom");
 const { createPermissionPolicy, installPermissionHandlers } = require("./permissions");
 
 // Keep using the Freshservice++ data folder after the rename to MSP++. This must
@@ -277,7 +278,28 @@ function createWindow() {
       // Ctrl+, → Settings
       if (input.control && !input.shift && !input.alt && input.key === ",") {
         createSettingsWindow();
+        return;
       }
+      // Ctrl+= / Ctrl+- / Ctrl+0 → zoom this tab's page. preventDefault also
+      // stops the View menu accelerator, so one press is one step.
+      const zoomAction = zoomActionForKey(input);
+      if (zoomAction) {
+        e.preventDefault();
+        mainWindow.webContents.send("page-zoom", { webContentsId: webviewContents.id, action: zoomAction });
+      }
+    });
+    // Ctrl+mouse wheel over a page. Electron reports it here but does not zoom
+    // on its own; the renderer applies the step so all zoom goes one way.
+    // One wheel notch can report more than once, and touchpads report a stream,
+    // so take at most one step per WHEEL_ZOOM_INTERVAL_MS.
+    let lastWheelZoom = 0;
+    webviewContents.on("zoom-changed", (e, direction) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (direction !== "in" && direction !== "out") return;
+      const now = Date.now();
+      if (now - lastWheelZoom < WHEEL_ZOOM_INTERVAL_MS) return;
+      lastWheelZoom = now;
+      mainWindow.webContents.send("page-zoom", { webContentsId: webviewContents.id, action: direction });
     });
   });
 
@@ -617,9 +639,10 @@ function setApplicationMenu() {
           },
         },
         { type: "separator" },
-        { role: "resetZoom" },
-        { role: "zoomIn" },
-        { role: "zoomOut" },
+        // Zoom acts on the active tab's page, not the app's own toolbar.
+        { label: "Actual Size", accelerator: "CmdOrCtrl+0", click: () => sendPageZoom("reset") },
+        { label: "Zoom In", accelerator: "CmdOrCtrl+=", click: () => sendPageZoom("in") },
+        { label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: () => sendPageZoom("out") },
         { type: "separator" },
         { role: "togglefullscreen" },
       ],
@@ -632,6 +655,15 @@ function setApplicationMenu() {
 
   const menu = electron.Menu.buildFromTemplate(menuTemplate);
   electron.Menu.setApplicationMenu(menu);
+}
+
+const WHEEL_ZOOM_INTERVAL_MS = 120;
+
+// Ask the renderer to zoom the active tab's page ("in", "out" or "reset").
+function sendPageZoom(action) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("page-zoom", { action });
+  }
 }
 
 // Called by the plugin manager whenever a plugin adds a menu item. Plugins load
