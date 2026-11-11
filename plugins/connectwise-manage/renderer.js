@@ -311,6 +311,75 @@
     })()`;
   }
 
+  // Inserts text at the cursor in the time-entry / ticket note editor (Draft.js),
+  // for plugins such as Canned Responses. Unlike buildPushScript it never replaces
+  // what's there: a paste goes in at Draft.js's own selection. Falls back to the
+  // stopwatch notes textarea only when its popup is already open on screen.
+  function buildReplyInsertScript(plainText) {
+    return `(function() {
+      var text = ${JSON.stringify(String(plainText == null ? "" : plainText))};
+      function visible(el) { return !!(el && el.isConnected && el.getClientRects().length > 0); }
+
+      var draftEl = document.querySelector('.public-DraftEditor-content[contenteditable="true"]');
+      if (visible(draftEl)) {
+        draftEl.focus();
+        try {
+          var dt = new DataTransfer();
+          dt.setData('text/plain', text);
+          draftEl.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+        } catch (pasteErr) {
+          document.execCommand('insertText', false, text);
+        }
+        return { type: 'draft' };
+      }
+
+      var ta = document.querySelector('textarea.cw_PsaResizableTextArea');
+      if (visible(ta)) {
+        ta.focus();
+        var start = typeof ta.selectionStart === 'number' ? ta.selectionStart : ta.value.length;
+        var end = typeof ta.selectionEnd === 'number' ? ta.selectionEnd : start;
+        var setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+        setter.call(ta, ta.value.slice(0, start) + text + ta.value.slice(end));
+        try { ta.setSelectionRange(start + text.length, start + text.length); } catch (e) { /* ignore */ }
+        ta.dispatchEvent(new Event('input',  { bubbles: true }));
+        ta.dispatchEvent(new Event('change', { bubbles: true }));
+        return { type: 'textarea' };
+      }
+      return null;
+    })()`;
+  }
+
+  // Contact name and summary of the open ticket, for reply placeholders. CW's
+  // ticket screen labels its fields, so look for the input next to "Contact"
+  // and "Summary" labels.
+  const REPLY_CONTEXT_SCRIPT = `(function() {
+    function clean(v) { return String(v || '').replace(/\\s+/g, ' ').trim().substring(0, 200); }
+    function valueNear(labelRe) {
+      var labels = document.querySelectorAll('label, [class*="label"], [class*="Label"]');
+      var max = Math.min(labels.length, 3000);
+      for (var i = 0; i < max; i++) {
+        var t = clean(labels[i].innerText || labels[i].textContent);
+        if (!labelRe.test(t)) continue;
+        var scope = labels[i].parentElement;
+        for (var up = 0; up < 3 && scope; up++) {
+          var input = scope.querySelector('input[type="text"], input:not([type]), textarea');
+          if (input && clean(input.value)) return clean(input.value);
+          scope = scope.parentElement;
+        }
+      }
+      return '';
+    }
+    return { requester: valueNear(/^contact:?$/i), subject: valueNear(/^summary( description)?:?$/i) };
+  })()`;
+
+  async function readReplyContext(ctx) {
+    if (!ctx || !ctx.webview) return {};
+    try {
+      const out = await ctx.webview.executeJavaScript(REPLY_CONTEXT_SCRIPT);
+      return out && typeof out === "object" ? out : {};
+    } catch { return {}; }
+  }
+
   // Injected once per page load. Talks to the app through console.log lines
   // that start with WATCHER_PREFIX, using the shared watcher protocol:
   //   {kind:'fields', type}  {kind:'focus', focused}  {kind:'input', field, text}
@@ -475,13 +544,18 @@
       pushDelay: pushDelay,
       onWatcherMessage: onWatcherMessage,
     }),
+    reply: Object.freeze({
+      label: "notes editor",
+      buildInsertScript: buildReplyInsertScript,
+      readContext: readReplyContext,
+    }),
   });
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
       adapter, matchesUrl, formatTitle, ticketKey, ticketNumberFromKey, ticketFromUrl, recordLink,
-      fieldTypeLabel, pushDelay, onWatcherMessage, buildPushScript,
-      NOTES_READ_SCRIPT, WATCHER_SCRIPT, RECORD_SCRIPT, SCRAPE_SCRIPT, WATCHER_PREFIX,
+      fieldTypeLabel, pushDelay, onWatcherMessage, buildPushScript, buildReplyInsertScript,
+      NOTES_READ_SCRIPT, REPLY_CONTEXT_SCRIPT, WATCHER_SCRIPT, RECORD_SCRIPT, SCRAPE_SCRIPT, WATCHER_PREFIX,
     };
     return;
   }
