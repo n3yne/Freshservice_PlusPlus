@@ -431,10 +431,14 @@ Interacts with the app's tab system and the active webview.
 | `browser.navigate(url)` | — | Loads `url` (http or https) in the active tab, or in a new tab if none is open |
 | `browser.newWindow(url)` | `Promise<boolean>` | Opens `url` (http or https) in a plain child window with no tabs, side panel or plugins, like the tab menu's **Open in New Window** |
 | `browser.executeInActiveTab(script)` | `Promise<any>` | Runs a JavaScript string in the active webview and returns its result. Rejects if no tab is open. |
-| `browser.getActiveTab()` | `{ tabId, webview } \| null` | The active browser tab and its `<webview>` element |
-| `browser.getTabs()` | `Array<{ tabId, webview }>` | Every open browser tab, in tab-bar order |
+| `browser.getActiveTab()` | `TabInfo \| null` | The active browser tab (see below) |
+| `browser.getTabs()` | `Array<TabInfo>` | Every open browser tab, in tab-bar order |
+| `browser.activateTab(tabId)` | `boolean` | Switches to the tab. `false` if no tab has that id |
+| `browser.closeTab(tabId)` | `boolean` | Closes the tab like its × button. `false` if no tab has that id or it is pinned (pinned tabs can't be closed) |
 
-Browser tabs also raise `tab:created`, `tab:activated` and `tab:closed` events (see [Events reference](#events-reference)). Tabs restored at startup are created before your script runs, so call `getTabs()` once as well as listening for `tab:created`. You can add your own listeners to a tab's `webview` (for example `did-navigate` or `console-message`); remove them on `tab:closed`.
+A `TabInfo` is `{ tabId, webview, title, url, pinned, active }`: the tab's id, its `<webview>` element, the title shown on the tab, its address (the address it is loading if the page hasn't started yet), whether it is pinned and whether it is the active tab.
+
+Browser tabs also raise `tab:created`, `tab:activated`, `tab:updated` and `tab:closed` events (see [Events reference](#events-reference)). The Tree Style Tabs plugin (`plugins/tree-tabs`) is built on these. Tabs restored at startup are created before your script runs, so call `getTabs()` once as well as listening for `tab:created`. You can add your own listeners to a tab's `webview` (for example `did-navigate` or `console-message`); remove them on `tab:closed`.
 
 ```js
 window.pluginAPI.browser.newTab("https://my-dashboard.example.com");
@@ -542,8 +546,9 @@ These are emitted on the renderer bus (`events.on()`) only, because their payloa
 
 | Event | Payload | When |
 |---|---|---|
-| `tab:created` | `{ tabId, webview }` | A browser tab was opened |
-| `tab:activated` | `{ tabId, webview }` | A browser tab became the active one |
+| `tab:created` | `TabInfo` plus `openerTabId` | A browser tab was opened. `openerTabId` is the tab whose page opened it (a link with `target="_blank"`, `window.open()` or **Open Link in New Tab**), otherwise `null` |
+| `tab:activated` | `TabInfo` | A browser tab became the active one |
+| `tab:updated` | `TabInfo` | A tab's title or address changed, or it was pinned or unpinned |
 | `tab:closed` | `{ tabId, webview }` | A browser tab was closed |
 | `site:registered` | `{ siteId }` | A site plugin registered its adapter with `pluginAPI.sites.register()` |
 
@@ -622,8 +627,11 @@ pluginAPI.browser.newTab(url: string, options?: { activate?: boolean }): void
 pluginAPI.browser.navigate(url: string): void
 pluginAPI.browser.newWindow(url: string): Promise<boolean>
 pluginAPI.browser.executeInActiveTab(script: string): Promise<any>
-pluginAPI.browser.getActiveTab(): { tabId: string, webview: HTMLElement } | null
-pluginAPI.browser.getTabs(): Array<{ tabId: string, webview: HTMLElement }>
+pluginAPI.browser.getActiveTab(): TabInfo | null
+pluginAPI.browser.getTabs(): TabInfo[]
+pluginAPI.browser.activateTab(tabId: string): boolean
+pluginAPI.browser.closeTab(tabId: string): boolean
+// TabInfo = { tabId: string, webview: HTMLElement, title: string, url: string, pinned: boolean, active: boolean }
 
 pluginAPI.getSettings(): AppSettings
 ```

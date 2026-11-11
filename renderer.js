@@ -810,10 +810,24 @@ document.addEventListener("DOMContentLoaded", function () {
           },
           getActiveTab: function () {
             const tab = tabs.find(function (t) { return t.id === activeTabId; });
-            return tab ? { tabId: tab.id, webview: tab.webview } : null;
+            return tab ? describeTab(tab) : null;
           },
           getTabs: function () {
-            return tabs.map(function (t) { return { tabId: t.id, webview: t.webview }; });
+            return tabs.map(describeTab);
+          },
+          // Switches to the tab. Returns false when no tab has that id.
+          activateTab: function (tabId) {
+            if (!tabs.some(function (t) { return t.id === tabId; })) return false;
+            activateTab(tabId);
+            return true;
+          },
+          // Closes the tab like its × button (pinned tabs stay open). Returns
+          // false when no tab has that id or the tab is pinned.
+          closeTab: function (tabId) {
+            const tab = tabs.find(function (t) { return t.id === tabId; });
+            if (!tab || tab.pinned) return false;
+            closeTab(tabId);
+            return true;
           },
         }),
 
@@ -965,6 +979,23 @@ document.addEventListener("DOMContentLoaded", function () {
     }, 1000);
   }
 
+  // What plugins see of a tab (pluginAPI.browser.getTabs and the tab:* events).
+  function describeTab(tab) {
+    let url = "";
+    try { url = tab.webview.getURL() || ""; } catch { /* not attached yet */ }
+    if (!url) url = tab.webview.getAttribute("src") || "";
+    return {
+      tabId: tab.id,
+      webview: tab.webview,
+      title: tab.title,
+      url: url,
+      pinned: !!tab.pinned,
+      active: tab.id === activeTabId,
+    };
+  }
+
+  // opts: { activate?, pinned?, openerTabId? } — openerTabId is the tab whose
+  // link or window.open() asked for this one.
   function createTab(url, opts = {}) {
     const id = generateTabId();
     const activate = opts.activate !== false; // default: activate
@@ -1135,6 +1166,13 @@ document.addEventListener("DOMContentLoaded", function () {
       } catch {
         // webview may have been removed
       }
+      emitTabUpdated();
+    }
+
+    // Tells plugins the tab's title or address changed. Skipped once the tab has closed.
+    function emitTabUpdated() {
+      if (tabs.indexOf(tabData) === -1) return;
+      _busEmit("tab:updated", describeTab(tabData));
     }
 
     on(webview, "did-stop-loading", function () {
@@ -1151,6 +1189,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const display = cleanTitle(e.title, webview);
         tabData.title = display;
         titleSpan.textContent = display;
+        emitTabUpdated();
       }
     });
 
@@ -1192,7 +1231,8 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Plugins attach their own webview listeners (navigation, console messages…).
-    _busEmit("tab:created", { tabId: id, webview: webview });
+    const opener = opts.openerTabId && tabs.find(function (t) { return t.id === opts.openerTabId; });
+    _busEmit("tab:created", Object.assign(describeTab(tabData), { openerTabId: opener ? opener.id : null }));
 
     if (activate) {
       activateTab(id);
@@ -1392,7 +1432,7 @@ document.addEventListener("DOMContentLoaded", function () {
     updateAddressBar(true);
     updateZoomBadge();
     const activated = tabs.find(function (t) { return t.id === id; });
-    if (activated) _busEmit("tab:activated", { tabId: id, webview: activated.webview });
+    if (activated) _busEmit("tab:activated", describeTab(activated));
 
     if (findActive && findInput.value) {
       const wv = getActiveWebview();
@@ -1519,6 +1559,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     saveTabSession();
+    _busEmit("tab:updated", describeTab(tab));
   }
 
   function unpinTab(id) {
@@ -1529,6 +1570,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const closeBtn = tab.tabEl.querySelector(".tab-close");
     if (closeBtn) closeBtn.style.display = "";
     saveTabSession();
+    _busEmit("tab:updated", describeTab(tab));
   }
 
   // Puts a tab at `index` in the tab bar, kept after the pinned tabs unless it
@@ -1637,8 +1679,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function tabInfo(tabId) {
     const tab = tabs.find(function (t) { return t.id === tabId; });
-    if (!tab) return null;
-    return { tabId: tab.id, webview: tab.webview, url: getTabUrl(tabId) || "", title: tab.title || "" };
+    return tab ? describeTab(tab) : null;
   }
 
   function showTabContextMenu(e, tabId) {
@@ -1828,9 +1869,18 @@ document.addEventListener("DOMContentLoaded", function () {
     createTab(appSettings.defaultUrl, { activate: true });
   });
 
-  window.backupAPI.onOpenInNewTab(function (url) {
+  // openerWebContentsId: the page that opened the link, when it was a tab's page.
+  window.backupAPI.onOpenInNewTab(function (url, openerWebContentsId) {
     console.log("[Tab] Opening in new tab:", url);
-    createTab(url, { activate: true });
+    let openerTabId = null;
+    if (openerWebContentsId) {
+      for (let i = 0; i < tabs.length; i++) {
+        try {
+          if (tabs[i].webview.getWebContentsId() === openerWebContentsId) { openerTabId = tabs[i].id; break; }
+        } catch { /* webview may not be ready */ }
+      }
+    }
+    createTab(url, { activate: true, openerTabId: openerTabId });
   });
 
   window.backupAPI.onWebviewClose(function (webContentsId) {
