@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld("backupAPI", {
   onWebviewClose: (callback) =>
     onIpc("webview-close", (event, webContentsId) => callback(webContentsId)),
   openInBrowser: (url) => ipcRenderer.invoke("open-in-browser", url),
+  openInNewWindow: (url) => ipcRenderer.invoke("open-in-new-window", url),
+  openInMainTab: (url) => ipcRenderer.invoke("open-in-main-tab", url),
   loadSettings: () => ipcRenderer.invoke("load-settings"),
   saveSettings: (settings) => ipcRenderer.invoke("save-settings", settings),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),

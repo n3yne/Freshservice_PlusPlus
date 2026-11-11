@@ -4,7 +4,7 @@
 
 An Electron-based wrapper for MSP and ticketing web apps (Freshservice and ConnectWise Manage today) that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
 
-**Current version:** 0.7.2
+**Current version:** 0.7.3
 
 > MSP++ was called **Freshservice++** before 0.6.0. Your settings, notes and sign-ins carry over: the app keeps using the existing Freshservice++ data folder.
 
@@ -16,7 +16,8 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 - **Multi-tab browsing** – Open multiple ticketing pages simultaneously. The tabs you had open come back the next time the app starts; turn off **Settings → General → Restore Tabs from Last Session** to start on the Home URL instead (pinned tabs always come back)
 - **Address bar** – A row under the tab bar shows the active tab's URL, with back, forward and reload beside it. Type an address and press `Enter` to go there (`Ctrl+L` jumps to it, `Escape` puts the page's URL back). Only `http` and `https` pages open; a bare host such as `example.com` gets `https://` added. There is no web search, so plain words are ignored
 - **Refresh all tabs** – **View → Refresh All Tabs** (`Ctrl+Alt+R`) reloads every open tab at once
-- **Tab management** – Pin tabs, duplicate (the copy opens next to the original), close others, reopen closed tabs (`Ctrl+Shift+T` puts a tab back where it was), copy URL, copy a clean ticket link (on Freshservice, ConnectWise and Home URL pages; greyed out when no ticket is open), open in default browser (right-click any tab). Tab shortcuts work while you're typing in a page too
+- **Tab management** – Pin tabs, duplicate (the copy opens next to the original), close others, reopen closed tabs (`Ctrl+Shift+T` puts a tab back where it was), copy URL, copy a clean ticket link (on Freshservice, ConnectWise and Home URL pages; greyed out when no ticket is open), open in default browser (right-click any tab). Tab shortcuts work while you're typing in a page too. Double-click an empty part of the tab bar to open a new tab
+- **Open in New Window** – Right-click a tab and choose **Open in New Window** to open its page in a plain browser window: just back, forward, reload and an address bar, with no tabs, side panel, metrics or bookmarks, so it can't be mistaken for the main window. It shares your sign-ins and closes when the main window closes. Links it opens go to tabs in the main window, and the ⇱ button moves its page to a tab. Right-clicking a link in a page also offers **Open Link in New Window**
 - **Page zoom** – `Ctrl`+mouse wheel, `Ctrl+=` / `Ctrl+-`, or **View → Zoom In / Zoom Out** zooms the page in the active tab (the app's own toolbar and side panel stay the same size). Zoom is kept per site, so other tabs on the same site follow along. When a tab isn't at 100%, its zoom level shows at the end of the address bar; click it or press `Ctrl+0` to reset
 - **Find in page** – `Ctrl+F` to search text on the current page, even on sites that use `Ctrl+F` for their own search; press it again to select the search text, `Escape` to close
 - **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions; a badge on the download icon shows how many files finished since you last opened the panel (resets when you open it)
@@ -73,6 +74,14 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 - **Cached values** – The last successfully scraped value for each field is persisted across launches; if a refresh fails the bar continues showing the cached value with a `⚠` indicator and a tooltip showing when it was last updated
 - **Delivered as a bundled plugin** — the Metrics Bar is implemented via the plugin system; it can be disabled independently from Settings → Plugins
 
+### Bookmarks Bar
+A row of bookmarked sites under the address bar.
+- **Save a page** – Right-click a tab and choose **⭐ Save to Bookmarks Bar**, or right-click an empty part of the bar for **Bookmark this page** and **Add bookmark…**
+- **Open** – Click a bookmark to open it in the current tab, middle-click (or `Ctrl`+click) to open it in a new tab in the background, `Shift`+click to open it in a new window
+- **Right-click a bookmark** for **Open site**, **Open site in new tab**, **Open site in new window**, **Edit bookmark…** and **Delete bookmark** (which asks first)
+- **Reorder** – Drag bookmarks along the bar. Bookmarks that don't fit are under the **»** button at the end
+- **Manage** – **Settings → Plugins → Bookmarks Bar** lists every bookmark with add, edit, delete, move up/down and drag to reorder, and a switch to show or hide the bar
+
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes. After a suggestion is returned, a **Refine** textarea appears — type follow-up instructions (e.g. "make it shorter", "keep this as a client-facing message") and click **↺ Refine** to generate a revised version without losing the Apply option
 - **📋 Summarize** – Reads the ticket description, replies and notes from the open ticket (on Freshservice through the Freshservice API when it's set up, otherwise from the page; on ConnectWise Manage from the page) and asks the AI to produce a concise bullet-point summary
@@ -98,7 +107,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 
 Extend the app with self-contained plugin directories — no build step required.
 
-- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **AI Features** and **Solutions Chat**
+- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **AI Features** and **Solutions Chat**
 - **User-installed plugins** – Drop a plugin folder into `%APPDATA%\MSP++\plugins\` (or `%APPDATA%\Freshservice++\plugins\` if you upgraded) for plugins that survive app updates
 - **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply. Every plugin gets a settings tab, and one with nothing to set up says so
 - **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed

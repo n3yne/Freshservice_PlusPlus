@@ -1,0 +1,329 @@
+/* ===== Bookmarks Bar (main window) ===== */
+.bookmarks-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 6px;
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.bookmarks-bar[hidden] {
+  display: none;
+}
+
+.bm-items {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  position: relative; /* offsetLeft of the bookmarks is measured from here */
+}
+
+.bm-items.bm-drop-end {
+  box-shadow: inset -2px 0 0 0 var(--primary);
+}
+
+.bm-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 180px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.bm-item:hover,
+.bm-item:focus-visible {
+  background: rgba(var(--primary-rgb), 0.12);
+  outline: none;
+}
+
+.bm-item.bm-hidden {
+  visibility: hidden;
+  position: absolute;
+  pointer-events: none;
+}
+
+.bm-item.bm-dragging {
+  opacity: 0.4;
+}
+
+.bm-item.bm-drop-before {
+  box-shadow: inset 2px 0 0 0 var(--primary);
+}
+
+.bm-item.bm-drop-after {
+  box-shadow: inset -2px 0 0 0 var(--primary);
+}
+
+.bm-item.bm-flash {
+  animation: bm-flash 1.2s ease-out;
+}
+
+@keyframes bm-flash {
+  0%, 40% { background: rgba(var(--primary-rgb), 0.45); border-color: var(--primary); }
+  100% { background: transparent; border-color: transparent; }
+}
+
+.bm-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.bm-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.bm-icon img {
+  width: 14px;
+  height: 14px;
+}
+
+.bm-icon-default::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--text-muted);
+  border-radius: 50%;
+}
+
+.bm-empty {
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bm-overflow {
+  flex-shrink: 0;
+  width: 24px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.bm-overflow:hover {
+  background: rgba(var(--primary-rgb), 0.12);
+  color: var(--text);
+}
+
+/* Menus: a clear layer catches clicks outside the menu, even over a page */
+.bm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+
+.bm-backdrop[hidden] {
+  display: none;
+}
+
+.bm-menu {
+  max-height: 70vh;
+  max-width: 360px;
+  overflow-y: auto;
+}
+
+.bm-menu .context-menu-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bm-menu .bm-menu-danger:hover {
+  background: var(--warning);
+}
+
+/* Add / edit dialog */
+.bm-dialog-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+
+.bm-dialog-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.bm-dialog-input {
+  height: 28px;
+  padding: 0 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  outline: none;
+}
+
+.bm-dialog-input:focus {
+  border-color: var(--primary);
+}
+
+.bm-dialog-input.invalid {
+  border-color: var(--warning);
+}
+
+.bm-dialog-error {
+  margin: -4px 0 12px;
+  font-size: 12px;
+  color: var(--warning);
+}
+
+/* ===== Bookmarks Bar (Settings window) ===== */
+.bm-settings-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.bm-settings-list:empty {
+  display: none;
+}
+
+.bm-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--input-bg);
+}
+
+.bm-settings-row:last-child {
+  border-bottom: none;
+}
+
+.bm-settings-row.bm-dragging {
+  opacity: 0.4;
+}
+
+.bm-settings-row.bm-drop-before {
+  box-shadow: inset 0 2px 0 0 var(--primary);
+}
+
+.bm-settings-row.bm-drop-after {
+  box-shadow: inset 0 -2px 0 0 var(--primary);
+}
+
+.bm-settings-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: -2px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.bm-settings-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.bm-settings-name,
+.bm-settings-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-settings-name {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.bm-settings-url {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.bm-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.bm-settings-actions .btn[disabled] {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.bm-settings-confirm {
+  font-size: 12px;
+  color: var(--warning);
+  margin-right: 4px;
+}
+
+.bm-settings-fields {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bm-settings-fields .settings-text-input:first-child {
+  flex: 0 0 35%;
+}
+
+.bm-settings-add {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.bm-settings-add .settings-text-input:first-child {
+  flex: 0 0 30%;
+}
+
+.settings-text-input.invalid {
+  border-color: var(--warning);
+}
+
+.bm-settings-status {
+  min-height: 1em;
+}
+
+.bm-settings-status.bm-settings-error {
+  color: var(--warning);
+}

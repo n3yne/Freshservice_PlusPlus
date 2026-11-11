@@ -328,6 +328,30 @@ tab.element.innerHTML = '<div style="padding:12px">Hello from my plugin</div>';
 tab.onShow(function () { console.log("my tab is showing"); });
 ```
 
+#### `window.pluginAPI.ui.addTabMenuItem(opts)`
+
+Adds an item to the menu that opens when you right-click a tab. Plugin items appear after **Pin Tab**, below a separator. Returns `{ remove() }`.
+
+| Option | Description |
+|---|---|
+| `id` | Required. Unique id, `/^[a-z0-9][a-z0-9_-]{0,62}$/`. |
+| `label` | Text of the item. |
+| `icon` | Optional emoji or short text shown before the label. |
+| `title` | Optional tooltip. |
+| `isVisible(tab)` | Optional. Return `false` to hide the item for this tab. |
+| `onClick(tab)` | Required. Called with `{ tabId, webview, url, title }` for the tab that was right-clicked. |
+
+```js
+window.pluginAPI.ui.addTabMenuItem({
+  id: "my-plugin-copy-title",
+  icon: "📋",
+  label: "Copy Page Title",
+  onClick: function (tab) { navigator.clipboard.writeText(tab.title); },
+});
+```
+
+The Bookmarks Bar plugin uses it for **Save to Bookmarks Bar**.
+
 #### `window.pluginAPI.ui.notify(opts)`
 
 Shows a notification under the bell icon in the tab bar. `opts` is `{ type, title, desc, action? }`; only one notification of each `type` is shown at a time. `action` is `{ label, onClick }` and adds a button.
@@ -403,7 +427,9 @@ Interacts with the app's tab system and the active webview.
 
 | Method | Returns | Description |
 |---|---|---|
-| `browser.newTab(url)` | — | Opens `url` in a new tab and switches to it |
+| `browser.newTab(url, options?)` | — | Opens `url` in a new tab and switches to it. Pass `{ activate: false }` to open it in the background |
+| `browser.navigate(url)` | — | Loads `url` (http or https) in the active tab, or in a new tab if none is open |
+| `browser.newWindow(url)` | `Promise<boolean>` | Opens `url` (http or https) in a plain child window with no tabs, side panel or plugins, like the tab menu's **Open in New Window** |
 | `browser.executeInActiveTab(script)` | `Promise<any>` | Runs a JavaScript string in the active webview and returns its result. Rejects if no tab is open. |
 | `browser.getActiveTab()` | `{ tabId, webview } \| null` | The active browser tab and its `<webview>` element |
 | `browser.getTabs()` | `Array<{ tabId, webview }>` | Every open browser tab, in tab-bar order |
@@ -555,6 +581,12 @@ pluginAPI.ui.addSidePanelTab(opts: {
 }): { id: string, element: HTMLElement, activate(): void, isActive(): boolean,
       onShow(fn: () => void): void, onHide(fn: () => void): void }
 
+pluginAPI.ui.addTabMenuItem(opts: {
+  id: string, label: string, icon?: string, title?: string,
+  isVisible?: (tab: { tabId: string, webview: HTMLElement, url: string, title: string }) => boolean,
+  onClick: (tab: { tabId: string, webview: HTMLElement, url: string, title: string }) => void,
+}): { remove(): void }
+
 pluginAPI.ui.notify(opts: {
   type: string, title: string, desc?: string,
   action?: { label: string, onClick: () => void },
@@ -586,7 +618,9 @@ pluginAPI.sites.forActiveTab(): { site: SiteAdapter, tabId: string, webview: HTM
 pluginAPI.sites.readActiveRecord(): Promise<{ site, record, text: string, source: "api" | "page", label: string } | null>
 pluginAPI.sites.onRegistered(fn: (site: SiteAdapter) => void): () => void
 
-pluginAPI.browser.newTab(url: string): void
+pluginAPI.browser.newTab(url: string, options?: { activate?: boolean }): void
+pluginAPI.browser.navigate(url: string): void
+pluginAPI.browser.newWindow(url: string): Promise<boolean>
 pluginAPI.browser.executeInActiveTab(script: string): Promise<any>
 pluginAPI.browser.getActiveTab(): { tabId: string, webview: HTMLElement } | null
 pluginAPI.browser.getTabs(): Array<{ tabId: string, webview: HTMLElement }>

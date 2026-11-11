@@ -111,11 +111,16 @@
       <div class="context-menu-item" data-action="open-browser">
         🌐 Open in Default Browser
       </div>
+      <div class="context-menu-item" data-action="open-window">
+        🗗 Open in New Window
+      </div>
       <div class="context-menu-item" data-action="duplicate">
         📑 Duplicate Tab
       </div>
       <div class="context-menu-item" data-action="pin">📌 Pin Tab</div>
       <div class="context-menu-item" data-action="unpin">📌 Unpin Tab</div>
+      <!-- Items plugins add with pluginAPI.ui.addTabMenuItem -->
+      <div id="tab-menu-plugin-items" hidden></div>
       <div class="context-menu-separator"></div>
       <div class="context-menu-item" data-action="close">✕ Close Tab</div>
       <div class="context-menu-item" data-action="close-others">

@@ -793,7 +793,16 @@ document.addEventListener("DOMContentLoaded", function () {
         },
 
         browser: Object.freeze({
-          newTab: function (url) { createTab(url, { activate: true }); },
+          newTab: function (url, options) {
+            createTab(url, { activate: !(options && options.activate === false) });
+          },
+          // Opens url in a plain child window (no tabs, side panel or plugins).
+          newWindow: function (url) {
+            if (!isWebUrl(url)) return Promise.resolve(false);
+            return window.backupAPI.openInNewWindow(url).then(function (res) { return !!(res && res.success); });
+          },
+          // Loads url in the active tab (or a new tab if none is open).
+          navigate: function (url) { navigateActiveTab(url); },
           executeInActiveTab: function (script) {
             const webview = getActiveWebview();
             if (!webview) return Promise.reject(new Error("No active tab"));
@@ -810,6 +819,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         ui: Object.freeze({
           addSidePanelTab: addSidePanelTab,
+          addTabMenuItem: addTabMenuItem,
           addToolbarButton: function (opts) {
             const btn = document.createElement("button");
             btn.type = "button";
@@ -1235,6 +1245,12 @@ document.addEventListener("DOMContentLoaded", function () {
       addressInput.select();
       return;
     }
+    navigateActiveTab(url);
+  }
+
+  // Loads url (an http/https address) in the active tab, or a new tab if none is open.
+  function navigateActiveTab(url) {
+    if (!isWebUrl(url)) return;
     const tab = tabs.find(function (t) { return t.id === activeTabId; });
     if (!tab) { createTab(url, { activate: true }); return; }
     const wv = tab.webview;
@@ -1586,6 +1602,45 @@ document.addEventListener("DOMContentLoaded", function () {
     return { show: true, link: link };
   }
 
+  // Items plugins add to the tab menu (pluginAPI.ui.addTabMenuItem). They show
+  // after Pin/Unpin; onClick gets { tabId, webview, url, title } for the tab.
+  const tabMenuPluginItems = document.getElementById("tab-menu-plugin-items");
+  const pluginTabMenuItems = new Map();
+
+  function addTabMenuItem(opts) {
+    if (!opts || typeof opts.onClick !== "function") throw new Error("addTabMenuItem: onClick is required");
+    const id = String(opts.id || "");
+    if (!/^[a-z0-9][a-z0-9_-]{0,62}$/.test(id)) throw new Error("addTabMenuItem: invalid id \"" + id + "\"");
+    if (pluginTabMenuItems.has(id)) throw new Error("addTabMenuItem: duplicate id \"" + id + "\"");
+    const el = document.createElement("div");
+    el.className = "context-menu-item";
+    el.dataset.action = "plugin";
+    el.dataset.pluginItem = id;
+    el.textContent = (opts.icon ? String(opts.icon) + " " : "") + String(opts.label || id);
+    if (opts.title) el.title = String(opts.title);
+    if (!tabMenuPluginItems.childElementCount) {
+      const sep = document.createElement("div");
+      sep.className = "context-menu-separator";
+      tabMenuPluginItems.appendChild(sep);
+    }
+    tabMenuPluginItems.appendChild(el);
+    tabMenuPluginItems.hidden = false;
+    pluginTabMenuItems.set(id, { el: el, onClick: opts.onClick, isVisible: opts.isVisible });
+    return {
+      remove: function () {
+        el.remove();
+        pluginTabMenuItems.delete(id);
+        if (!pluginTabMenuItems.size) { tabMenuPluginItems.textContent = ""; tabMenuPluginItems.hidden = true; }
+      },
+    };
+  }
+
+  function tabInfo(tabId) {
+    const tab = tabs.find(function (t) { return t.id === tabId; });
+    if (!tab) return null;
+    return { tabId: tab.id, webview: tab.webview, url: getTabUrl(tabId) || "", title: tab.title || "" };
+  }
+
   function showTabContextMenu(e, tabId) {
     e.preventDefault();
     contextMenuTabId = tabId;
@@ -1596,6 +1651,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const unpinItem = tabContextMenu.querySelector('[data-action="unpin"]');
     if (pinItem) pinItem.style.display = isTabPinned ? "none" : "";
     if (unpinItem) unpinItem.style.display = isTabPinned ? "" : "none";
+    const info = tabInfo(tabId);
+    pluginTabMenuItems.forEach(function (item) {
+      let show = true;
+      if (typeof item.isVisible === "function") {
+        try { show = item.isVisible(info) !== false; } catch (err) { console.error("[TabMenu]", err); }
+      }
+      item.el.style.display = show ? "" : "none";
+    });
 
     const linkItem = tabContextMenu.querySelector('[data-action="copy-record-link"]');
     if (linkItem) {
@@ -1656,6 +1719,18 @@ document.addEventListener("DOMContentLoaded", function () {
     const targetTabId = contextMenuTabId;
     hideTabContextMenu();
 
+    if (action === "plugin") {
+      const entry = pluginTabMenuItems.get(item.dataset.pluginItem);
+      const info = tabInfo(targetTabId);
+      if (entry && info) {
+        try {
+          const result = entry.onClick(info);
+          if (result && typeof result.catch === "function") result.catch(function (err) { console.error("[TabMenu]", err); });
+        } catch (err) { console.error("[TabMenu]", err); }
+      }
+      return;
+    }
+
     switch (action) {
       case "refresh": {
         const tab = tabs.find(function (t) { return t.id === targetTabId; });
@@ -1684,6 +1759,12 @@ document.addEventListener("DOMContentLoaded", function () {
         if (url) {
           window.backupAPI.openInBrowser(url);
         }
+        break;
+      }
+
+      case "open-window": {
+        const url = getTabUrl(targetTabId);
+        if (isWebUrl(url)) window.backupAPI.openInNewWindow(url);
         break;
       }
 
@@ -1738,6 +1819,12 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   btnNewTab.addEventListener("click", function () {
+    createTab(appSettings.defaultUrl, { activate: true });
+  });
+
+  // Double-clicking an empty part of the tab bar opens a new tab, like a browser.
+  document.getElementById("tab-bar").addEventListener("dblclick", function (e) {
+    if (e.target.closest(".tab-item, button")) return;
     createTab(appSettings.defaultUrl, { activate: true });
   });
 

@@ -1,6 +1,6 @@
 {
   "name": "msp-pp",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "MSP++: a wrapper for MSP and ticketing sites with a plugin side panel and ticket note backup",
   "main": "main.js",
   "scripts": {
@@ -50,6 +50,8 @@
       "permissions.js",
       "plugin-manager.js",
       "index.html",
+      "child-window.html",
+      "child-window.js",
       "settings.html",
       "styles.css",
       "icon.png",
