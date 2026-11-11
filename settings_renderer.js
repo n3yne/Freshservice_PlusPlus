@@ -144,6 +144,37 @@ document.addEventListener("DOMContentLoaded", function () {
       .finally(function () { btnCheckUpdates.disabled = false; });
   });
 
+  // ==================== Site Permissions ====================
+
+  const btnClearSitePermissions = document.getElementById("btn-clear-site-permissions");
+  const sitePermissionsStatus = document.getElementById("site-permissions-status");
+
+  function showSitePermissions(info, justCleared) {
+    const answers = info && info.answers ? info.answers : 0;
+    const sites = info && info.sites ? info.sites : 0;
+    btnClearSitePermissions.disabled = answers === 0;
+    if (justCleared) sitePermissionsStatus.textContent = "Forgotten. Sites will ask again.";
+    else if (answers === 0) sitePermissionsStatus.textContent = "No saved answers";
+    else {
+      sitePermissionsStatus.textContent =
+        answers + (answers === 1 ? " answer" : " answers") + " saved for " +
+        sites + (sites === 1 ? " site" : " sites");
+    }
+  }
+
+  function refreshSitePermissions() {
+    window.backupAPI.getSitePermissions().then(function (info) { showSitePermissions(info, false); }).catch(function () {});
+  }
+
+  btnClearSitePermissions.addEventListener("click", function () {
+    window.backupAPI.clearSitePermissions()
+      .then(function (info) { showSitePermissions(info, true); })
+      .catch(function () { sitePermissionsStatus.textContent = "Could not forget the saved answers"; });
+  });
+  // A site may have been answered while this window was in the background.
+  window.addEventListener("focus", refreshSitePermissions);
+  refreshSitePermissions();
+
   const defaultUrlSave = debounce(function () {
     const val = settingDefaultUrl.value.trim();
     try {

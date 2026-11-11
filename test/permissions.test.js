@@ -4,6 +4,7 @@ const {
   isAppRequest,
   siteOf,
   describeRequest,
+  cleanStoredAnswers,
   createPermissionPolicy,
   installPermissionHandlers,
 } = require("../permissions");
@@ -174,5 +175,85 @@ describe("permission policy", () => {
     installPermissionHandlers(session, policy);
     expect(session.setPermissionRequestHandler).toHaveBeenCalledWith(policy.onRequest);
     expect(session.setPermissionCheckHandler).toHaveBeenCalledWith(policy.onCheck);
+  });
+});
+
+describe("remembering answers between runs", () => {
+  beforeEach(() => { jest.spyOn(console, "warn").mockImplementation(() => {}); });
+  afterEach(() => { console.warn.mockRestore(); });
+
+  function memoryStore(initial) {
+    const store = { data: initial || {}, saves: 0 };
+    store.load = () => store.data;
+    store.save = (answers) => { store.data = JSON.parse(JSON.stringify(answers)); store.saves++; };
+    return store;
+  }
+
+  test("an answer is saved and a later run does not ask again", async () => {
+    const store = memoryStore();
+    const first = createPermissionPolicy(fakeDialog(0), () => null, store);
+    await request(first, TAB, "media", { requestingUrl: "https://meet.example/x", mediaTypes: ["audio"] });
+    expect(store.data).toEqual({ "https://meet.example media:audio": true });
+
+    const dialog = fakeDialog(1);
+    const second = createPermissionPolicy(dialog, () => null, store);
+    await expect(request(second, TAB, "media", { requestingUrl: "https://meet.example/y", mediaTypes: ["audio"] })).resolves.toBe(true);
+    expect(second.onCheck(TAB, "media", "https://meet.example", { mediaType: "audio" })).toBe(true);
+    expect(dialog.showMessageBox).not.toHaveBeenCalled();
+  });
+
+  test("Block is saved too", async () => {
+    const store = memoryStore();
+    await request(createPermissionPolicy(fakeDialog(1), () => null, store), TAB, "notifications", { requestingUrl: "https://a.example/" });
+    const dialog = fakeDialog(0);
+    const later = createPermissionPolicy(dialog, () => null, store);
+    await expect(request(later, TAB, "notifications", { requestingUrl: "https://a.example/" })).resolves.toBe(false);
+    expect(dialog.showMessageBox).not.toHaveBeenCalled();
+  });
+
+  test("the dialog says where to reset the answer", async () => {
+    const dialog = fakeDialog(1);
+    await request(createPermissionPolicy(dialog, () => null, memoryStore()), TAB, "geolocation", { requestingUrl: "https://a.example/" });
+    expect(dialog.showMessageBox.mock.calls[0][0].detail).toMatch(/Settings/);
+  });
+
+  test("summary counts answers and sites, and clear forgets them on disk too", async () => {
+    const store = memoryStore({
+      "https://a.example media:audio": true,
+      "https://a.example notifications": false,
+      "https://b.example geolocation": true,
+    });
+    const dialog = fakeDialog(1);
+    const policy = createPermissionPolicy(dialog, () => null, store);
+    expect(policy.summary()).toEqual({ answers: 3, sites: 2 });
+    policy.clear();
+    expect(policy.summary()).toEqual({ answers: 0, sites: 0 });
+    expect(store.data).toEqual({});
+    await request(policy, TAB, "geolocation", { requestingUrl: "https://b.example/" });
+    expect(dialog.showMessageBox).toHaveBeenCalledTimes(1);
+  });
+
+  test("a damaged or hand-edited file cannot grant anything odd", () => {
+    const cleaned = cleanStoredAnswers({
+      "https://a.example media:audio": true,
+      "https://a.example notifications": "yes",
+      "file:///C:/x geolocation": true,
+      "https://a.example/path geolocation": true,
+      "nospace": true,
+      "https://a.example ": true,
+    });
+    expect(Array.from(cleaned.entries())).toEqual([["https://a.example media:audio", true]]);
+    expect(cleanStoredAnswers(null).size).toBe(0);
+    expect(cleanStoredAnswers([true]).size).toBe(0);
+  });
+
+  test("a store that fails does not break the answer", async () => {
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const policy = createPermissionPolicy(fakeDialog(0), () => null, {
+      load: () => { throw new Error("unreadable"); },
+      save: () => { throw new Error("disk full"); },
+    });
+    await expect(request(policy, TAB, "geolocation", { requestingUrl: "https://a.example/" })).resolves.toBe(true);
+    spy.mockRestore();
   });
 });
