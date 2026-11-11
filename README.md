@@ -21,7 +21,8 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 - **Find in page** – `Ctrl+F` to search text on the current page
 - **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions; a badge on the download icon shows how many files finished since you last opened the panel (resets when you open it)
 - **Passkey sign-in** – Sites that offer "sign in with a passkey" (for example Microsoft sign-in) work in tabs. On Windows the Windows Hello prompt handles this PC's passkeys, security keys and phones (scan the QR code); when a security key holds several accounts for a site, the app asks which one to use
-- **Permission prompts** – A site in a tab has to ask before it uses the microphone, camera, your location, notifications or the clipboard, or opens a link in another program. The answer is remembered for that site; **Settings → General → Site Permissions** forgets the saved answers so sites ask again
+- **Permission prompts** – A site in a tab has to ask before it uses the microphone, camera, your location, notifications or the clipboard, or opens a link in another program. Harmless permissions (such as copying to the clipboard) are allowed without asking, and the app's own windows are never asked. Your **Allow** or **Block** answer is saved for that site and kept between launches; click **Forget Saved Answers** under **Settings → General → Site Permissions** to be asked again
+- **Crashed tabs** – If a tab's page stops responding and its process dies, the tab says so and offers to reload it instead of going blank
 - **Image context menu** – Right-click any image for **Copy Image** (copies pixel data to clipboard) and **Save Image As…** (native save dialog); image links open as downloads instead of new tabs
 
 ### Side Panel
@@ -38,7 +39,8 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 - **Copy to clipboard** – One-click copy of the current note
 - **Signatures** – Save an HTML signature that can be inserted at the end of any note
 - **Templates** – Create reusable note templates accessible from the toolbar
-- **HTML source view** – Toggle button in the toolbar swaps the rich-text editor for a raw HTML textarea; formatting toolbar is disabled while in HTML mode and re-enabled on exit
+- **HTML source view** – Toggle button in the toolbar swaps the rich-text editor for a raw HTML textarea; formatting toolbar is disabled while in HTML mode and re-enabled on exit. Notes, templates and signatures are cleaned down to plain formatting before they're shown, so scripts, frames and similar content are dropped
+- **No silent loss** – If a note can't be saved (for example it's over 10 MB, or the folder can't be written), you're told instead of it being treated as saved, and clearing, switching tickets, pulling from the site or applying an AI rewrite asks first rather than replacing a note whose backup failed. Typing that hasn't hit the auto-save timer yet is saved when the window closes
 - **Delivered as a bundled plugin** — Note Backup, including live sync below, is implemented via the plugin system. Its settings (live sync, backup retention, templates, signature) are under **Settings → Plugins → Note Backup**. Turning it off removes the Notes tab; your saved notes stay on disk
 
 ### Freshservice Sync (Freshservice plugin)
@@ -80,7 +82,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 ### Freshservice API (Freshservice plugin)
 - **Ticket details through the API** – With your Freshservice domain and API key entered under Settings → Plugins → Freshservice, Summarize and Suggest read the ticket's subject, status, priority, requester, description and every reply and note through the Freshservice REST API (v2) instead of scraping the page
 - **Automatic fallback** – If the API is turned off, not set up, rate-limited or returns an error, or the open record is a change, problem or release, the page is read exactly as before
-- **Safe key storage** – The API key is encrypted with the operating system's credential storage, never sent to the main window, and only sent to the configured domain over https. **Test connection** checks it and **Remove key** deletes it
+- **Safe key storage** – The API key is encrypted with the operating system's credential storage, never sent to the main window, and only sent to the configured domain over https. The key is tied to the domain it was entered for: if you change the domain, enter the key again. **Test connection** checks it and **Remove key** deletes it
 - **Delivered as a bundled plugin** — part of the Freshservice plugin. To stop using the API but keep Freshservice support, untick **Read ticket details through the API**; turning the whole plugin off also turns off ticket detection and note sync on Freshservice pages
 
 ### Solutions Chat
@@ -105,7 +107,7 @@ Extend the app with self-contained plugin directories — no build step required
 
 ### Notifications
 A bell icon in the tab bar shows a badge when there are unread notifications. Current notification types:
-- **Updates** – Checks GitHub Releases on startup and every 6 hours. The installed Windows app downloads new versions in the background and shows **Update Ready** with a **Restart to Update** button; if you don't restart, the update installs the next time you close MSP++. Turn off **Settings → General → Download Updates Automatically** to be asked before anything downloads. The portable .exe and the Mac app can't update themselves, so they show **Update Available** with a link to the release. Hide for now and Don't remind me for this version work as before.
+- **Updates** – Checks GitHub Releases on startup and every 6 hours. The installed Windows app downloads new versions in the background and shows **Update Ready** with a **Restart to Update** button; if you don't restart, the update installs the next time you close MSP++. Turn off **Settings → General → Download Updates Automatically** to be asked before anything downloads, or click **Check for Updates** there to check now. The portable .exe and the Mac app can't update themselves, so they show **Update Available** with a link to the release. Hide for now and Don't remind me for this version work as before.
 - **Auto-save failed** – Fires once if a note cannot be written to disk (permissions or disk-full)
 - **Backup storage warning** – Alerts when the backup folder exceeds a configurable size threshold (default: 100 MB; set to 0 to disable)
 - **Live sync push failed** – Fires once when the first push to a site's notes field fails (e.g. session expired)
@@ -163,6 +165,7 @@ Inside you'll find:
 - `settings.json` – All app settings
 - `open-tabs.json` – Tab URLs restored on next launch
 - `main-window-state.json` – The main window's last size and position
+- `site-permissions.json` – Saved Allow / Block answers to site permission prompts
 - A folder per ticket ID containing timestamped `.html` snapshot files
 
 Click **📁 Open Folder** in the app to jump there directly.
@@ -268,7 +271,7 @@ Uses Microsoft-hosted OpenAI models in your own Azure OpenAI or Azure AI Foundry
 2. From the resource's **Keys and Endpoint** page, copy the **Endpoint** (e.g. `https://your-resource.openai.azure.com/`) and a **Key**
 3. In **Settings → Plugins → AI Features**, choose **Azure OpenAI** and fill in **Endpoint**, **Deployment Name** and **API Key**
 
-Requests go to the Azure OpenAI v1 API (`/openai/v1/chat/completions`).
+Requests go to the Azure OpenAI v1 API (`/openai/v1/chat/completions`). The key is tied to the endpoint it was entered for, so if you change the endpoint, enter the key again.
 
 ### Microsoft 365 Copilot
 
@@ -325,4 +328,7 @@ For plugin development documentation — including the full API reference and a 
 - **Metrics bar shows `—` or `(not found)`** – Open Settings → Plugins → Metrics Bar, click **Test selectors** next to the relevant dashboard to trigger an immediate scrape and see per-field results. If a field still shows `(not found — check selector)`, use **Re-pick** on that field, wait for the dashboard to fully load in the picker, then click the correct value to recapture the selector.
 - **Metrics bar shows `⚠` on a card** – The last refresh for that field failed (network issue, dashboard changed, etc.). The value shown is the last successfully cached value. Hover the `⚠` to see when it was last updated. The app will retry on the next poll interval.
 - **Passkey sign-in doesn't offer Touch ID on macOS** – Electron only supports Touch ID passkeys in a signed build with a keychain entitlement, which the macOS build doesn't have yet. USB security keys still work. On Windows, passkeys go through Windows Hello, so check that Windows Hello is set up in Windows Settings → Accounts → Sign-in options.
+- **A site says the microphone, camera or location is blocked** – You (or an earlier answer) chose **Block** for that site. Click **Forget Saved Answers** under Settings → General → Site Permissions and reload the page to be asked again.
+- **No automatic update** – Only the installed Windows app updates itself. The portable .exe and the Mac app show **Update Available** with a link instead; download the new version from the release. Installed copies on 0.7.0 or earlier need one manual install of a newer version first.
+- **Freshservice API or Azure OpenAI stopped working after changing the domain or endpoint** – Saved keys only work with the address they were entered for. Paste the key again.
 - **Blank screen or errors** – Press `Ctrl+Shift+I` to open DevTools and check the console.
