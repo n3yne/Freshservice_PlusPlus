@@ -112,3 +112,18 @@ describe("connectwise-manage page scripts", () => {
     expect(manifest.minAppVersion).toBe("0.5.7");
   });
 });
+
+describe("recordLink", () => {
+  test("builds the standard ticket link from a classic URL", () => {
+    expect(cw.recordLink("https://na.myconnectwise.net/v2025_1/services/system_io/Service/fv_sr100_request.rails?service_recid=12345&companyName=acme&foo=1"))
+      .toBe("https://na.myconnectwise.net/v4_6_release/services/system_io/Service/fv_sr100_request.rails?service_recid=12345&companyName=acme");
+    expect(cw.recordLink("https://na.myconnectwise.net/v4_6_release/ConnectWise.aspx#srRecID=777"))
+      .toBe("https://na.myconnectwise.net/v4_6_release/services/system_io/Service/fv_sr100_request.rails?service_recid=777");
+  });
+
+  test("null without a ticket number or off ConnectWise", () => {
+    expect(cw.recordLink("https://na.myconnectwise.net/v2025_1/ConnectWise.aspx#XQAAAA")).toBeNull();
+    expect(cw.recordLink("https://example.com/?service_recid=1")).toBeNull();
+    expect(cw.recordLink("not a url")).toBeNull();
+  });
+});

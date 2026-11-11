@@ -41,11 +41,13 @@ document.addEventListener("DOMContentLoaded", function () {
     theme: "dark",
     dismissedReleaseVersion: "",
     autoUpdate: true,
+    restoreTabs: true,
   };
 
   // ==================== Element References ====================
   const settingSidePanel      = document.getElementById("setting-side-panel");
   const settingDefaultUrl     = document.getElementById("setting-default-url");
+  const settingRestoreTabs    = document.getElementById("setting-restore-tabs");
   const settingTheme          = document.getElementById("setting-theme");
   const settingAutoUpdate     = document.getElementById("setting-auto-update");
   const updateModeNote        = document.getElementById("update-mode-note");
@@ -77,6 +79,7 @@ document.addEventListener("DOMContentLoaded", function () {
     document.body.setAttribute("data-theme", theme);
     settingTheme.checked = theme === "light";
     settingAutoUpdate.checked = settings.autoUpdate !== false;
+    settingRestoreTabs.checked = settings.restoreTabs !== false;
 
     if (document.activeElement !== settingDefaultUrl) {
       settingDefaultUrl.value = settings.defaultUrl && settings.defaultUrl !== "about:blank" ? settings.defaultUrl : "";
@@ -88,6 +91,11 @@ document.addEventListener("DOMContentLoaded", function () {
   settingSidePanel.addEventListener("change", function () {
     appSettings.sidePanelEnabled = settingSidePanel.checked;
     saveSettings({ sidePanelEnabled: appSettings.sidePanelEnabled });
+  });
+
+  settingRestoreTabs.addEventListener("change", function () {
+    appSettings.restoreTabs = settingRestoreTabs.checked;
+    saveSettings({ restoreTabs: appSettings.restoreTabs });
   });
 
   settingTheme.addEventListener("change", function () {

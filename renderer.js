@@ -591,6 +591,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (a.scrapeScript !== undefined && !isPageScript(a.scrapeScript)) return "scrapeScript must be a script string";
     if (a.readRecord !== undefined && typeof a.readRecord !== "function") return "readRecord must be a function";
     if (a.formatTitle !== undefined && typeof a.formatTitle !== "function") return "formatTitle must be a function";
+    if (a.recordLink !== undefined && typeof a.recordLink !== "function") return "recordLink must be a function";
     if (a.notes !== undefined) {
       const n = a.notes;
       if (!n || typeof n !== "object") return "notes must be an object";
@@ -1429,7 +1430,7 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
       const closedUrl = tab.webview.getURL() || tab.webview.getAttribute("src");
       if (closedUrl) {
-        closedTabHistory.push({ url: closedUrl, pinned: tab.pinned });
+        closedTabHistory.push({ url: closedUrl, pinned: tab.pinned, index: idx });
         if (closedTabHistory.length > CLOSED_TAB_HISTORY_MAX) closedTabHistory.shift();
       }
     } catch { /* webview may not be ready */ }
@@ -1514,6 +1515,39 @@ document.addEventListener("DOMContentLoaded", function () {
     saveTabSession();
   }
 
+  // Puts a tab at `index` in the tab bar, kept after the pinned tabs unless it
+  // is pinned itself and before them otherwise.
+  function placeTabAt(tab, index) {
+    const from = tabs.indexOf(tab);
+    if (from === -1) return;
+    tabs.splice(from, 1);
+    let pinnedCount = 0;
+    while (pinnedCount < tabs.length && tabs[pinnedCount].pinned) pinnedCount++;
+    let to = Math.max(0, Math.min(index, tabs.length));
+    to = tab.pinned ? Math.min(to, pinnedCount) : Math.max(to, pinnedCount);
+    tabs.splice(to, 0, tab);
+    for (let i = 0; i < tabs.length; i++) tabList.appendChild(tabs[i].tabEl);
+    saveTabSession();
+  }
+
+  // Ctrl+Shift+T and the tab menu: opens the most recently closed tab where it was.
+  function reopenClosedTab() {
+    const closed = closedTabHistory.pop();
+    if (!closed) return;
+    const tab = createTab(closed.url, { activate: true, pinned: closed.pinned });
+    if (typeof closed.index === "number") placeTabAt(tab, closed.index);
+  }
+
+  // Opens a copy of a tab's page right after it, as browsers do. The copy
+  // starts unpinned so it can be closed.
+  function duplicateTab(tabId) {
+    const url = getTabUrl(tabId);
+    if (!url) return;
+    const source = tabs.find(function (t) { return t.id === tabId; });
+    const copy = createTab(url, { activate: true });
+    if (source) placeTabAt(copy, tabs.indexOf(source) + 1);
+  }
+
   // ==================== Tab Context Menu ====================
   const tabContextMenu = document.getElementById("tab-context-menu");
   let contextMenuTabId = null; // which tab was right-clicked
@@ -1530,6 +1564,28 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  // "Copy Ticket Link" in the tab menu. Shown for pages on a site plugin's hosts
+  // or the Home URL's host; the site's recordLink(url) turns the page URL into a
+  // clean link to the open record (no view or filter parameters). Returns
+  // { show, link } where link is null when no record is open there.
+  function recordLinkForUrl(url) {
+    let parsed;
+    try { parsed = new URL(url); } catch { return { show: false, link: null }; }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return { show: false, link: null };
+    let onHomeHost = false;
+    try { onHomeHost = parsed.hostname === new URL(appSettings.defaultUrl).hostname; } catch { /* no home page */ }
+    const site = siteForUrl(url);
+    if (!site && !onHomeHost) return { show: false, link: null };
+    let link = null;
+    if (site && typeof site.recordLink === "function") {
+      try {
+        const out = site.recordLink(url);
+        if (typeof out === "string" && isWebUrl(out)) link = out;
+      } catch (err) { console.error("[Sites] " + site.id + " recordLink:", err); }
+    }
+    return { show: true, link: link };
+  }
+
   function showTabContextMenu(e, tabId) {
     e.preventDefault();
     contextMenuTabId = tabId;
@@ -1540,6 +1596,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const unpinItem = tabContextMenu.querySelector('[data-action="unpin"]');
     if (pinItem) pinItem.style.display = isTabPinned ? "none" : "";
     if (unpinItem) unpinItem.style.display = isTabPinned ? "" : "none";
+
+    const linkItem = tabContextMenu.querySelector('[data-action="copy-record-link"]');
+    if (linkItem) {
+      const rl = recordLinkForUrl(getTabUrl(tabId));
+      linkItem.style.display = rl.show ? "" : "none";
+      linkItem.classList.toggle("disabled", !rl.link);
+      linkItem.title = rl.link ? rl.link : "No ticket is open in this tab";
+    }
 
     tabContextMenu.style.left = e.clientX + "px";
     tabContextMenu.style.top = e.clientY + "px";
@@ -1586,6 +1650,7 @@ document.addEventListener("DOMContentLoaded", function () {
   tabContextMenu.addEventListener("click", function (e) {
     const item = e.target.closest(".context-menu-item");
     if (!item || !contextMenuTabId) return;
+    if (item.classList.contains("disabled")) return;
 
     const action = item.dataset.action;
     const targetTabId = contextMenuTabId;
@@ -1598,17 +1663,19 @@ document.addEventListener("DOMContentLoaded", function () {
         break;
       }
 
-      case "reopen-closed": {
-        const closed = closedTabHistory.pop();
-        if (closed) {
-          createTab(closed.url, { activate: true, pinned: closed.pinned });
-        }
+      case "reopen-closed":
+        reopenClosedTab();
         break;
-      }
 
       case "copy-url": {
         const urlToCopy = getTabUrl(targetTabId);
         if (urlToCopy) navigator.clipboard.writeText(urlToCopy).catch(() => {});
+        break;
+      }
+
+      case "copy-record-link": {
+        const link = recordLinkForUrl(getTabUrl(targetTabId)).link;
+        if (link) navigator.clipboard.writeText(link).catch(() => {});
         break;
       }
 
@@ -1620,13 +1687,9 @@ document.addEventListener("DOMContentLoaded", function () {
         break;
       }
 
-      case "duplicate": {
-        const dupUrl = getTabUrl(targetTabId);
-        if (dupUrl) {
-          createTab(dupUrl, { activate: true });
-        }
+      case "duplicate":
+        duplicateTab(targetTabId);
         break;
-      }
 
       case "pin":
         pinTab(targetTabId);
@@ -1703,18 +1766,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
   async function initTabs() {
     try {
-      const savedData = await window.backupAPI.loadTabs();
-      if (savedData && savedData.length > 0) {
-        for (let i = 0; i < savedData.length; i++) {
-          // Backwards-compatible with the old string[] format written before the {url,pinned} shape.
-          const item = savedData[i];
-          const url = typeof item === "string" ? item : (item.url || appSettings.defaultUrl);
-          const pinned = typeof item === "object" && !!item.pinned;
-          createTab(url, { activate: i === 0, pinned });
-        }
-        console.log("[Tab] Restored " + savedData.length + " tab(s) from previous session");
-        return;
-      }
+      // { tabs: [{ url, pinned }], openHome, homeUrl } — see tabsToRestore in utils.js.
+      const saved = await window.backupAPI.loadTabs();
+      const list = (saved && Array.isArray(saved.tabs)) ? saved.tabs : [];
+      const openHome = !saved || saved.openHome !== false || list.length === 0;
+      list.forEach(function (item, i) {
+        createTab(item.url, { activate: !openHome && i === 0, pinned: !!item.pinned });
+      });
+      if (list.length) console.log("[Tab] Restored " + list.length + " tab(s) from previous session");
+      if (openHome) createTab((saved && saved.homeUrl) || appSettings.defaultUrl);
+      return;
     } catch (err) {
       console.error("[Tab] Error loading saved tabs:", err);
     }
@@ -1740,8 +1801,13 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   // ==================== Find in Page ====================
+  // Ctrl+F on an open bar selects its text again, as in browsers; Escape or ✕ closes it.
   function showFindBar() {
-    if (findActive) { hideFindBar(); return; }
+    // A page in a tab holds focus apart from the app window, so take it back first.
+    const wv = getActiveWebview();
+    if (wv) try { wv.blur(); } catch { /* ignore */ }
+    window.focus();
+    if (findActive) { findInput.focus(); findInput.select(); return; }
     findBar.classList.add("visible");
     findInput.focus();
     findInput.select();
@@ -1890,6 +1956,21 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   // ==================== Keyboard Shortcuts ====================
+  // Runs a tab shortcut from tab-shortcuts.js, whether pressed in the app's own
+  // window or in a page (relayed by the main process).
+  function runTabShortcut(shortcut) {
+    if (!shortcut) return;
+    switch (shortcut.action) {
+      case "new-tab": createTab(appSettings.defaultUrl, { activate: true }); return;
+      case "close-tab": if (activeTabId) closeTab(activeTabId); return;
+      case "reopen-closed": reopenClosedTab(); return;
+      case "find": showFindBar(); return;
+    }
+    const activeIdx = tabs.findIndex(function (t) { return t.id === activeTabId; });
+    const target = window.TabShortcuts.targetTabIndex(shortcut, activeIdx, tabs.length);
+    if (target !== -1) activateTab(tabs[target].id);
+  }
+
   document.addEventListener("keydown", function (e) {
     if (e.ctrlKey && e.shiftKey && (e.key === "B" || e.key === "b")) {
       e.preventDefault();
@@ -1898,10 +1979,6 @@ document.addEventListener("DOMContentLoaded", function () {
     if (e.ctrlKey && !e.shiftKey && e.key === ",") {
       e.preventDefault();
       window.backupAPI.openSettingsWindow();
-    }
-    if (e.ctrlKey && !e.shiftKey && (e.key === "f" || e.key === "F")) {
-      e.preventDefault();
-      showFindBar();
     }
     if (e.altKey && e.key === "ArrowLeft") {
       e.preventDefault();
@@ -1918,44 +1995,18 @@ document.addEventListener("DOMContentLoaded", function () {
       const wv = getActiveWebview();
       if (wv) try { wv.reload(); } catch { /* ignore */ }
     }
-    if (e.ctrlKey && !e.shiftKey && e.key === "t") {
+    const shortcut = window.TabShortcuts.tabShortcutForKey(e);
+    if (shortcut) {
+      // preventDefault also keeps the Window menu's Ctrl+W from closing the app.
       e.preventDefault();
-      createTab(appSettings.defaultUrl, { activate: true });
-    }
-    if (e.ctrlKey && e.shiftKey && (e.key === "T" || e.key === "t")) {
-      e.preventDefault();
-      const closed = closedTabHistory.pop();
-      if (closed) createTab(closed.url, { activate: true, pinned: closed.pinned });
-    }
-    // Ctrl+W is skipped while typing in the side panel — the user may be typing a "w".
-    if (e.ctrlKey && !e.shiftKey && e.key === "w") {
-      if (!isTypingInSidePanel()) {
-        e.preventDefault();
-        if (activeTabId) closeTab(activeTabId);
-      }
-    }
-    if (e.ctrlKey && !e.shiftKey && e.key === "Tab") {
-      e.preventDefault();
-      const idx = tabs.findIndex(function (t) { return t.id === activeTabId; });
-      if (idx !== -1 && tabs.length > 1) {
-        activateTab(tabs[(idx + 1) % tabs.length].id);
-      }
-    }
-    if (e.ctrlKey && e.shiftKey && e.key === "Tab") {
-      e.preventDefault();
-      const idx = tabs.findIndex(function (t) { return t.id === activeTabId; });
-      if (idx !== -1 && tabs.length > 1) {
-        activateTab(tabs[(idx - 1 + tabs.length) % tabs.length].id);
-      }
-    }
-    if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
-      const tabIdx = parseInt(e.key, 10) - 1;
-      if (tabIdx < tabs.length) {
-        e.preventDefault();
-        activateTab(tabs[tabIdx].id);
-      }
+      // Ctrl+W does nothing while typing in the side panel, so a slip doesn't close the tab.
+      if (shortcut.action === "close-tab" && isTypingInSidePanel()) return;
+      runTabShortcut(shortcut);
     }
   });
+
+  // Shortcuts pressed while a page in a tab has focus come from the main process.
+  window.backupAPI.onTabShortcut(runTabShortcut);
 
   function isTypingInSidePanel() {
     const el = document.activeElement;

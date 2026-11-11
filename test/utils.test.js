@@ -163,3 +163,43 @@ describe("findLegacyUserDataDir", () => {
     expect(findLegacyUserDataDir(appData, current, () => false, path.join)).toBeNull();
   });
 });
+
+describe("tabsToRestore", () => {
+  const { tabsToRestore } = require("../utils");
+  const saved = [
+    { url: "https://a.example/", pinned: true },
+    { url: "https://b.example/", pinned: false },
+    "https://c.example/",
+  ];
+
+  test("restores every tab when on (the default)", () => {
+    expect(tabsToRestore(saved, true)).toEqual({
+      tabs: [
+        { url: "https://a.example/", pinned: true },
+        { url: "https://b.example/", pinned: false },
+        { url: "https://c.example/", pinned: false },
+      ],
+      openHome: false,
+    });
+    expect(tabsToRestore(saved, undefined).tabs).toHaveLength(3);
+  });
+
+  test("keeps only pinned tabs and opens Home when off", () => {
+    expect(tabsToRestore(saved, false)).toEqual({
+      tabs: [{ url: "https://a.example/", pinned: true }],
+      openHome: true,
+    });
+  });
+
+  test("opens Home when nothing was saved", () => {
+    expect(tabsToRestore([], true)).toEqual({ tabs: [], openHome: true });
+    expect(tabsToRestore(null, true)).toEqual({ tabs: [], openHome: true });
+    expect(tabsToRestore([{ pinned: true }, null], true)).toEqual({ tabs: [], openHome: true });
+  });
+
+  test("restoreTabs must be a boolean when present", () => {
+    const base = Object.assign({}, DEFAULT_SETTINGS);
+    expect(validateSettings(Object.assign({}, base, { restoreTabs: false }))).toBe(true);
+    expect(validateSettings(Object.assign({}, base, { restoreTabs: "no" }))).toBe(false);
+  });
+});

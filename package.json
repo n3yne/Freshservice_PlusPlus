@@ -40,6 +40,7 @@
       "renderer.js",
       "address-bar.js",
       "page-zoom.js",
+      "tab-shortcuts.js",
       "safe-html.js",
       "settings_renderer.js",
       "launch.js",
