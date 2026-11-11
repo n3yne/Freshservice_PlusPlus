@@ -591,6 +591,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (a.scrapeScript !== undefined && !isPageScript(a.scrapeScript)) return "scrapeScript must be a script string";
     if (a.readRecord !== undefined && typeof a.readRecord !== "function") return "readRecord must be a function";
     if (a.formatTitle !== undefined && typeof a.formatTitle !== "function") return "formatTitle must be a function";
+    if (a.recordLink !== undefined && typeof a.recordLink !== "function") return "recordLink must be a function";
     if (a.notes !== undefined) {
       const n = a.notes;
       if (!n || typeof n !== "object") return "notes must be an object";
@@ -1563,6 +1564,28 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  // "Copy Ticket Link" in the tab menu. Shown for pages on a site plugin's hosts
+  // or the Home URL's host; the site's recordLink(url) turns the page URL into a
+  // clean link to the open record (no view or filter parameters). Returns
+  // { show, link } where link is null when no record is open there.
+  function recordLinkForUrl(url) {
+    let parsed;
+    try { parsed = new URL(url); } catch { return { show: false, link: null }; }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return { show: false, link: null };
+    let onHomeHost = false;
+    try { onHomeHost = parsed.hostname === new URL(appSettings.defaultUrl).hostname; } catch { /* no home page */ }
+    const site = siteForUrl(url);
+    if (!site && !onHomeHost) return { show: false, link: null };
+    let link = null;
+    if (site && typeof site.recordLink === "function") {
+      try {
+        const out = site.recordLink(url);
+        if (typeof out === "string" && isWebUrl(out)) link = out;
+      } catch (err) { console.error("[Sites] " + site.id + " recordLink:", err); }
+    }
+    return { show: true, link: link };
+  }
+
   function showTabContextMenu(e, tabId) {
     e.preventDefault();
     contextMenuTabId = tabId;
@@ -1573,6 +1596,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const unpinItem = tabContextMenu.querySelector('[data-action="unpin"]');
     if (pinItem) pinItem.style.display = isTabPinned ? "none" : "";
     if (unpinItem) unpinItem.style.display = isTabPinned ? "" : "none";
+
+    const linkItem = tabContextMenu.querySelector('[data-action="copy-record-link"]');
+    if (linkItem) {
+      const rl = recordLinkForUrl(getTabUrl(tabId));
+      linkItem.style.display = rl.show ? "" : "none";
+      linkItem.classList.toggle("disabled", !rl.link);
+      linkItem.title = rl.link ? rl.link : "No ticket is open in this tab";
+    }
 
     tabContextMenu.style.left = e.clientX + "px";
     tabContextMenu.style.top = e.clientY + "px";
@@ -1619,6 +1650,7 @@ document.addEventListener("DOMContentLoaded", function () {
   tabContextMenu.addEventListener("click", function (e) {
     const item = e.target.closest(".context-menu-item");
     if (!item || !contextMenuTabId) return;
+    if (item.classList.contains("disabled")) return;
 
     const action = item.dataset.action;
     const targetTabId = contextMenuTabId;
@@ -1638,6 +1670,12 @@ document.addEventListener("DOMContentLoaded", function () {
       case "copy-url": {
         const urlToCopy = getTabUrl(targetTabId);
         if (urlToCopy) navigator.clipboard.writeText(urlToCopy).catch(() => {});
+        break;
+      }
+
+      case "copy-record-link": {
+        const link = recordLinkForUrl(getTabUrl(targetTabId)).link;
+        if (link) navigator.clipboard.writeText(link).catch(() => {});
         break;
       }
 

@@ -639,6 +639,16 @@ body {
   color: #fff;
 }
 
+.context-menu-item.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.context-menu-item.disabled:hover {
+  background: none;
+  color: var(--text);
+}
+
 .context-menu-separator {
   height: 1px;
   background: var(--border);

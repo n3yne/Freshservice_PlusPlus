@@ -64,6 +64,7 @@ window.pluginAPI.sites.register({
   scrapeScript: "…",           // optional page script
   readRecord: async (ctx) => …,// optional
   formatTitle(title) { … },    // optional
+  recordLink(url) { … },       // optional
   notes: { … },                // optional: note editor sync
   knowledge: { … },            // optional: knowledge base
 });
@@ -105,6 +106,10 @@ How the AI features read the open record's description and conversation.
 ### `formatTitle(title) → string`
 
 Optional. Shortens the tab title for pages this site owns (for example, stripping a product-name prefix).
+
+### `recordLink(url) → string | null`
+
+Optional. A clean link to the record open at `url`, without view, filter or tab parameters, for the tab menu's **Copy Ticket Link**. Return `null` when the URL isn't a record page. The menu item shows for tabs on a site plugin's hosts or the Home URL's host, and is greyed out when no site returns a link. Keep it cheap and pure (no page access): it runs each time the tab menu opens.
 
 ### `notes` (note editor sync)
 

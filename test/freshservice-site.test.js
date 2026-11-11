@@ -102,3 +102,18 @@ describe("freshservice site adapter", () => {
     expect(await adapter.readRecord({ url: "https://a.freshservice.com/", record: { kind: "ticket", id: "1" } })).toBeNull();
   });
 });
+
+describe("freshservice recordLink", () => {
+  const { adapter } = loadAdapter({});
+  test("strips view and query parameters from record pages", () => {
+    expect(adapter.recordLink("https://acme.freshservice.com/a/tickets/123?current_tab=details#notes")).toBe("https://acme.freshservice.com/a/tickets/123");
+    expect(adapter.recordLink("https://acme.freshservice.com/a/tickets/123/edit")).toBe("https://acme.freshservice.com/a/tickets/123");
+    expect(adapter.recordLink("https://acme.freshservice.com/itil/changes/45")).toBe("https://acme.freshservice.com/itil/changes/45");
+    expect(adapter.recordLink("https://help.acme.com/helpdesk/tickets/9")).toBe("https://help.acme.com/helpdesk/tickets/9");
+  });
+  test("null on list pages", () => {
+    expect(adapter.recordLink("https://acme.freshservice.com/a/tickets?filter=open")).toBeNull();
+    expect(adapter.recordLink("https://acme.freshservice.com/a/tickets/view/1")).toBeNull();
+    expect(adapter.recordLink("nope")).toBeNull();
+  });
+});

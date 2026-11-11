@@ -62,6 +62,27 @@
     return m ? m[1] : null;
   }
 
+  // A clean link to the ticket open at `url` (for the tab menu's "Copy Ticket
+  // Link"): ConnectWise's standard service ticket link, keeping only the ticket
+  // number and the company id (companyName) when the URL has one. Null when the
+  // URL doesn't carry a ticket number (the newer screens keep it in an encoded
+  // hash).
+  function recordLink(url) {
+    let parsed;
+    try { parsed = new URL(url); } catch { return null; }
+    if (!matchesUrl(url)) return null;
+    const n = ticketFromUrl(url);
+    if (!n) return null;
+    const params = new URLSearchParams(parsed.search);
+    const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+    let company = "";
+    for (const [k, v] of params) if (k.toLowerCase() === "companyname") company = v;
+    if (!company) for (const [k, v] of hashParams) if (k.toLowerCase() === "companyname") company = v;
+    let link = parsed.origin + "/v4_6_release/services/system_io/Service/fv_sr100_request.rails?service_recid=" + n;
+    if (company) link += "&companyName=" + encodeURIComponent(company);
+    return link;
+  }
+
   function fieldTypeLabel(type) {
     if (type === "draft") return "time entry";
     if (type === "textarea") return "stopwatch";
@@ -441,6 +462,7 @@
     shortName: "CW",
     matchesUrl: matchesUrl,
     formatTitle: formatTitle,
+    recordLink: recordLink,
     recordScript: RECORD_SCRIPT,
     scrapeScript: SCRAPE_SCRIPT,
     notes: Object.freeze({
@@ -457,7 +479,7 @@
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
-      adapter, matchesUrl, formatTitle, ticketKey, ticketNumberFromKey, ticketFromUrl,
+      adapter, matchesUrl, formatTitle, ticketKey, ticketNumberFromKey, ticketFromUrl, recordLink,
       fieldTypeLabel, pushDelay, onWatcherMessage, buildPushScript,
       NOTES_READ_SCRIPT, WATCHER_SCRIPT, RECORD_SCRIPT, SCRAPE_SCRIPT, WATCHER_PREFIX,
     };

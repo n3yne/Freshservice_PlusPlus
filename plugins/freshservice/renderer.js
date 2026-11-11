@@ -398,6 +398,18 @@
     return null;
   }
 
+  // A clean link to the record open at `url` (for the tab menu's "Copy Ticket
+  // Link"): the record's own page with no view, filter or tab parameters, e.g.
+  // https://acme.freshservice.com/a/tickets/123. Null on list and other pages.
+  const RECORD_LINK_PATTERN = /\/(a|helpdesk|itil)\/(tickets|changes|problems|releases)\/(\d+)(?=[/?#]|$)/i;
+  function recordLink(url) {
+    let parsed;
+    try { parsed = new URL(url); } catch { return null; }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    const m = (parsed.pathname + parsed.hash).match(RECORD_LINK_PATTERN);
+    return m ? parsed.origin + "/" + m[1].toLowerCase() + "/" + m[2].toLowerCase() + "/" + m[3] : null;
+  }
+
   // ==================== Register ====================
 
   api.sites.register({
@@ -405,6 +417,7 @@
     name: "Freshservice",
     shortName: "FS",
     matchesUrl: matchesUrl,
+    recordLink: recordLink,
     recordScript: TICKET_GRAB_SCRIPT,
     scrapeScript: SCRAPE_SCRIPT,
     readRecord: readRecord,
