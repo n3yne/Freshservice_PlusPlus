@@ -21,6 +21,7 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 - **Find in page** – `Ctrl+F` to search text on the current page
 - **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions; a badge on the download icon shows how many files finished since you last opened the panel (resets when you open it)
 - **Passkey sign-in** – Sites that offer "sign in with a passkey" (for example Microsoft sign-in) work in tabs. On Windows the Windows Hello prompt handles this PC's passkeys, security keys and phones (scan the QR code); when a security key holds several accounts for a site, the app asks which one to use
+- **Permission prompts** – A site in a tab has to ask before it uses the microphone, camera, your location, notifications or the clipboard, or opens a link in another program. The answer is remembered for that site until MSP++ is closed
 - **Image context menu** – Right-click any image for **Copy Image** (copies pixel data to clipboard) and **Save Image As…** (native save dialog); image links open as downloads instead of new tabs
 
 ### Side Panel
@@ -134,7 +135,8 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 | `Ctrl+,` | Open Settings |
 | `Alt+Left` | Navigate back |
 | `Alt+Right` | Navigate forward |
-| `F5` | Refresh active tab |
+| `F5` or `Ctrl+R` | Refresh active tab |
+| `Ctrl+Shift+R` | Refresh active tab, ignoring the cache |
 | `Ctrl+Alt+R` | Refresh all tabs |
 | `Ctrl+T` | New tab |
 | `Ctrl+W` | Close tab |

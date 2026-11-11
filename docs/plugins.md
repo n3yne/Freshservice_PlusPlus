@@ -374,7 +374,7 @@ Read and write the note in the Notes tab. These calls are answered by the Note B
 | `notes.getTicketId()` | `string \| null` | Current ticket ID, or `null` if none set |
 | `notes.getPlainText()` | `string` | Editor content stripped of HTML tags |
 | `notes.registerProvider(impl)` | — | For a plugin that replaces Note Backup: registers the object that answers the calls above. Only one provider can register |
-| `notes.saveSnapshot(incomingText, options?)` | `Promise<void>` | Saves a snapshot of the current editor content if it differs enough from the last snapshot (respects the configured snapshot threshold). Pass `{ force: true }` to skip the size check, e.g. before replacing the note with a rewrite of similar length. Call this before overwriting the editor with bulk-imported or AI-generated content so the previous note can be recovered from history. |
+| `notes.saveSnapshot(incomingText, options?)` | `Promise<boolean>` | Saves a snapshot of the current editor content if it differs enough from the last snapshot (respects the configured snapshot threshold). Resolves to `false` when a snapshot was needed and could not be saved (for example a note over the size limit); do not replace the note in that case without asking. Pass `{ force: true }` to skip the size check, e.g. before replacing the note with a rewrite of similar length. Call this before overwriting the editor with bulk-imported or AI-generated content so the previous note can be recovered from history. |
 
 ```js
 // Append a timestamp to the note
@@ -575,7 +575,7 @@ pluginAPI.notes.getContent(): string
 pluginAPI.notes.setContent(html: string): void
 pluginAPI.notes.getTicketId(): string | null
 pluginAPI.notes.getPlainText(): string
-pluginAPI.notes.saveSnapshot(incomingText: string, options?: { force?: boolean }): Promise<void>
+pluginAPI.notes.saveSnapshot(incomingText: string, options?: { force?: boolean }): Promise<boolean>
 
 pluginAPI.sites.register(adapter: SiteAdapter): SiteAdapter   // see docs/sites.md
 pluginAPI.sites.list(): SiteAdapter[]

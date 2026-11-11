@@ -30,6 +30,7 @@ module.exports = {
     if (s.aiApiKey !== undefined && (typeof s.aiApiKey !== "string" || s.aiApiKey.length > 500)) return false;
     if (s.aiApiKeyEncrypted !== undefined && (typeof s.aiApiKeyEncrypted !== "string" || s.aiApiKeyEncrypted.length > 2000)) return false;
     if (s.aiApiKeyProvider !== undefined && !["", ...PROVIDERS].includes(s.aiApiKeyProvider)) return false;
+    if (s.aiApiKeyEndpoint !== undefined && (typeof s.aiApiKeyEndpoint !== "string" || s.aiApiKeyEndpoint.length > 300)) return false;
     if (s.aiAzureDeployment !== undefined && (typeof s.aiAzureDeployment !== "string" || s.aiAzureDeployment.length > 100)) return false;
     if (s.aiAzureEndpoint !== undefined) {
       if (typeof s.aiAzureEndpoint !== "string" || s.aiAzureEndpoint.length > 300) return false;
@@ -54,6 +55,19 @@ module.exports = {
       settings.aiApiKeyProvider = isNewKey
         ? (PROVIDERS.includes(settings.aiProvider) ? settings.aiProvider : "")
         : (current.aiApiKeyProvider || "");
+      // An Azure OpenAI key is also tied to the endpoint it was entered for, so
+      // changing the endpoint later never sends the saved key to another server.
+      // A key saved before an endpoint was set is tied to the first one entered,
+      // and typing the key in again (even the same one) ties it to the endpoint
+      // set now. The settings window sends a typed key once and then forgets it.
+      const newEndpoint = normalizeAzureEndpoint(settings.aiAzureEndpoint || "") || "";
+      if (settings.aiApiKeyProvider !== "azure") {
+        delete settings.aiApiKeyEndpoint;
+      } else if (settings.aiApiKey) {
+        settings.aiApiKeyEndpoint = newEndpoint;
+      } else {
+        settings.aiApiKeyEndpoint = keyEndpoint(current) || newEndpoint;
+      }
       if (settings.aiApiKey) {
         const encrypted = api.encryptCredential(settings.aiApiKey);
         if (encrypted) settings.aiApiKeyEncrypted = encrypted;
@@ -211,6 +225,9 @@ module.exports = {
         }
         return null;
       }
+      if (!aiApiKey && provider === "azure" && settings.aiApiKeyProvider === "azure" && keyEndpoint(settings)) {
+        return "The saved API key was entered for " + keyEndpoint(settings) + ". Enter the API key again in Settings → AI Features to use it with this endpoint.";
+      }
       if (!aiApiKey) return notConfigured;
       if (provider === "azure") {
         if (!normalizeAzureEndpoint(settings.aiAzureEndpoint || "")) return "Enter your Azure OpenAI endpoint in Settings → AI Features.";
@@ -343,8 +360,22 @@ module.exports = {
 // True if the saved API key was entered for this provider. Keys saved before keys
 // were tied to a provider are treated as belonging to the original three providers.
 function keyBelongsTo(settings, provider) {
-  if (settings.aiApiKeyProvider) return settings.aiApiKeyProvider === provider;
+  if (settings.aiApiKeyProvider) {
+    if (settings.aiApiKeyProvider !== provider) return false;
+    if (provider !== "azure") return true;
+    const boundTo = keyEndpoint(settings);
+    return !boundTo || boundTo === normalizeAzureEndpoint(settings.aiAzureEndpoint || "");
+  }
   return ["hatz", "openai", "anthropic"].includes(provider);
+}
+
+// The Azure endpoint a saved key belongs to, or "" when the key is not an Azure
+// key or no endpoint is set yet. Keys saved before the tie was recorded belong to
+// the endpoint saved with them.
+function keyEndpoint(settings) {
+  if (!settings || settings.aiApiKeyProvider !== "azure") return "";
+  if (typeof settings.aiApiKeyEndpoint === "string" && settings.aiApiKeyEndpoint) return settings.aiApiKeyEndpoint;
+  return normalizeAzureEndpoint(settings.aiAzureEndpoint || "") || "";
 }
 
 // Accepts an Azure OpenAI / Foundry resource URL with or without a trailing path

@@ -9,6 +9,7 @@ const pluginManager = require("./plugin-manager");
 const { installPasskeyAccountChooser } = require("./webauthn");
 const { createUpdater } = require("./updater");
 const { zoomActionForKey } = require("./page-zoom");
+const { createPermissionPolicy, installPermissionHandlers } = require("./permissions");
 
 // Keep using the Freshservice++ data folder after the rename to MSP++. This must
 // run before anything touches userData (the single-instance lock, sessions).
@@ -362,6 +363,19 @@ function createWindow() {
       return { action: "deny" };
     });
 
+    // A sign-in popup allowed above is a real window. Anything it opens in turn
+    // goes to a tab (web pages) or nowhere, never to another unmanaged window.
+    webviewContents.on("did-create-window", (popup) => {
+      popup.webContents.setWindowOpenHandler(({ url }) => {
+        if (isWebUrl(url) && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("open-in-new-tab", url);
+        } else {
+          console.warn("[Popup] Blocked window from a sign-in popup:", url);
+        }
+        return { action: "deny" };
+      });
+    });
+
     // Native OS right-click context menu inside webviews
     webviewContents.on("context-menu", (event, params) => {
       if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -468,6 +482,11 @@ function createWindow() {
             });
             if (!filePath) return;
             pendingSavePaths.set(params.srcURL, filePath);
+            // If the download never starts, forget the path. Left behind, it would
+            // send a later, unrelated download of the same address to this file.
+            setTimeout(() => {
+              if (pendingSavePaths.get(params.srcURL) === filePath) pendingSavePaths.delete(params.srcURL);
+            }, 30000);
             webviewContents.downloadURL(params.srcURL);
           },
         });
@@ -573,8 +592,26 @@ function setApplicationMenu() {
     {
       label: "View",
       submenu: [
-        { role: "reload" },
-        { role: "forceReload" },
+        // Reload acts on the page in the active tab, as in a browser. Reloading the
+        // app window itself would close every tab's page and the note being typed.
+        {
+          label: "Reload Tab",
+          accelerator: "CmdOrCtrl+R",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("reload-active-tab", { ignoreCache: false });
+            }
+          },
+        },
+        {
+          label: "Hard Reload Tab",
+          accelerator: "CmdOrCtrl+Shift+R",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("reload-active-tab", { ignoreCache: true });
+            }
+          },
+        },
         {
           label: "Refresh All Tabs",
           accelerator: "CmdOrCtrl+Alt+R",
@@ -594,6 +631,13 @@ function setApplicationMenu() {
           },
         },
         { role: "toggleDevTools" },
+        // For plugin development: reloads the app's own window. No shortcut on purpose.
+        {
+          label: "Reload App Window",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload();
+          },
+        },
         { type: "separator" },
         // Zoom acts on the active tab's page, not the app's own toolbar.
         { label: "Actual Size", accelerator: "CmdOrCtrl+0", click: () => sendPageZoom("reset") },
@@ -769,13 +813,19 @@ function registerIpcHandlers() {
     return toPublicSettings(await loadSettings());
   });
 
-  // Save settings to disk and notify the renderer
+  // Save settings to disk and notify the renderer.
+  //
+  // The payload is a patch: only the keys in it change, everything else keeps
+  // the value on disk. Each window (and each plugin in it) holds its own copy of
+  // the settings, and those copies go out of date; replacing the whole file with
+  // one of them used to undo changes made elsewhere. Callers should send just
+  // the keys they changed. A caller that still sends a whole copy keeps working.
   electron.ipcMain.handle("save-settings", (event, settings) => withSettingsLock(async () => {
     if (typeof settings !== "object" || settings === null || Array.isArray(settings)) {
       return { success: false };
     }
     const existing = await loadSettings();
-    const merged = Object.assign({}, DEFAULT_SETTINGS, pluginManager.getPluginDefaultSettings(), settings);
+    const merged = Object.assign({}, existing, settings);
     // If caller didn't supply a new plaintext key, preserve whatever encrypted key
     // is on disk. Saving with "<name>Remove": true deletes the stored key instead.
     const credentialFields = pluginManager.getCredentialFields();
@@ -1066,6 +1116,18 @@ electron.app.whenReady().then(async () => {
     electron.dialog,
     () => electron.BrowserWindow.getFocusedWindow() || mainWindow || null,
   );
+
+  // Pages in tabs must ask before using the microphone, camera, location,
+  // notifications or the clipboard, or starting another program. Sessions made
+  // later (a plugin's sign-in window) get the same rules.
+  const permissionPolicy = createPermissionPolicy(
+    electron.dialog,
+    () => electron.BrowserWindow.getFocusedWindow() || mainWindow || null,
+  );
+  installPermissionHandlers(electron.session.defaultSession, permissionPolicy);
+  electron.app.on("session-created", (session) => {
+    installPermissionHandlers(session, permissionPolicy);
+  });
 
   updater = createUpdater({
     currentVersion: electron.app.getVersion(),

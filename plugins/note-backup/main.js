@@ -78,7 +78,7 @@ function createNoteStore(dir) {
 
   async function saveNote({ ticketId, noteContent, isManual }) {
     if (typeof noteContent !== "string" || noteContent.length > MAX_NOTE_CHARS) {
-      return { success: false, error: "Note content exceeds size limit" };
+      return { success: false, code: "too-large", error: "Note content exceeds size limit" };
     }
     await ensureDir();
 
@@ -108,6 +108,33 @@ function createNoteStore(dir) {
       await fsp.writeFile(path.join(historyDir, `${timestamp.replace(/[:.]/g, "-")}.html`), noteContent, "utf-8");
     }
 
+    return { success: true, timestamp, ticketId: safeTicketId };
+  }
+
+  // The same draft write as saveNote, done in one go without waiting. Used when
+  // the window is closing: the app can exit before an awaited write finishes.
+  function saveNoteSync({ ticketId, noteContent }) {
+    if (typeof noteContent !== "string" || noteContent.length > MAX_NOTE_CHARS) {
+      return { success: false, code: "too-large", error: "Note content exceeds size limit" };
+    }
+    fs.mkdirSync(dir, { recursive: true });
+    const timestamp = new Date().toISOString();
+    const safeTicketId = sanitizeTicketId(ticketId);
+    let data = {};
+    try {
+      data = JSON.parse(fs.readFileSync(autosaveFile, "utf-8"));
+    } catch (e) {
+      if (e.code !== "ENOENT") {
+        const corruptPath = `${autosaveFile}.corrupt-${timestamp.replace(/[:.]/g, "-")}`;
+        try { fs.renameSync(autosaveFile, corruptPath); } catch { /* keep going with a new file */ }
+        console.error("[NoteBackup] Corrupt autosave.json preserved at", corruptPath, e);
+      }
+    }
+    if (typeof data !== "object" || data === null || Array.isArray(data)) data = {};
+    data[safeTicketId] = { content: noteContent, updatedAt: timestamp };
+    const tmp = autosaveFile + ".close.tmp";
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf-8");
+    fs.renameSync(tmp, autosaveFile);
     return { success: true, timestamp, ticketId: safeTicketId };
   }
 
@@ -362,6 +389,7 @@ function createNoteStore(dir) {
     getSize,
     cleanup,
     saveEditorStateSync,
+    saveNoteSync,
     loadEditorState,
   };
 }
@@ -427,6 +455,15 @@ module.exports = {
       await fsp.mkdir(store.dir, { recursive: true });
       const err = await electron.shell.openPath(store.dir);
       return err ? { success: false, error: err } : { success: true };
+    });
+
+    api.onMessage("save-note-now", function (data) {
+      try {
+        const result = store.saveNoteSync(data || {});
+        if (!result.success) console.error("[NoteBackup] Note not saved at close:", result.error);
+      } catch (e) {
+        console.error("[NoteBackup] Error saving the note at close:", e);
+      }
     });
 
     api.onMessage("save-editor-state", function (state) {

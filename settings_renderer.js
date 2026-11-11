@@ -62,8 +62,10 @@ document.addEventListener("DOMContentLoaded", function () {
     return function (...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
   }
 
-  function saveSettings() {
-    return window.backupAPI.saveSettings(appSettings);
+  // Sends only the keys that changed. Other windows and plugin panels save too,
+  // so this window's copy can be out of date and is never sent whole.
+  function saveSettings(patch) {
+    return window.backupAPI.saveSettings(patch);
   }
 
   // ==================== Form Population ====================
@@ -85,18 +87,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
   settingSidePanel.addEventListener("change", function () {
     appSettings.sidePanelEnabled = settingSidePanel.checked;
-    saveSettings();
+    saveSettings({ sidePanelEnabled: appSettings.sidePanelEnabled });
   });
 
   settingTheme.addEventListener("change", function () {
     appSettings.theme = settingTheme.checked ? "light" : "dark";
     document.body.setAttribute("data-theme", appSettings.theme);
-    saveSettings();
+    saveSettings({ theme: appSettings.theme });
   });
 
   settingAutoUpdate.addEventListener("change", function () {
     appSettings.autoUpdate = settingAutoUpdate.checked;
-    saveSettings();
+    saveSettings({ autoUpdate: appSettings.autoUpdate });
   });
 
   // ==================== Updates ====================
@@ -148,7 +150,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const parsed = new URL(val);
       if (parsed.protocol === "http:" || parsed.protocol === "https:") {
         appSettings.defaultUrl = val;
-        saveSettings();
+        saveSettings({ defaultUrl: val });
       }
     } catch { /* Invalid URL — don't save */ }
   }, 800);
@@ -494,7 +496,7 @@ document.addEventListener("DOMContentLoaded", function () {
       getSettings: function () { return Object.assign({}, appSettings); },
       saveSettings: function (patch) {
         appSettings = Object.assign({}, appSettings, patch);
-        const saved = saveSettings();
+        const saved = saveSettings(Object.assign({}, patch));
         // A new API key (or a request to remove one) is sent once; the plaintext
         // is never kept in this window or resent with later saves.
         oneShotSettingKeys.forEach(function (key) { delete appSettings[key]; });

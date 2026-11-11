@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld("backupAPI", {
   onPageZoom: (callback) =>
     onIpc("page-zoom", (event, data) => callback(data)),
   onRefreshAllTabs: (callback) => onIpc("refresh-all-tabs", () => callback()),
+  onReloadActiveTab: (callback) =>
+    onIpc("reload-active-tab", (event, options) => callback(options || {})),
   onSettingsChanged: (callback) =>
     onIpc("settings-changed", (event, settings) => callback(settings)),
   openSettingsWindow: () => ipcRenderer.invoke("open-settings-window"),

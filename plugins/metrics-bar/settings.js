@@ -92,8 +92,24 @@
     };
   }
 
+  // Saves this plugin's own settings only (they all start with "metrics"). The
+  // rest of this copy can be out of date and must not overwrite newer values.
   function saveSettings() {
-    window.pluginSettingsAPI.saveSettings(appSettings);
+    const patch = {};
+    Object.keys(appSettings).forEach(function (key) {
+      if (key.indexOf("metrics") === 0) patch[key] = appSettings[key];
+    });
+    window.pluginSettingsAPI.saveSettings(patch);
+  }
+
+  // Dashboards are web pages. Anything else (a file on this PC, a script) is never loaded.
+  function isWebAddress(url) {
+    try {
+      const protocol = new URL(String(url)).protocol;
+      return protocol === "http:" || protocol === "https:";
+    } catch {
+      return false;
+    }
   }
 
   function buildMetricsScrapeScript(fields) {
@@ -621,6 +637,12 @@
           resolve();
         }
         metricsScraperWebview.addEventListener("did-finish-load", handler);
+        if (!isWebAddress(db.url)) {
+          metricsScraperWebview.removeEventListener("did-finish-load", handler);
+          clearTimeout(loadTimer);
+          reject(new Error("the dashboard address is not a web address"));
+          return;
+        }
         const sep = db.url.includes("?") ? "&" : "?";
         metricsScraperWebview.src = db.url + sep + "_ms=" + Date.now();
       });
@@ -667,7 +689,7 @@
     metricsPickerCaptureBar.classList.remove("visible");
     metricsPickerOverlay.classList.add("visible");
     const db = (appSettings.metricsBarDashboards || []).find(function (d) { return d.id === dbId; });
-    metricsPickerWebview.src = db ? db.url : "about:blank";
+    metricsPickerWebview.src = db && isWebAddress(db.url) ? db.url : "about:blank";
   }
 
   function closeMetricsPicker() {

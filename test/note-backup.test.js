@@ -257,3 +257,45 @@ describe("note-backup note store", () => {
     expect(await store.loadEditorState()).toEqual({ blankAtClose: true });
   });
 });
+
+// ==================== saveNoteSync (window closing) ====================
+
+describe("saveNoteSync", () => {
+  let dir;
+  let store;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "msppp-notes-sync-"));
+    store = createNoteStore(dir);
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("writes the draft next to the ones already saved", async () => {
+    await store.saveNote({ ticketId: "100", noteContent: "<p>older</p>", isManual: false });
+    const res = store.saveNoteSync({ ticketId: "SR#12", noteContent: "<p>typed just before closing</p>" });
+    expect(res).toMatchObject({ success: true, ticketId: "SR_12" });
+    const data = await store.loadAutosave();
+    expect(data["100"].content).toBe("<p>older</p>");
+    expect(data.SR_12.content).toBe("<p>typed just before closing</p>");
+    expect(fs.readdirSync(dir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  });
+
+  test("refuses an oversized note and leaves the file alone", async () => {
+    await store.saveNote({ ticketId: "100", noteContent: "<p>kept</p>", isManual: false });
+    const res = store.saveNoteSync({ ticketId: "100", noteContent: "x".repeat(10 * 1024 * 1024 + 1) });
+    expect(res).toMatchObject({ success: false, code: "too-large" });
+    expect((await store.loadAutosave())["100"].content).toBe("<p>kept</p>");
+  });
+
+  test("keeps a corrupt autosave file aside and still saves", () => {
+    fs.writeFileSync(path.join(dir, "autosave.json"), "{ not json", "utf-8");
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    expect(store.saveNoteSync({ ticketId: "7", noteContent: "<p>x</p>" }).success).toBe(true);
+    spy.mockRestore();
+    expect(fs.readdirSync(dir).some((f) => f.includes(".corrupt-"))).toBe(true);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, "autosave.json"), "utf-8"))["7"].content).toBe("<p>x</p>");
+  });
+});

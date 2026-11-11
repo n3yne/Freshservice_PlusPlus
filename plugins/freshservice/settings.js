@@ -69,8 +69,18 @@
       elEnabled.checked = s.fsApiEnabled !== false;
       if (document.activeElement !== elDomain) elDomain.value = s.fsApiDomain || "";
       elKey.value = "";
-      elKey.placeholder = s.fsApiKeySet ? "••••••••  (saved)" : "Paste your API key here";
+      // A saved key only works with the domain it was entered for (main.js keyHost).
+      const keyForOtherDomain = Boolean(
+        s.fsApiKeySet && s.fsApiKeyHost && s.fsApiDomain && s.fsApiKeyHost !== s.fsApiDomain
+      );
+      elKey.placeholder = keyForOtherDomain
+        ? "Enter the API key again for this domain"
+        : (s.fsApiKeySet ? "••••••••  (saved)" : "Paste your API key here");
       elRemove.style.display = s.fsApiKeySet ? "" : "none";
+      if (keyForOtherDomain) {
+        elStatus.textContent = "The saved API key was entered for " + s.fsApiKeyHost +
+          ". Enter it again to use it with " + s.fsApiDomain + ".";
+      }
     }
 
     applyForm(settingsAPI.getSettings());
