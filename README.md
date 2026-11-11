@@ -177,6 +177,16 @@ Inside you'll find:
 - `main-window-state.json` – The main window's last size and position
 - `site-permissions.json` – Saved Allow / Block answers to site permission prompts
 - A folder per ticket ID containing timestamped `.html` snapshot files
+- `legacy-import.json` – Which ConnectWise Manage++ notes have been imported (see below)
+
+### Notes from ConnectWise Manage++
+
+If ConnectWise Manage++ was used on the same computer, MSP++ copies its note backups across at startup (from `%APPDATA%\connectwise-manage-pp\note-backups\` or `%APPDATA%\ConnectWise Manage++\note-backups\`, and the same names under `~/Library/Application Support/` on macOS). Ticket numbers are filed as `CW-<number>`, the way the ConnectWise Manage plugin names them, and a notification says how many notes came across.
+
+- The ConnectWise Manage++ folder is only read, never changed.
+- Nothing already in MSP++ is replaced. If a ticket already has a draft in MSP++, the old draft is added to that ticket's history as a snapshot instead.
+- Notes you delete in MSP++ don't come back. Notes still being written in ConnectWise Manage++ are picked up on the next start.
+- Imported notes count as new for **Backup Retention**, so the startup cleanup doesn't delete them straight away.
 
 Click **📁 Open Folder** in the app to jump there directly.
 
