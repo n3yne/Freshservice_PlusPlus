@@ -6,19 +6,30 @@ on:
       - "v*" # Triggers on version tags like v0.0.1, v1.0.0, etc.
   workflow_dispatch: # Allows manual trigger from GitHub Actions tab
 
+# Actions are pinned to a commit so a moved tag cannot change what builds the
+# release. To update one, replace the commit and the version in its comment.
+
+# Nothing gets more than read access unless a job asks for it.
+permissions:
+  contents: read
+
 jobs:
   build-windows:
     runs-on: windows-latest
 
+    # Building needs to read the code and nothing else. Only the release job
+    # below may write to the repository.
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: "npm"
@@ -49,7 +60,7 @@ jobs:
           test -f "dist/$INSTALLER" || { echo "dist/$INSTALLER is missing"; exit 1; }
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-build
           path: |
@@ -61,15 +72,19 @@ jobs:
   build-mac:
     runs-on: macos-latest
 
+    # Building needs to read the code and nothing else. Only the release job
+    # below may write to the repository.
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: "npm"
@@ -89,7 +104,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
       - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mac-build
           path: dist/*.dmg
@@ -105,18 +120,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
       - name: Download Windows artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: windows-build
           path: artifacts/
 
       - name: Download macOS artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: mac-build
           path: artifacts/

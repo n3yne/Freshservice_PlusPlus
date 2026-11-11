@@ -588,9 +588,23 @@
     }
   }
 
+  // The settings that decide what the bar shows and how it reads its numbers:
+  // the plugin's own (they all start with "metrics") and the Freshservice API
+  // connection used for counts.
+  function metricsSettingsSignature(settings) {
+    const relevant = {};
+    Object.keys(settings || {}).sort().forEach(function (key) {
+      if (key.indexOf("metrics") === 0 || key.indexOf("fsApi") === 0) relevant[key] = settings[key];
+    });
+    return JSON.stringify(relevant);
+  }
+
   window.pluginAPI.events.on("settings:changed", function (settings) {
+    const changed = metricsSettingsSignature(settings) !== metricsSettingsSignature(appSettings);
     appSettings = settings;
-    applyMetrics(settings);
+    // Every settings save arrives here (theme, side panel, another plugin). Only
+    // reload the dashboards when something the bar uses actually changed.
+    if (changed) applyMetrics(settings);
   });
 
   btnMetricsRefresh.addEventListener("click", function () {

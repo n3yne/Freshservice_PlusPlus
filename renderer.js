@@ -745,6 +745,16 @@ document.addEventListener("DOMContentLoaded", function () {
     showFindBar();
   });
 
+  // View > Reload Tab (Ctrl+R) and Hard Reload Tab (Ctrl+Shift+R)
+  window.backupAPI.onReloadActiveTab(function (options) {
+    const wv = getActiveWebview();
+    if (!wv) return;
+    try {
+      if (options && options.ignoreCache) wv.reloadIgnoringCache();
+      else wv.reload();
+    } catch { /* tab not ready */ }
+  });
+
   window.backupAPI.onRefreshAllTabs(function () {
     tabs.forEach(function (t) {
       try { t.webview.reload(); } catch { /* ignore */ }
@@ -967,6 +977,27 @@ document.addEventListener("DOMContentLoaded", function () {
       closeDownloadsPanel();
       closeNotificationsPanel();
       hideTabContextMenu();
+    });
+
+    // A page whose process died leaves a blank tab with no explanation. Say what
+    // happened and offer to reload it.
+    on(webview, "render-process-gone", function (e) {
+      const reason = (e && e.details && e.details.reason) || "unknown";
+      if (reason === "clean-exit") return;
+      console.error("[Tabs] Page process gone:", reason);
+      titleSpan.textContent = "Page stopped";
+      addUniqueNotification({
+        id: notifNextId++,
+        type: "tab-crashed",
+        title: "A tab stopped working",
+        desc: "The page in a tab closed unexpectedly (" + reason + "). Reload the tab to carry on.",
+        action: {
+          label: "Reload tab",
+          kind: "callback",
+          onClick: function () { try { webview.reload(); } catch { /* tab closed */ } },
+        },
+      });
+      openNotificationsPanel();
     });
 
     // Create tab button

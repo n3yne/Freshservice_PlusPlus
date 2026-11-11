@@ -460,6 +460,11 @@ function createWindow() {
             });
             if (!filePath) return;
             pendingSavePaths.set(params.srcURL, filePath);
+            // If the download never starts, forget the path. Left behind, it would
+            // send a later, unrelated download of the same address to this file.
+            setTimeout(() => {
+              if (pendingSavePaths.get(params.srcURL) === filePath) pendingSavePaths.delete(params.srcURL);
+            }, 30000);
             webviewContents.downloadURL(params.srcURL);
           },
         });
@@ -565,8 +570,26 @@ function setApplicationMenu() {
     {
       label: "View",
       submenu: [
-        { role: "reload" },
-        { role: "forceReload" },
+        // Reload acts on the page in the active tab, as in a browser. Reloading the
+        // app window itself would close every tab's page and the note being typed.
+        {
+          label: "Reload Tab",
+          accelerator: "CmdOrCtrl+R",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("reload-active-tab", { ignoreCache: false });
+            }
+          },
+        },
+        {
+          label: "Hard Reload Tab",
+          accelerator: "CmdOrCtrl+Shift+R",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("reload-active-tab", { ignoreCache: true });
+            }
+          },
+        },
         {
           label: "Refresh All Tabs",
           accelerator: "CmdOrCtrl+Alt+R",
@@ -586,6 +609,13 @@ function setApplicationMenu() {
           },
         },
         { role: "toggleDevTools" },
+        // For plugin development: reloads the app's own window. No shortcut on purpose.
+        {
+          label: "Reload App Window",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload();
+          },
+        },
         { type: "separator" },
         { role: "resetZoom" },
         { role: "zoomIn" },
