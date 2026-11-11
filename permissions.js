@@ -9,8 +9,8 @@
 // naming the site, and everything else is refused. The app's own windows (the
 // side panel and Settings) are trusted and never asked.
 //
-// Answers are remembered per site until MSP++ is closed, so a site asks once per
-// run rather than on every page load, and nothing is written to disk.
+// Answers are remembered per site for good (the caller passes a store that keeps
+// them on disk), so a site asks once. Settings has a button to forget them.
 
 // Granted without asking: nothing here exposes data or devices.
 const ALWAYS_ALLOWED = new Set([
@@ -94,11 +94,44 @@ function describeRequest(permission, details) {
   return null;
 }
 
+// Most answers one install is expected to hold; a file with more is cut down.
+const MAX_REMEMBERED = 2000;
+
+// Turns what was read from disk into the answers map, dropping anything that is
+// not "<web origin> <key>": true/false. The file is plain JSON a person may edit.
+function cleanStoredAnswers(raw) {
+  const out = new Map();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const name of Object.keys(raw)) {
+    if (out.size >= MAX_REMEMBERED) break;
+    if (typeof raw[name] !== "boolean") continue;
+    const space = name.indexOf(" ");
+    if (space <= 0 || space === name.length - 1) continue;
+    const site = siteOf(name.slice(0, space));
+    if (!site || site.origin !== name.slice(0, space)) continue;
+    out.set(name, raw[name]);
+  }
+  return out;
+}
+
 // Builds the two handlers for a session. dialog is Electron's dialog module and
-// getParentWindow returns the window the question belongs to (or null).
-function createPermissionPolicy(dialog, getParentWindow) {
-  // "<origin> <key>" -> true (allowed) or false (blocked), until the app closes.
-  const remembered = new Map();
+// getParentWindow returns the window the question belongs to (or null). store is
+// optional: { load() -> object, save(object) } keeps the answers between runs;
+// without it they last until the app closes.
+function createPermissionPolicy(dialog, getParentWindow, store) {
+  // "<origin> <key>" -> true (allowed) or false (blocked).
+  let remembered = new Map();
+  if (store && typeof store.load === "function") {
+    try { remembered = cleanStoredAnswers(store.load()); } catch (err) {
+      console.error("[Permissions] Could not read saved answers:", err);
+    }
+  }
+  function persist() {
+    if (!store || typeof store.save !== "function") return;
+    try { store.save(Object.fromEntries(remembered)); } catch (err) {
+      console.error("[Permissions] Could not save answers:", err);
+    }
+  }
   // Questions on screen now, so a page asking twice gets one dialog.
   const pending = new Map();
 
@@ -108,7 +141,9 @@ function createPermissionPolicy(dialog, getParentWindow) {
       title: "Permission request",
       message: site.host + " wants to " + described.label + ".",
       detail: (described.detail ? described.detail + "\n\n" : "") +
-        "Your answer applies to this site until you close MSP++.",
+        (store
+          ? "Your answer is remembered for this site. You can reset it under Settings → General."
+          : "Your answer applies to this site until you close MSP++."),
       buttons: ["Allow", "Block"],
       defaultId: 1,
       cancelId: 1,
@@ -148,6 +183,7 @@ function createPermissionPolicy(dialog, getParentWindow) {
         .then((allowed) => {
           pending.delete(pendingKey);
           for (const key of described.keys) remembered.set(site.origin + " " + key, allowed);
+          persist();
           return allowed;
         });
       pending.set(pendingKey, question);
@@ -186,7 +222,20 @@ function createPermissionPolicy(dialog, getParentWindow) {
     return remembered.get(site.origin + " " + permission) === true;
   }
 
-  return { decide, onRequest, onCheck };
+  // How many answers are saved, and for how many sites.
+  function summary() {
+    const sites = new Set();
+    for (const name of remembered.keys()) sites.add(name.slice(0, name.indexOf(" ")));
+    return { answers: remembered.size, sites: sites.size };
+  }
+
+  // Forgets every answer, so each site asks again.
+  function clear() {
+    remembered.clear();
+    persist();
+  }
+
+  return { decide, onRequest, onCheck, summary, clear };
 }
 
 // Puts the policy on one session.
@@ -200,6 +249,7 @@ module.exports = {
   isAppRequest,
   siteOf,
   describeRequest,
+  cleanStoredAnswers,
   createPermissionPolicy,
   installPermissionHandlers,
 };

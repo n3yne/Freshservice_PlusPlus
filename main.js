@@ -27,6 +27,7 @@ try {
 
 let mainWindow;
 let updater = null;
+let permissionPolicy = null;
 // App data folder. Still named "note-backups" from when note backup was built in:
 // it holds settings.json, open tabs and window state, and the Note Backup plugin
 // keeps its snapshots here too, so existing installs keep working.
@@ -968,6 +969,14 @@ function registerIpcHandlers() {
   // App updates (updater.js). check-for-updates runs a check now and returns the
   // status; the same status is also pushed to the windows as "app-update-status".
   electron.ipcMain.handle("check-for-updates", () => (updater ? updater.check() : null));
+
+  // Settings > General > Site Permissions: how many answers are saved, and reset.
+  electron.ipcMain.handle("get-site-permissions", () =>
+    (permissionPolicy ? permissionPolicy.summary() : { answers: 0, sites: 0 }));
+  electron.ipcMain.handle("clear-site-permissions", () => {
+    if (permissionPolicy) permissionPolicy.clear();
+    return { answers: 0, sites: 0 };
+  });
   electron.ipcMain.handle("get-update-status", () => (updater ? updater.getStatus() : null));
   electron.ipcMain.handle("download-app-update", () => (updater ? updater.download() : null));
   electron.ipcMain.handle("install-app-update", () => (updater ? updater.install() : null));
@@ -1120,9 +1129,27 @@ electron.app.whenReady().then(async () => {
   // Pages in tabs must ask before using the microphone, camera, location,
   // notifications or the clipboard, or starting another program. Sessions made
   // later (a plugin's sign-in window) get the same rules.
-  const permissionPolicy = createPermissionPolicy(
+  // Answers are kept in site-permissions.json so each site asks only once.
+  const permissionsFile = path.join(DATA_DIR, "site-permissions.json");
+  permissionPolicy = createPermissionPolicy(
     electron.dialog,
     () => electron.BrowserWindow.getFocusedWindow() || mainWindow || null,
+    {
+      load: () => {
+        try {
+          return JSON.parse(fs.readFileSync(permissionsFile, "utf-8"));
+        } catch (err) {
+          if (err.code !== "ENOENT") console.error("[Permissions] Unreadable site-permissions.json:", err);
+          return {};
+        }
+      },
+      save: (answers) => {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+        const tmp = permissionsFile + ".tmp";
+        fs.writeFileSync(tmp, JSON.stringify(answers, null, 2), "utf-8");
+        fs.renameSync(tmp, permissionsFile);
+      },
+    },
   );
   installPermissionHandlers(electron.session.defaultSession, permissionPolicy);
   electron.app.on("session-created", (session) => {
