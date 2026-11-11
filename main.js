@@ -206,8 +206,36 @@ function createWindow() {
 
   setApplicationMenu();
 
-  // ===================== Renderer Context Menu (notes editor, inputs) =====================
-  mainWindow.webContents.on("context-menu", (event, params) => {
+  installAppContextMenu(mainWindow);
+
+  // Open external links in the default browser (only http/https)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        electron.shell.openExternal(url);
+      }
+    } catch {
+      // Ignore invalid URLs
+    }
+    return { action: "deny" };
+  });
+
+  mainWindow.webContents.on("did-attach-webview", (event, webviewContents) => {
+    setupGuestContents(mainWindow, webviewContents);
+  });
+
+  // Windows opened with "Open in New Window" belong to this one and close with it.
+  mainWindow.on("closed", () => {
+    for (const win of childWindows) {
+      if (!win.isDestroyed()) win.close();
+    }
+  });
+}
+
+// Right-click menu for the app's own pages (the notes editor, inputs, the address bar).
+function installAppContextMenu(win) {
+  win.webContents.on("context-menu", (event, params) => {
     const menuItems = [];
 
     // Spellcheck suggestions (if any)
@@ -216,7 +244,7 @@ function createWindow() {
         menuItems.push(
           new electron.MenuItem({
             label: suggestion,
-            click: () => mainWindow.webContents.replaceMisspelling(suggestion),
+            click: () => win.webContents.replaceMisspelling(suggestion),
           }),
         );
       }
@@ -229,7 +257,7 @@ function createWindow() {
         new electron.MenuItem({
           label: `Add "${params.misspelledWord}" to Dictionary`,
           click: () =>
-            mainWindow.webContents.session.addWordToSpellCheckerDictionary(
+            win.webContents.session.addWordToSpellCheckerDictionary(
               params.misspelledWord,
             ),
         }),
@@ -254,295 +282,400 @@ function createWindow() {
 
     if (menuItems.length > 0) {
       const contextMenu = electron.Menu.buildFromTemplate(menuItems);
-      contextMenu.popup();
+      contextMenu.popup({ window: win });
     }
   });
+}
 
-  // Open external links in the default browser (only http/https)
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+// Wires up a tab's page (a <webview> guest) in the main window or a child window:
+// popups, the right-click menu, keyboard shortcuts, zoom and leave-page prompts.
+function setupGuestContents(hostWin, webviewContents) {
+  webviewContents.on("before-input-event", (e, input) => {
+    if (hostWin.isDestroyed()) return;
+    if (input.type !== "keyDown") return;
+    // Ctrl+, → Settings
+    if (input.control && !input.shift && !input.alt && input.key === ",") {
+      createSettingsWindow();
+      return;
+    }
+    // Child windows have no menu bar, so their shortcuts are handled here.
+    if (hostWin !== mainWindow && handleChildWindowKey(hostWin, webviewContents, input)) {
+      e.preventDefault();
+      return;
+    }
+    // Ctrl+= / Ctrl+- / Ctrl+0 → zoom this tab's page. preventDefault also
+    // stops the View menu accelerator, so one press is one step.
+    const zoomAction = zoomActionForKey(input);
+    if (zoomAction) {
+      e.preventDefault();
+      hostWin.webContents.send("page-zoom", { webContentsId: webviewContents.id, action: zoomAction });
+      return;
+    }
+    // Tab shortcuts (Ctrl+T, Ctrl+W, Ctrl+Shift+T, Ctrl+Tab, Ctrl+1 to 9) and
+    // Ctrl+F. Key presses in a page never reach the app window's document, and
+    // a page that handles Ctrl+F itself would stop the Edit menu's Find.
+    // Child windows have no tabs; their keys are handled above.
+    if (hostWin !== mainWindow) return;
+    const shortcut = tabShortcutForKey(input);
+    if (shortcut) {
+      e.preventDefault();
+      hostWin.webContents.send("tab-shortcut", shortcut);
+    }
+  });
+  // Ctrl+mouse wheel over a page. Electron reports it here but does not zoom
+  // on its own; the renderer applies the step so all zoom goes one way.
+  // One wheel notch can report more than once, and touchpads report a stream,
+  // so take at most one step per WHEEL_ZOOM_INTERVAL_MS.
+  let lastWheelZoom = 0;
+  webviewContents.on("zoom-changed", (e, direction) => {
+    if (hostWin.isDestroyed()) return;
+    if (direction !== "in" && direction !== "out") return;
+    const now = Date.now();
+    if (now - lastWheelZoom < WHEEL_ZOOM_INTERVAL_MS) return;
+    lastWheelZoom = now;
+    hostWin.webContents.send("page-zoom", { webContentsId: webviewContents.id, action: direction });
+  });
+
+  webviewContents.setWindowOpenHandler(({ url }) => {
+    // Identity-provider popups and auth-path popups on a site's hosts open as real windows so the
+    // window.opener / postMessage login handshake works. Everything else goes
+    // to a new tab. The console log below shows the exact URL and disposition
+    // for each popup — useful if the SSO flow breaks and you need to widen the
+    // auth-path pattern.
     try {
       const parsed = new URL(url);
-      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-        electron.shell.openExternal(url);
+      const host = parsed.hostname.toLowerCase();
+      console.log("[Popup] window.open() from webview:", url);
+
+      const isSsoProvider = SSO_PROVIDER_PATTERNS.some((re) => re.test(host));
+      const isSiteAuthPopup =
+        Boolean(pluginManager.findSiteForUrl(url)) &&
+        AUTH_PATH_PATTERN.test(parsed.pathname);
+
+      if (isSsoProvider || isSiteAuthPopup) {
+        console.log("[Popup] Allowing auth/popup window:", url);
+        const parent = hostWin.isDestroyed() ? null : hostWin;
+        return {
+          action: "allow",
+          overrideBrowserWindowOptions: {
+            width: 600,
+            height: 700,
+            ...(parent ? { parent, modal: false } : {}),
+            title: "Sign In",
+            webPreferences: {
+              contextIsolation: true,
+              nodeIntegration: false,
+            },
+          },
+        };
       }
     } catch {
-      // Ignore invalid URLs
+      // Invalid URL — fall through to tab redirect
+    }
+
+    // Image URLs: download instead of opening in a new tab
+    try {
+      const imgPath = new URL(url).pathname;
+      if (/\.(jpe?g|png|gif|webp|bmp|svg|ico|tiff?)$/i.test(imgPath)) {
+        webviewContents.downloadURL(url);
+        return { action: "deny" };
+      }
+    } catch {
+      // Ignore malformed URLs
+    }
+
+    // Normal links: open in a new tab instead (web pages only — no file: or other schemes)
+    if (isWebUrl(url)) {
+      openInMainTab(url);
+    } else {
+      console.warn("[Popup] Blocked non-web URL:", url);
     }
     return { action: "deny" };
   });
 
-  // Intercept keyboard shortcuts from webview guest pages that Electron's menu
-  // accelerator may not capture reliably on Windows (e.g. Ctrl+,).
-  mainWindow.webContents.on("did-attach-webview", (event, webviewContents) => {
-    webviewContents.on("before-input-event", (e, input) => {
-      if (!mainWindow || mainWindow.isDestroyed()) return;
-      if (input.type !== "keyDown") return;
-      // Ctrl+, → Settings
-      if (input.control && !input.shift && !input.alt && input.key === ",") {
-        createSettingsWindow();
-        return;
-      }
-      // Ctrl+= / Ctrl+- / Ctrl+0 → zoom this tab's page. preventDefault also
-      // stops the View menu accelerator, so one press is one step.
-      const zoomAction = zoomActionForKey(input);
-      if (zoomAction) {
-        e.preventDefault();
-        mainWindow.webContents.send("page-zoom", { webContentsId: webviewContents.id, action: zoomAction });
-        return;
-      }
-      // Tab shortcuts (Ctrl+T, Ctrl+W, Ctrl+Shift+T, Ctrl+Tab, Ctrl+1 to 9) and
-      // Ctrl+F. Key presses in a page never reach the app window's document, and
-      // a page that handles Ctrl+F itself would stop the Edit menu's Find.
-      const shortcut = tabShortcutForKey(input);
-      if (shortcut) {
-        e.preventDefault();
-        mainWindow.webContents.send("tab-shortcut", shortcut);
-      }
-    });
-    // Ctrl+mouse wheel over a page. Electron reports it here but does not zoom
-    // on its own; the renderer applies the step so all zoom goes one way.
-    // One wheel notch can report more than once, and touchpads report a stream,
-    // so take at most one step per WHEEL_ZOOM_INTERVAL_MS.
-    let lastWheelZoom = 0;
-    webviewContents.on("zoom-changed", (e, direction) => {
-      if (!mainWindow || mainWindow.isDestroyed()) return;
-      if (direction !== "in" && direction !== "out") return;
-      const now = Date.now();
-      if (now - lastWheelZoom < WHEEL_ZOOM_INTERVAL_MS) return;
-      lastWheelZoom = now;
-      mainWindow.webContents.send("page-zoom", { webContentsId: webviewContents.id, action: direction });
-    });
-  });
-
-  // Intercept new-window requests from webview guest pages and redirect to tabs
-  mainWindow.webContents.on("did-attach-webview", (event, webviewContents) => {
-    webviewContents.setWindowOpenHandler(({ url }) => {
-      // Identity-provider popups and auth-path popups on a site's hosts open as real windows so the
-      // window.opener / postMessage login handshake works. Everything else goes
-      // to a new tab. The console log below shows the exact URL and disposition
-      // for each popup — useful if the SSO flow breaks and you need to widen the
-      // auth-path pattern.
-      try {
-        const parsed = new URL(url);
-        const host = parsed.hostname.toLowerCase();
-        console.log("[Popup] window.open() from webview:", url);
-
-        const isSsoProvider = SSO_PROVIDER_PATTERNS.some((re) => re.test(host));
-        const isSiteAuthPopup =
-          Boolean(pluginManager.findSiteForUrl(url)) &&
-          AUTH_PATH_PATTERN.test(parsed.pathname);
-
-        if (isSsoProvider || isSiteAuthPopup) {
-          console.log("[Popup] Allowing auth/popup window:", url);
-          const parent =
-            mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-          return {
-            action: "allow",
-            overrideBrowserWindowOptions: {
-              width: 600,
-              height: 700,
-              ...(parent ? { parent, modal: false } : {}),
-              title: "Sign In",
-              webPreferences: {
-                contextIsolation: true,
-                nodeIntegration: false,
-              },
-            },
-          };
-        }
-      } catch {
-        // Invalid URL — fall through to tab redirect
-      }
-
-      // Image URLs: download instead of opening in a new tab
-      try {
-        const imgPath = new URL(url).pathname;
-        if (/\.(jpe?g|png|gif|webp|bmp|svg|ico|tiff?)$/i.test(imgPath)) {
-          webviewContents.downloadURL(url);
-          return { action: "deny" };
-        }
-      } catch {
-        // Ignore malformed URLs
-      }
-
-      // Normal links: open in a new tab instead (web pages only — no file: or other schemes)
+  // A sign-in popup allowed above is a real window. Anything it opens in turn
+  // goes to a tab (web pages) or nowhere, never to another unmanaged window.
+  webviewContents.on("did-create-window", (popup) => {
+    popup.webContents.setWindowOpenHandler(({ url }) => {
       if (isWebUrl(url)) {
-        mainWindow.webContents.send("open-in-new-tab", url);
+        openInMainTab(url);
       } else {
-        console.warn("[Popup] Blocked non-web URL:", url);
+        console.warn("[Popup] Blocked window from a sign-in popup:", url);
       }
       return { action: "deny" };
     });
-
-    // A sign-in popup allowed above is a real window. Anything it opens in turn
-    // goes to a tab (web pages) or nowhere, never to another unmanaged window.
-    webviewContents.on("did-create-window", (popup) => {
-      popup.webContents.setWindowOpenHandler(({ url }) => {
-        if (isWebUrl(url) && mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("open-in-new-tab", url);
-        } else {
-          console.warn("[Popup] Blocked window from a sign-in popup:", url);
-        }
-        return { action: "deny" };
-      });
-    });
-
-    // Native OS right-click context menu inside webviews
-    webviewContents.on("context-menu", (event, params) => {
-      if (!mainWindow || mainWindow.isDestroyed()) return;
-
-      const menuItems = [];
-
-      // Spellcheck suggestions
-      if (params.misspelledWord && params.dictionarySuggestions.length > 0) {
-        for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
-          menuItems.push({
-            label: suggestion,
-            click: () => webviewContents.replaceMisspelling(suggestion),
-          });
-        }
-        menuItems.push({ type: "separator" });
-      }
-      if (params.misspelledWord) {
-        menuItems.push({
-          label: `Add "${params.misspelledWord}" to Dictionary`,
-          click: () =>
-            webviewContents.session.addWordToSpellCheckerDictionary(
-              params.misspelledWord,
-            ),
-        });
-        menuItems.push({ type: "separator" });
-      }
-
-      // Editing actions for input/textarea fields
-      if (params.isEditable) {
-        menuItems.push({ label: "Cut", click: () => webviewContents.cut() });
-        menuItems.push({ label: "Copy", click: () => webviewContents.copy() });
-        menuItems.push({
-          label: "Paste",
-          click: () => webviewContents.paste(),
-        });
-        menuItems.push({ type: "separator" });
-        menuItems.push({
-          label: "Select All",
-          click: () => webviewContents.selectAll(),
-        });
-      } else if (params.selectionText) {
-        menuItems.push({
-          label: "Copy",
-          click: () => webviewContents.copy(),
-        });
-      }
-
-      // Link actions
-      if (params.linkURL) {
-        if (menuItems.length > 0) menuItems.push({ type: "separator" });
-        if (isWebUrl(params.linkURL)) {
-          menuItems.push({
-            label: "Open Link in New Tab",
-            click: () =>
-              mainWindow.webContents.send("open-in-new-tab", params.linkURL),
-          });
-        }
-        menuItems.push({
-          label: "Open Link in Default Browser",
-          click: () => {
-            try {
-              const parsed = new URL(params.linkURL);
-              if (
-                parsed.protocol === "http:" ||
-                parsed.protocol === "https:"
-              ) {
-                electron.shell.openExternal(params.linkURL);
-              }
-            } catch {
-              // Ignore invalid URLs
-            }
-          },
-        });
-        menuItems.push({
-          label: "Copy Link Address",
-          click: () => electron.clipboard.writeText(params.linkURL),
-        });
-      }
-
-      // Image actions
-      if (params.mediaType === "image" && params.srcURL) {
-        if (menuItems.length > 0) menuItems.push({ type: "separator" });
-        menuItems.push({
-          label: "Copy Image",
-          click: () => webviewContents.copyImageAt(params.x, params.y),
-        });
-        menuItems.push({
-          label: "Save Image As…",
-          click: async () => {
-            let defaultFilename = "image";
-            try {
-              const urlPathname = new URL(params.srcURL).pathname;
-              const base = urlPathname.split("/").pop();
-              if (base) defaultFilename = base.split("?")[0];
-            } catch {
-              // Ignore malformed URLs
-            }
-            const { filePath } = await electron.dialog.showSaveDialog(mainWindow, {
-              defaultPath: defaultFilename,
-              filters: [
-                { name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"] },
-                { name: "All Files", extensions: ["*"] },
-              ],
-            });
-            if (!filePath) return;
-            pendingSavePaths.set(params.srcURL, filePath);
-            // If the download never starts, forget the path. Left behind, it would
-            // send a later, unrelated download of the same address to this file.
-            setTimeout(() => {
-              if (pendingSavePaths.get(params.srcURL) === filePath) pendingSavePaths.delete(params.srcURL);
-            }, 30000);
-            webviewContents.downloadURL(params.srcURL);
-          },
-        });
-        if (isWebUrl(params.srcURL)) {
-          menuItems.push({
-            label: "Open Image in New Tab",
-            click: () =>
-              mainWindow.webContents.send("open-in-new-tab", params.srcURL),
-          });
-        }
-        menuItems.push({
-          label: "Copy Image Address",
-          click: () => electron.clipboard.writeText(params.srcURL),
-        });
-      }
-
-      if (menuItems.length === 0) return;
-
-      electron.Menu.buildFromTemplate(menuItems).popup({ window: mainWindow });
-    });
-
-    // Handle guest page beforeunload dialogs (e.g. unsaved form changes)
-    webviewContents.on("will-prevent-unload", (e) => {
-      // Show a confirmation dialog instead of silently suppressing
-      const choice = electron.dialog.showMessageBoxSync(mainWindow, {
-        type: "question",
-        buttons: ["Leave Page", "Stay"],
-        title: "Leave this page?",
-        message: "Changes you made may not be saved.",
-        defaultId: 1,
-        cancelId: 1,
-      });
-      if (choice === 0) {
-        e.preventDefault(); // Allow the navigation/close to proceed
-      }
-      // If choice === 1 (Stay), do nothing — the unload is already prevented
-    });
-
-    webviewContents.on("destroyed", () => {
-      // When guest webContents is destroyed, notify renderer to close the tab
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("webview-close", webviewContents.id);
-      }
-    });
   });
+
+  // Native OS right-click context menu inside webviews
+  webviewContents.on("context-menu", (event, params) => {
+    if (hostWin.isDestroyed()) return;
+
+    const menuItems = [];
+
+    // Spellcheck suggestions
+    if (params.misspelledWord && params.dictionarySuggestions.length > 0) {
+      for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
+        menuItems.push({
+          label: suggestion,
+          click: () => webviewContents.replaceMisspelling(suggestion),
+        });
+      }
+      menuItems.push({ type: "separator" });
+    }
+    if (params.misspelledWord) {
+      menuItems.push({
+        label: `Add "${params.misspelledWord}" to Dictionary`,
+        click: () =>
+          webviewContents.session.addWordToSpellCheckerDictionary(
+            params.misspelledWord,
+          ),
+      });
+      menuItems.push({ type: "separator" });
+    }
+
+    // Editing actions for input/textarea fields
+    if (params.isEditable) {
+      menuItems.push({ label: "Cut", click: () => webviewContents.cut() });
+      menuItems.push({ label: "Copy", click: () => webviewContents.copy() });
+      menuItems.push({
+        label: "Paste",
+        click: () => webviewContents.paste(),
+      });
+      menuItems.push({ type: "separator" });
+      menuItems.push({
+        label: "Select All",
+        click: () => webviewContents.selectAll(),
+      });
+    } else if (params.selectionText) {
+      menuItems.push({
+        label: "Copy",
+        click: () => webviewContents.copy(),
+      });
+    }
+
+    // Link actions
+    if (params.linkURL) {
+      if (menuItems.length > 0) menuItems.push({ type: "separator" });
+      if (isWebUrl(params.linkURL)) {
+        menuItems.push({
+          label: "Open Link in New Tab",
+          click: () => openInMainTab(params.linkURL),
+        });
+        menuItems.push({
+          label: "Open Link in New Window",
+          click: () => createChildBrowserWindow(params.linkURL),
+        });
+      }
+      menuItems.push({
+        label: "Open Link in Default Browser",
+        click: () => {
+          try {
+            const parsed = new URL(params.linkURL);
+            if (
+              parsed.protocol === "http:" ||
+              parsed.protocol === "https:"
+            ) {
+              electron.shell.openExternal(params.linkURL);
+            }
+          } catch {
+            // Ignore invalid URLs
+          }
+        },
+      });
+      menuItems.push({
+        label: "Copy Link Address",
+        click: () => electron.clipboard.writeText(params.linkURL),
+      });
+    }
+
+    // Image actions
+    if (params.mediaType === "image" && params.srcURL) {
+      if (menuItems.length > 0) menuItems.push({ type: "separator" });
+      menuItems.push({
+        label: "Copy Image",
+        click: () => webviewContents.copyImageAt(params.x, params.y),
+      });
+      menuItems.push({
+        label: "Save Image As…",
+        click: async () => {
+          let defaultFilename = "image";
+          try {
+            const urlPathname = new URL(params.srcURL).pathname;
+            const base = urlPathname.split("/").pop();
+            if (base) defaultFilename = base.split("?")[0];
+          } catch {
+            // Ignore malformed URLs
+          }
+          const { filePath } = await electron.dialog.showSaveDialog(hostWin, {
+            defaultPath: defaultFilename,
+            filters: [
+              { name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"] },
+              { name: "All Files", extensions: ["*"] },
+            ],
+          });
+          if (!filePath) return;
+          pendingSavePaths.set(params.srcURL, filePath);
+          // If the download never starts, forget the path. Left behind, it would
+          // send a later, unrelated download of the same address to this file.
+          setTimeout(() => {
+            if (pendingSavePaths.get(params.srcURL) === filePath) pendingSavePaths.delete(params.srcURL);
+          }, 30000);
+          webviewContents.downloadURL(params.srcURL);
+        },
+      });
+      if (isWebUrl(params.srcURL)) {
+        menuItems.push({
+          label: "Open Image in New Tab",
+          click: () => openInMainTab(params.srcURL),
+        });
+      }
+      menuItems.push({
+        label: "Copy Image Address",
+        click: () => electron.clipboard.writeText(params.srcURL),
+      });
+    }
+
+    if (menuItems.length === 0) return;
+
+    electron.Menu.buildFromTemplate(menuItems).popup({ window: hostWin });
+  });
+
+  // Handle guest page beforeunload dialogs (e.g. unsaved form changes)
+  webviewContents.on("will-prevent-unload", (e) => {
+    // Show a confirmation dialog instead of silently suppressing
+    const choice = electron.dialog.showMessageBoxSync(hostWin, {
+      type: "question",
+      buttons: ["Leave Page", "Stay"],
+      title: "Leave this page?",
+      message: "Changes you made may not be saved.",
+      defaultId: 1,
+      cancelId: 1,
+    });
+    if (choice === 0) {
+      e.preventDefault(); // Allow the navigation/close to proceed
+    }
+    // If choice === 1 (Stay), do nothing — the unload is already prevented
+  });
+
+  webviewContents.on("destroyed", () => {
+    // When guest webContents is destroyed, notify renderer to close the tab
+    if (!hostWin.isDestroyed()) {
+      hostWin.webContents.send("webview-close", webviewContents.id);
+    }
+  });
+}
+
+// ===================== Child Windows ("Open in New Window") =====================
+
+// Plain browser windows opened from a tab's menu, a bookmark or a link. Each shows
+// one page with back, forward, reload and an address bar: no tabs, side panel or
+// plugins, so it can't be mistaken for the main window. They share the main
+// window's sign-ins (same session) and close when the main window closes.
+const childWindows = new Set();
+const CHILD_WINDOW_MAX = 20;
+
+// Opens url in a tab of the main window, or in a child window if the main window
+// has gone (a child window's popups and links normally open as tabs, like a browser).
+function openInMainTab(url) {
+  if (!isWebUrl(url)) return;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("open-in-new-tab", url);
+  } else {
+    createChildBrowserWindow(url);
+  }
+}
+
+function createChildBrowserWindow(url) {
+  if (!isWebUrl(url)) {
+    console.warn("[Window] Blocked new window for non-web URL:", url);
+    return null;
+  }
+  if (childWindows.size >= CHILD_WINDOW_MAX) {
+    console.warn("[Window] Too many windows open; not opening another.");
+    return null;
+  }
+
+  // Cascade from the main window (or the window the request came from).
+  const width = 1200;
+  const height = 800;
+  const anchor = electron.BrowserWindow.getFocusedWindow() || mainWindow;
+  let x, y;
+  if (anchor && !anchor.isDestroyed()) {
+    const b = anchor.getBounds();
+    x = b.x + 40;
+    y = b.y + 40;
+    if (!isWindowOnScreen({ x, y, width, height })) { x = undefined; y = undefined; }
+  }
+
+  const win = new electron.BrowserWindow({
+    width,
+    height,
+    ...(x !== undefined && y !== undefined ? { x, y } : {}),
+    minWidth: 400,
+    minHeight: 300,
+    title: "MSP++",
+    icon: path.join(__dirname, "icon.png"),
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webviewTag: true,
+      spellcheck: true,
+      webSecurity: true,
+      sandbox: true,
+    },
+  });
+  // A plain browser window: no File/Edit/View menu. Its shortcuts are handled in
+  // handleChildWindowKey (page focused) and child-window.js (toolbar focused).
+  win.setMenu(null);
+  lockDownWindow(win);
+  installAppContextMenu(win);
+  win.webContents.setWindowOpenHandler(({ url: target }) => {
+    if (isWebUrl(target)) electron.shell.openExternal(target);
+    return { action: "deny" };
+  });
+  win.webContents.on("did-attach-webview", (event, webviewContents) => {
+    setupGuestContents(win, webviewContents);
+  });
+  childWindows.add(win);
+  win.on("closed", () => { childWindows.delete(win); });
+  win.loadFile("child-window.html", { query: { url } });
+  return win;
+}
+
+// Keyboard shortcuts for a child window while its page has focus. Returns true
+// when the key was handled.
+function handleChildWindowKey(win, contents, input) {
+  const ctrl = input.control || input.meta;
+  const key = input.key;
+  const lower = typeof key === "string" ? key.toLowerCase() : "";
+  try {
+    if ((key === "F5" && !ctrl) || (ctrl && !input.alt && lower === "r")) {
+      if (input.shift || (key === "F5" && ctrl)) contents.reloadIgnoringCache();
+      else contents.reload();
+      return true;
+    }
+    if (input.alt && !ctrl && key === "ArrowLeft") {
+      if (contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack();
+      return true;
+    }
+    if (input.alt && !ctrl && key === "ArrowRight") {
+      if (contents.navigationHistory.canGoForward()) contents.navigationHistory.goForward();
+      return true;
+    }
+    if (ctrl && !input.shift && !input.alt && lower === "l") {
+      win.webContents.send("focus-address-bar");
+      return true;
+    }
+    if (ctrl && !input.shift && !input.alt && lower === "w") {
+      win.close();
+      return true;
+    }
+  } catch (err) {
+    console.warn("[Window] Shortcut failed:", err && err.message);
+  }
+  return false;
 }
 
 // ===================== Application Menu =====================
@@ -811,6 +944,21 @@ function registerIpcHandlers() {
         console.warn("[Browser] Invalid URL:", url);
       }
     }
+    return { success: true };
+  });
+
+  // Open a web page in a plain child window ("Open in New Window")
+  electron.ipcMain.handle("open-in-new-window", (event, url) => {
+    if (typeof url !== "string") return { success: false };
+    return { success: Boolean(createChildBrowserWindow(url)) };
+  });
+
+  // A child window's "move to a tab" button: open its page in the main window
+  electron.ipcMain.handle("open-in-main-tab", (event, url) => {
+    if (!isWebUrl(url) || !mainWindow || mainWindow.isDestroyed()) return { success: false };
+    openInMainTab(url);
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
     return { success: true };
   });
 

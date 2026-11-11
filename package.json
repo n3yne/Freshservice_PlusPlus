@@ -50,6 +50,8 @@
       "permissions.js",
       "plugin-manager.js",
       "index.html",
+      "child-window.html",
+      "child-window.js",
       "settings.html",
       "styles.css",
       "icon.png",

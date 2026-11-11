@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: blob: https: http:; font-src 'self' file: data:; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />
+    <title>MSP++</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <!-- A plain browser window opened with "Open in New Window": one page, a
+       toolbar and nothing else (no tabs, side panel, metrics or plugins). -->
+  <body class="child-window">
+    <div id="webview-area">
+      <div id="address-bar">
+        <button type="button" id="btn-back" class="nav-btn" title="Go back (Alt+Left)" disabled>&#8249;</button>
+        <button type="button" id="btn-forward" class="nav-btn" title="Go forward (Alt+Right)" disabled>&#8250;</button>
+        <button type="button" id="btn-refresh" class="nav-btn" title="Refresh (F5)">&#8635;</button>
+        <input type="text" id="address-input" placeholder="Type a URL and press Enter" title="Address (Ctrl+L)" aria-label="Address" autocomplete="off" spellcheck="false" />
+        <button type="button" id="btn-zoom-reset" class="zoom-badge" title="Reset zoom (Ctrl+0)" hidden>100%</button>
+        <button type="button" id="btn-open-tab" class="nav-btn child-window-btn" title="Move this page to a tab in the main window">&#8689;</button>
+      </div>
+      <div id="webview-container"></div>
+    </div>
+
+    <script src="address-bar.js"></script>
+    <script src="page-zoom.js"></script>
+    <script src="child-window.js"></script>
+  </body>
+</html>
