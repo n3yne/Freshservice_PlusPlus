@@ -449,6 +449,30 @@ describe("ai-features providers", () => {
     expect(transformer({ aiProvider: "hatz", aiApiKeyProvider: "hatz" }).aiApiKeyProvider).toBe("openai");
   });
 
+  test("an Azure key is tied to its endpoint and never sent to another one", async () => {
+    settings = { aiProvider: "azure", aiApiKeyEncrypted: "azkey", aiApiKeyProvider: "azure", aiAzureDeployment: "dep", aiAzureEndpoint: "https://contoso.openai.azure.com" };
+    initPlugin();
+    // Changing the endpoint keeps the tie to the old one, whatever the caller sends.
+    const moved = transformer({ ...settings, aiAzureEndpoint: "https://evil.example.com", aiApiKeyEndpoint: "https://evil.example.com" });
+    expect(moved.aiApiKeyEndpoint).toBe("https://contoso.openai.azure.com");
+
+    settings = moved;
+    global.fetch = jest.fn();
+    const res = await handlers.suggest({ text: "x", settings: { aiProvider: "azure" } });
+    expect(res.error).toMatch(/entered for https:\/\/contoso\.openai\.azure\.com/);
+    expect(global.fetch).not.toHaveBeenCalled();
+
+    // Typing the key in again ties it to the endpoint set now.
+    const retyped = transformer({ ...settings, aiApiKey: "azkey" });
+    expect(retyped.aiApiKeyEndpoint).toBe("https://evil.example.com");
+  });
+
+  test("a key for another provider has no endpoint tie", () => {
+    settings = { aiProvider: "openai", aiApiKeyEncrypted: "sk", aiApiKeyProvider: "openai", aiAzureEndpoint: "https://contoso.openai.azure.com" };
+    initPlugin();
+    expect(transformer({ ...settings, aiApiKeyEndpoint: "https://x.example.com" }).aiApiKeyEndpoint).toBeUndefined();
+  });
+
   test("an empty reply is reported as an error", async () => {
     settings = { aiProvider: "openai", aiApiKey: "sk", aiApiKeyProvider: "openai" };
     initPlugin();

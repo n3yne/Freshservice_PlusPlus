@@ -16,6 +16,11 @@
 
   const PLUGIN_ID = "note-backup";
 
+  // Note HTML comes from the clipboard, the site's own editor, backup files and
+  // AI replies. It is cleaned down to plain formatting before it goes on screen
+  // (safe-html.js), so a frame or other active content can never ride along.
+  const sanitizeNoteHtml = window.SafeHtml.sanitize;
+
   // ==================== Main-process calls ====================
   const store = {
     saveNote: (data) => api.invoke(PLUGIN_ID, "save-note", data),
@@ -379,7 +384,7 @@
 
     // Leading <br> adds a blank line before the signature; no trailing <br> so
     // the cursor stays at the end of the signature content, not a blank line after.
-    const block = "<br>" + sigHtml;
+    const block = "<br>" + sanitizeNoteHtml(sigHtml);
 
     noteContent.focus();
     const sel = window.getSelection();
@@ -1091,7 +1096,7 @@
 
   function setEditorContent(html) {
     if (htmlEditMode) exitHtmlMode(false);
-    noteContent.innerHTML = html;
+    noteContent.innerHTML = sanitizeNoteHtml(html);
   }
 
   function isEditorEmpty() {
@@ -1131,7 +1136,7 @@
   function exitHtmlMode(saveContent) {
     if (!htmlEditMode) return;
     if (!noteHtmlSource) return;
-    if (saveContent !== false) noteContent.innerHTML = noteHtmlSource.value;
+    if (saveContent !== false) noteContent.innerHTML = sanitizeNoteHtml(noteHtmlSource.value);
     noteHtmlSource.style.display = "none";
     noteContent.style.display = "";
     btnHtmlToggle.classList.remove("active");
@@ -1190,6 +1195,14 @@
   document.addEventListener("selectionchange", function () {
     if (document.activeElement === noteContent) {
       updateToolbarState();
+    }
+  });
+
+  // Chromium pastes and drops rich text itself and can keep a frame from the
+  // source. Take those out as soon as they land; the caret is left alone.
+  noteContent.addEventListener("input", function (e) {
+    if (e.inputType && e.inputType.indexOf("insertFrom") === 0) {
+      window.SafeHtml.removeActiveContent(noteContent);
     }
   });
 

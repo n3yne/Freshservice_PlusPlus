@@ -154,7 +154,7 @@
       settingSortField.value = s.ticketSortField || "lastUpdated";
       settingSortDirection.value = s.ticketSortDirection || "desc";
       if (document.activeElement !== settingSignature) {
-        settingSignature.innerHTML = s.signatureHtml || "";
+        settingSignature.innerHTML = window.SafeHtml.sanitize(s.signatureHtml || "");
       }
       renderTemplateList();
     }
@@ -190,6 +190,11 @@
       if (!btn) return;
       settingSignature.focus();
       document.execCommand(btn.dataset.sigCommand, false, null);
+    });
+    settingSignature.addEventListener("input", function (e) {
+      if (e.inputType && e.inputType.indexOf("insertFrom") === 0) {
+        window.SafeHtml.removeActiveContent(settingSignature);
+      }
     });
     settingSignature.addEventListener("input", debounce(function () {
       save({ signatureHtml: settingSignature.innerHTML });

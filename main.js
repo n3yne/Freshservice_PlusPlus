@@ -8,6 +8,7 @@ const { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings, findLegacyUserD
 const pluginManager = require("./plugin-manager");
 const { installPasskeyAccountChooser } = require("./webauthn");
 const { createUpdater } = require("./updater");
+const { createPermissionPolicy, installPermissionHandlers } = require("./permissions");
 
 // Keep using the Freshservice++ data folder after the rename to MSP++. This must
 // run before anything touches userData (the single-instance lock, sessions).
@@ -338,6 +339,19 @@ function createWindow() {
         console.warn("[Popup] Blocked non-web URL:", url);
       }
       return { action: "deny" };
+    });
+
+    // A sign-in popup allowed above is a real window. Anything it opens in turn
+    // goes to a tab (web pages) or nowhere, never to another unmanaged window.
+    webviewContents.on("did-create-window", (popup) => {
+      popup.webContents.setWindowOpenHandler(({ url }) => {
+        if (isWebUrl(url) && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("open-in-new-tab", url);
+        } else {
+          console.warn("[Popup] Blocked window from a sign-in popup:", url);
+        }
+        return { action: "deny" };
+      });
     });
 
     // Native OS right-click context menu inside webviews
@@ -1034,6 +1048,18 @@ electron.app.whenReady().then(async () => {
     electron.dialog,
     () => electron.BrowserWindow.getFocusedWindow() || mainWindow || null,
   );
+
+  // Pages in tabs must ask before using the microphone, camera, location,
+  // notifications or the clipboard, or starting another program. Sessions made
+  // later (a plugin's sign-in window) get the same rules.
+  const permissionPolicy = createPermissionPolicy(
+    electron.dialog,
+    () => electron.BrowserWindow.getFocusedWindow() || mainWindow || null,
+  );
+  installPermissionHandlers(electron.session.defaultSession, permissionPolicy);
+  electron.app.on("session-created", (session) => {
+    installPermissionHandlers(session, permissionPolicy);
+  });
 
   updater = createUpdater({
     currentVersion: electron.app.getVersion(),

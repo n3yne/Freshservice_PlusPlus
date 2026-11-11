@@ -87,6 +87,8 @@
         setLine(elFs, false, "Freshservice API: enter your domain in Plugins → Freshservice.");
       } else if (!s.fsApiKeySet) {
         setLine(elFs, false, "Freshservice API: enter your API key in Plugins → Freshservice.");
+      } else if (s.fsApiKeyHost && s.fsApiKeyHost !== s.fsApiDomain) {
+        setLine(elFs, false, "Freshservice API: the saved API key was entered for " + s.fsApiKeyHost + ". Enter it again in Plugins → Freshservice.");
       } else {
         setLine(elFs, true, "Freshservice API: connected to " + s.fsApiDomain + ".");
       }
