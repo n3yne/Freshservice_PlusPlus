@@ -946,6 +946,24 @@ async function checkPluginDirectory({ scheduled = false } = {}) {
   return state;
 }
 
+// Plugins that were bundled up to 0.7 and live in the plugin directory now
+// (moved-plugins.json), which this copy doesn't have and hasn't offered yet.
+async function findMovedPlugins() {
+  const userData = electron.app.getPath("userData");
+  const readText = (file) => fsp.readFile(file, "utf-8").catch(() => "");
+  const parse = (text, fallback) => { try { return JSON.parse(text) || fallback; } catch { return fallback; } };
+  const movedFile = parse(await readText(path.join(__dirname, "moved-plugins.json")), {});
+  return PluginDirectory.findMovedPlugins({
+    userData,
+    moved: movedFile.plugins,
+    settings: await readSettingsFile(),
+    pluginsConfig: parse(await readText(path.join(DATA_DIR, "plugins-config.json")), {}),
+    installedIds: pluginManager.getPluginInfo().map((p) => p.id),
+    handled: PluginDirectory.readMovedHandled(userData),
+    tabsText: await readText(TABS_FILE),
+  });
+}
+
 const PLUGIN_CHECK_DELAY_MS = 30 * 1000;
 const PLUGIN_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
@@ -961,6 +979,9 @@ function startPluginDirectory() {
     fetchImpl: electron.net && typeof electron.net.fetch === "function"
       ? (url, opts) => electron.net.fetch(url, opts)
       : (url, opts) => fetch(url, opts),
+  });
+  findMovedPlugins().then((moved) => pluginDirectory.setMoved(moved)).catch((err) => {
+    console.error("[PluginDirectory] Couldn't check for moved plugins:", err);
   });
   const run = () => checkPluginDirectory({ scheduled: true }).catch((err) => {
     console.error("[PluginDirectory] Check failed:", err);
@@ -1305,6 +1326,12 @@ function registerIpcHandlers() {
     } catch (err) {
       return { success: false, error: err.message || String(err) };
     }
+  });
+  electron.ipcMain.handle("plugin-directory-dismiss-moved", async (event, ids) => {
+    if (!fromSettingsWindow(event) || !pluginDirectory) return { success: false };
+    pluginDirectory.dismissMoved(Array.isArray(ids) ? ids : undefined);
+    broadcastPluginDirectory(pluginDirectory.getState());
+    return { success: true };
   });
   electron.ipcMain.handle("plugin-cancel-pending", async (event, id) => {
     if (!fromSettingsWindow(event) || !pluginDirectory || typeof id !== "string") return { success: false };

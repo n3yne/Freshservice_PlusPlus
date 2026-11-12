@@ -1,0 +1,108 @@
+{
+  "//": "Plugins that were bundled up to 0.7 and moved to the plugin directory in 0.8. The first start after updating offers to reinstall them (plugin-directory.js findMovedPlugins). settings, credentials, dataFiles, hosts and alsoIf are the signs that a plugin was in use, which pre-tick it.",
+  "plugins": [
+    {
+      "id": "connectwise-manage",
+      "name": "ConnectWise Manage",
+      "settings": {},
+      "hosts": [
+        "myconnectwise.net"
+      ]
+    },
+    {
+      "id": "ai-features",
+      "name": "AI Features",
+      "settings": {
+        "aiEnabled": true,
+        "aiProvider": "hatz",
+        "aiModelName": "",
+        "aiAzureEndpoint": "",
+        "aiAzureDeployment": "",
+        "aiM365TenantId": "",
+        "aiM365ClientId": ""
+      },
+      "credentials": [
+        "aiApiKey"
+      ]
+    },
+    {
+      "id": "solutions-chat",
+      "name": "Solutions Chat",
+      "settings": {},
+      "alsoIf": "ai-features"
+    },
+    {
+      "id": "canned-responses",
+      "name": "Canned Responses",
+      "settings": {
+        "cannedResponses": [],
+        "cannedResponsesAgentName": ""
+      }
+    },
+    {
+      "id": "follow-ups",
+      "name": "Follow-up Reminders",
+      "settings": {
+        "followUpDesktop": true,
+        "followUpSound": true,
+        "followUpMorningHour": 9
+      },
+      "dataFiles": [
+        "reminders.json"
+      ]
+    },
+    {
+      "id": "time-tracker",
+      "name": "Time Tracker",
+      "settings": {
+        "timeTrackerRoundTo": 1,
+        "timeTrackerOneAtATime": true,
+        "timeTrackerAutoStart": false,
+        "timeTrackerBillable": true
+      },
+      "dataFiles": [
+        "timers.json"
+      ]
+    },
+    {
+      "id": "quick-actions",
+      "name": "Quick Actions",
+      "settings": {
+        "quickActionsReloadTab": true,
+        "quickActionsConfirmResolve": true
+      }
+    },
+    {
+      "id": "ticket-notifications",
+      "name": "Ticket Notifications",
+      "settings": {
+        "ticketNotifyAgentId": 0,
+        "ticketNotifyAgentName": "",
+        "ticketNotifyAgentEmail": "",
+        "ticketNotifyInterval": 2,
+        "ticketNotifyOtherAgents": true,
+        "ticketNotifyDesktop": true,
+        "ticketNotifySound": true
+      }
+    },
+    {
+      "id": "ticket-search",
+      "name": "Ticket Search",
+      "settings": {
+        "ticketSearchOpenIn": "new",
+        "ticketSearchDays": 30,
+        "ticketSearchHoverPreview": true
+      }
+    },
+    {
+      "id": "tree-tabs",
+      "name": "Tree Style Tabs",
+      "settings": {
+        "treeTabsNestOpened": true
+      },
+      "dataFiles": [
+        "tree.json"
+      ]
+    }
+  ]
+}
