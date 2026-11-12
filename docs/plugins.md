@@ -689,12 +689,14 @@ If a plugin with the same `id` is already installed, the import is blocked and a
 Drop the plugin directory into the app's data folder. You can open it from within the app via **📁 Open Folder** in the Notes tab, then navigate up one level:
 
 ```
-%APPDATA%\freshservice-pp\plugins\
+%APPDATA%\MSP++\plugins\
   my-plugin\
     manifest.json
     main.js
     renderer.js
 ```
+
+If you upgraded from Freshservice++, the data folder is still `%APPDATA%\Freshservice++\` (or `%APPDATA%\freshservice-pp\`), so use its `plugins\` folder instead. See [`data-files.md`](data-files.md) for every folder the app uses.
 
 Plugins in both locations are loaded on every launch. User-installed plugins survive app updates.
 

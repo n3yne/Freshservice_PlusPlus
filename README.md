@@ -215,6 +215,8 @@ Inside you'll find:
 - A folder per ticket ID containing timestamped `.html` snapshot files
 - `legacy-import.json` – Which ConnectWise Manage++ notes have been imported (see below)
 
+For the full list of files and folders MSP++ reads and writes, including plugin data, the browser profile and install and update folders, see [`docs/data-files.md`](docs/data-files.md).
+
 ### Notes from ConnectWise Manage++
 
 If ConnectWise Manage++ was used on the same computer, MSP++ copies its note backups across at startup (from `%APPDATA%\connectwise-manage-pp\note-backups\` or `%APPDATA%\ConnectWise Manage++\note-backups\`, and the same names under `~/Library/Application Support/` on macOS). Ticket numbers are filed as `CW-<number>`, the way the ConnectWise Manage plugin names them, and a notification says how many notes came across.
@@ -370,7 +372,7 @@ The **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, *
 
 Restart the app to activate newly installed plugins. Use **Settings → Plugins** to enable or disable any installed plugin.
 
-For plugin development documentation — including the full API reference and a step-by-step walkthrough — see [`docs/plugins.md`](docs/plugins.md). To add support for another ticketing site, see [`docs/sites.md`](docs/sites.md). A reference skeleton with annotated examples lives in [`docs/example-plugin/`](docs/example-plugin/).
+For plugin development documentation — including the full API reference and a step-by-step walkthrough — see [`docs/plugins.md`](docs/plugins.md). To add support for another ticketing site, see [`docs/sites.md`](docs/sites.md). A reference skeleton with annotated examples lives in [`docs/example-plugin/`](docs/example-plugin/). For a list of every file and folder MSP++ reads and writes, see [`docs/data-files.md`](docs/data-files.md).
 
 ---
 
