@@ -43,6 +43,7 @@
       "tab-shortcuts.js",
       "command-palette.js",
       "unread-tabs.js",
+      "site-colors.js",
       "safe-html.js",
       "settings_renderer.js",
       "launch.js",

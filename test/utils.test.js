@@ -215,4 +215,15 @@ describe("tabsToRestore", () => {
     expect(validateSettings(Object.assign({}, base, { unreadTabBadges: false }))).toBe(true);
     expect(validateSettings(Object.assign({}, base, { unreadTabBadges: "off" }))).toBe(false);
   });
+
+  test("siteTabColors defaults on; overrides map site ids to colours or \"\"", () => {
+    const base = Object.assign({}, DEFAULT_SETTINGS);
+    expect(DEFAULT_SETTINGS.siteTabColors).toBe(true);
+    expect(validateSettings(Object.assign({}, base, { siteTabColors: false }))).toBe(true);
+    expect(validateSettings(Object.assign({}, base, { siteTabColors: "no" }))).toBe(false);
+    expect(validateSettings(Object.assign({}, base, { siteTabColorOverrides: { freshservice: "#112233", "connectwise-manage": "" } }))).toBe(true);
+    expect(validateSettings(Object.assign({}, base, { siteTabColorOverrides: { freshservice: "red" } }))).toBe(false);
+    expect(validateSettings(Object.assign({}, base, { siteTabColorOverrides: { "Bad Id": "#112233" } }))).toBe(false);
+    expect(validateSettings(Object.assign({}, base, { siteTabColorOverrides: ["#112233"] }))).toBe(false);
+  });
 });

@@ -19,6 +19,7 @@
       "myfreshworks.com"
     ],
     "defaultUrl": "https://freshservice.com/login",
-    "chromeUserAgent": true
+    "chromeUserAgent": true,
+    "color": "#22b573"
   }
 }

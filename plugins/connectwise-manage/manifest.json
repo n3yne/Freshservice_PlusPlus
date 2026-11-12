@@ -9,6 +9,7 @@
     "name": "ConnectWise Manage",
     "shortName": "CW",
     "hosts": ["myconnectwise.net"],
-    "chromeUserAgent": true
+    "chromeUserAgent": true,
+    "color": "#f0812f"
   }
 }
