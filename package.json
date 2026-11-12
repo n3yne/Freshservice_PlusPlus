@@ -44,6 +44,7 @@
       "command-palette.js",
       "unread-tabs.js",
       "site-colors.js",
+      "ticket-preview.js",
       "safe-html.js",
       "settings_renderer.js",
       "launch.js",

@@ -9,6 +9,8 @@
 // Clicking an entry switches to a tab already showing that ticket, or opens it
 // in a new tab. Ctrl/Cmd-click or middle-click always opens a new tab.
 // Pinned entries stay at the top and are never dropped from the list.
+// Resting the mouse on an entry shows a preview card with its status,
+// requester and latest reply when the site can (pluginAPI.ui.attachTicketPreview).
 //
 // The same list is searchable from the command palette (Ctrl+K): the latest
 // few show as soon as it opens, and every entry once something is typed.
@@ -252,16 +254,20 @@
     const rec = active ? await recordInWebview(active.webview) : null;
     if (seq !== detectSeq) return;
     const changed = !sameRecord(current, rec);
+    let refreshed = false;
     current = rec;
     if (rec && loaded) {
       if (changed) {
         entries = recordVisit(entries, rec, Date.now(), maxEntries());
         scheduleSave();
       } else if (refreshEntry(entries, rec)) {
+        refreshed = true;
         scheduleSave();
       }
     }
-    if (changed || sidePanelTab.isActive()) render();
+    // Re-rendering replaces the rows (and closes a preview card), so only
+    // when something shown changed.
+    if (changed || refreshed) render();
   }
 
   let detectTimer = null;
@@ -441,6 +447,12 @@
       title: "Open " + entryName(e) + (e.title ? ": " + e.title : "") + "\nCtrl+click or middle-click for a new tab",
     });
     row.addEventListener("click", function (ev) { open(e, ev.ctrlKey || ev.metaKey || ev.shiftKey, false); });
+    if (typeof api.ui.attachTicketPreview === "function") {
+      api.ui.attachTicketPreview(row, {
+        enabled: function () { return settings.recentTicketsHoverPreview !== false; },
+        ref: { siteId: e.siteId, key: e.key, kind: e.kind, url: e.url, label: e.label, title: e.title },
+      });
+    }
     row.addEventListener("auxclick", function (ev) { if (ev.button === 1) { ev.preventDefault(); open(e, true, true); } });
     row.addEventListener("mousedown", function (ev) { if (ev.button === 1) ev.preventDefault(); });
     row.addEventListener("keydown", function (ev) {

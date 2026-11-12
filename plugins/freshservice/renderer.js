@@ -654,6 +654,29 @@
     return api.invoke(PLUGIN_ID, "update-ticket", { ticketId: id, host: hostOf(ctx.url), changes: changes });
   }
 
+  // Ticket preview (the hover card in Ticket Search and Recent Tickets): status,
+  // requester, agent and the latest reply, through the REST API. ref is
+  // { id?, key?, kind?, url? }; only tickets can be previewed, and only on the
+  // configured API domain (a ticket number means a different ticket elsewhere).
+  function previewId(ref) {
+    const r = ref || {};
+    if (r.kind && r.kind !== "ticket") return "";
+    const raw = String(r.id || r.key || "").replace(/^#/, "");
+    return /^\d{1,12}$/.test(raw) ? String(Number(raw)) : "";
+  }
+
+  async function previewTicket(ref) {
+    const id = previewId(ref);
+    if (!id) return { skipped: true, error: "Only tickets can be previewed." };
+    let host = "";
+    try { host = ref && ref.url ? new URL(ref.url).hostname : ""; } catch { /* no host — the API checks nothing */ }
+    const res = await api.invoke(PLUGIN_ID, "preview-ticket", { ticketId: id, host: host });
+    if (!res || res.error || !res.preview) {
+      return { error: (res && res.error) || "Freshservice didn't send the ticket.", skipped: !!(res && res.skipped) };
+    }
+    return { preview: Object.assign({}, res.preview, { label: "#" + id }) };
+  }
+
   // ==================== Register ====================
 
   api.sites.register({
@@ -694,6 +717,10 @@
       options: function (opts) { return api.invoke(PLUGIN_ID, "get-ticket-options", { force: !!(opts && opts.force) }); },
       get: actionGet,
       update: actionUpdate,
+    },
+    ticketPreview: {
+      supports: function (ref) { return !!previewId(ref); },
+      preview: previewTicket,
     },
     knowledge: {
       name: "Solutions",

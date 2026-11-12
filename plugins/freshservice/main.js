@@ -619,6 +619,36 @@ module.exports = {
       }
     });
 
+    // A short preview of a ticket for a hover card (Ticket Search, Recent
+    // Tickets): status, priority, requester, agent and the latest reply or note.
+    api.handle("preview-ticket", async function (data) {
+      const ticketId = String((data && data.ticketId) || "");
+      if (!/^\d{1,12}$/.test(ticketId)) return { skipped: true, error: "Only tickets can be previewed." };
+      const conn = connection();
+      if (conn.error) return conn;
+      const host = data && typeof data.host === "string" ? data.host.toLowerCase() : "";
+      if (host && host !== conn.domain) {
+        return { skipped: true, error: `This ticket is on ${host}, not the configured Freshservice domain (${conn.domain}).` };
+      }
+      try {
+        const [ticketJson, conversations] = await Promise.all([
+          apiGet(Object.assign({}, conn, { what: "Ticket" }), `/tickets/${ticketId}?include=requester`),
+          fetchConversations(conn, ticketId),
+        ]);
+        const ticket = (ticketJson && ticketJson.ticket) || {};
+        const last = latestConversation(conversations);
+        const [agent, author] = await Promise.all([
+          isId(ticket.responder_id) ? lookUpPerson(conn, ticket.responder_id).catch(() => null) : null,
+          last && !last.incoming && isId(last.user_id) ? lookUpPerson(conn, last.user_id).catch(() => null) : null,
+        ]);
+        return { preview: formatTicketPreview(ticket, last, { agent, author }) };
+      } catch (err) {
+        if (err && err.status === 404) return { error: "Ticket #" + ticketId + " wasn't found (it may have been deleted)." };
+        api.log("preview-ticket failed:", err.message);
+        return { error: err.message || String(err) };
+      }
+    });
+
     api.handle("test-connection", async function () {
       const conn = connection();
       if (conn.error) return { error: conn.error };
@@ -642,6 +672,8 @@ module.exports = {
   formatAgent,
   formatTicketSummary,
   formatConversation,
+  latestConversation,
+  formatTicketPreview,
   ticketFields,
   parseTicketSearch,
   subjectMatches,
@@ -903,6 +935,55 @@ function formatConversation(c) {
     fromEmail: typeof c.from_email === "string" ? c.from_email.substring(0, 254) : "",
     createdAt: typeof c.created_at === "string" ? c.created_at : "",
     snippet: text.substring(0, MAX_CONVERSATION_SNIPPET_CHARS),
+  };
+}
+
+// The newest reply or note of a ticket's conversations (raw API objects), or null.
+function latestConversation(conversations) {
+  let best = null;
+  for (const c of Array.isArray(conversations) ? conversations : []) {
+    if (!c || typeof c !== "object" || typeof c.created_at !== "string") continue;
+    if (!best || c.created_at.localeCompare(best.created_at) >= 0) best = c;
+  }
+  return best;
+}
+
+// A ticket from the API (with ?include=requester), its newest conversation and
+// the people looked up for it → the fields a hover preview shows.
+function formatTicketPreview(ticket, last, people) {
+  const t = ticket && typeof ticket === "object" ? ticket : {};
+  const p = people || {};
+  const clean = (v, max) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().substring(0, max || 200) : "");
+  const requester = formatPerson(t.requester);
+  const description = bodyText(t, "description_text", "description").replace(/\s+/g, " ").trim();
+  let lastReply = null;
+  if (last && typeof last === "object") {
+    const conv = formatConversation(last);
+    if (conv) {
+      let from;
+      if (conv.incoming) from = (requester && requester.name) || conv.fromEmail || "Requester";
+      else from = (p.author && p.author.name) || conv.fromEmail || "Agent";
+      lastReply = {
+        type: conv.incoming ? "requester" : (conv.private ? "note" : "reply"),
+        from: from.substring(0, 200),
+        at: conv.createdAt,
+        snippet: conv.snippet,
+      };
+    }
+  }
+  return {
+    id: isId(t.id) ? t.id : null,
+    subject: clean(t.subject, 300),
+    status: STATUS_LABELS[t.status] || "",
+    priority: PRIORITY_LABELS[t.priority] || "",
+    requester: requester ? requester.name : "",
+    requesterEmail: requester ? requester.email : "",
+    agent: p.agent && p.agent.name ? p.agent.name : "",
+    createdAt: typeof t.created_at === "string" ? t.created_at : "",
+    updatedAt: typeof t.updated_at === "string" ? t.updated_at : "",
+    dueBy: typeof t.due_by === "string" ? t.due_by : "",
+    description: description.substring(0, MAX_CONVERSATION_SNIPPET_CHARS),
+    lastReply,
   };
 }
 

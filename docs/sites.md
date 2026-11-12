@@ -72,6 +72,7 @@ window.pluginAPI.sites.register({
   reply: { … },                // optional: insert text into the reply box
   ticketSearch: { … },         // optional: searching tickets
   ticketActions: { … },        // optional: changing status, priority, group, agent
+  ticketPreview: { … },        // optional: hover preview of a ticket
   knowledge: { … },            // optional: knowledge base
   timeEntry: { … },            // optional: logging time on a record
 });
@@ -223,6 +224,30 @@ ticketActions: {
 - **`update(ctx, changes)`** saves `changes`, any of `{ status, priority, groupId, agentId }`. `groupId` / `agentId` `null` clears them, and `agentId: "me"` means the signed-in agent. Return the ticket as saved.
 
 Return `{ error, skipped: true }` when the site isn't set up (no API key, say), so the user is offered Settings. Freshservice reads the choices from `/ticket_form_fields`, `/agents`, `/groups` and `/agents/me`, and saves with `PUT /tickets/{id}`; changes, problems and releases aren't supported.
+
+### `ticketPreview` (hover preview of a ticket)
+
+Lets the app's preview card (shown when the mouse rests on a ticket in Ticket Search or Recent Tickets, through `pluginAPI.ui.attachTicketPreview`) show the ticket's status, requester and latest reply.
+
+```js
+ticketPreview: {
+  supports: (ref) => boolean,               // optional: which refs can be previewed (no card otherwise)
+  preview: async (ref) => ({ preview }),    // or { error, skipped? }
+}
+```
+
+`ref` is `{ siteId, id?, key?, kind?, url?, label?, title? }`: Ticket Search passes the result's `id`, Recent Tickets the `key` and `kind` from your `recordScript`. Check `url`'s host before reading by number, since the same number is a different ticket on another account. `preview` holds any of:
+
+| Field | What it is |
+|---|---|
+| `label`, `subject` | How to show the number, and the subject |
+| `status`, `priority` | Display text |
+| `requester`, `requesterEmail`, `agent` | Names (either may be empty) |
+| `updatedAt` | ISO time it was last updated |
+| `description` | A short snippet, shown when there are no replies |
+| `lastReply` | `{ type: "requester" \| "reply" \| "note", from, at, snippet }` or `null` |
+
+The card caches each answer for a minute and drops errors so the next hover tries again. Freshservice reads the ticket and its conversations through the REST API (tickets only, on the configured domain). ConnectWise Manage has no API in MSP++ yet, so it has no preview.
 
 ### `knowledge` (knowledge base)
 
