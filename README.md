@@ -298,6 +298,8 @@ npm run build-installer
 npm run build-mac
 ```
 
+Every pull request and push to `main` runs the Tests workflow on Windows: lint, the Jest tests, and a package check that builds the unpacked app and confirms every file in `build.files` made it in. A test also fails if code loads a file that isn't listed in `build.files`.
+
 Pushing a `v*` tag runs the GitHub Actions workflow, which lints, tests and builds both platforms and attaches them to a GitHub release. The release also gets `latest.yml` and the installer's `.blockmap`: installed copies read `latest.yml` to find and download updates, so a release without it won't reach them.
 
 Output is placed in the `dist/` folder.

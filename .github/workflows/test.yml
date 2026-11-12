@@ -1,0 +1,95 @@
+name: Tests
+
+# Runs lint and the Jest tests on Windows (where MSP++ is used) for every pull
+# request and every push to main, so problems show up before a release tag.
+# build.yml still runs the same checks again when a v* tag is pushed.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+# A newer push to the same branch or PR cancels the run still going.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Actions are pinned to a commit, the same ones build.yml uses. To update one,
+# replace the commit and the version in its comment.
+
+permissions:
+  contents: read
+
+jobs:
+  test-windows:
+    name: Lint and test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: "npm"
+
+      # The tests use test/electron-stub.js instead of Electron, so skip the
+      # Electron binary download to keep the run fast.
+      - name: Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test -- --ci
+
+  # Packs the app into a folder (no installer) to catch a broken "build" block
+  # in package.json or a missing file before a release tag finds it.
+  package-windows:
+    name: Package check (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pack unpacked app
+        run: npx electron-builder --win --dir --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Check packed app
+        shell: bash
+        run: |
+          test -f "dist/win-unpacked/MSP++.exe" || { echo "dist/win-unpacked/MSP++.exe is missing"; ls dist dist/win-unpacked || true; exit 1; }
+          test -f "dist/win-unpacked/resources/app.asar" || { echo "app.asar is missing"; exit 1; }
+          npx --yes @electron/asar@3.4.1 list dist/win-unpacked/resources/app.asar > asar-files.txt
+          # Every file the build block lists must end up in the package.
+          node -e '
+            const files = require("./package.json").build.files.filter(f => !f.includes("*"));
+            const packed = new Set(require("fs").readFileSync("asar-files.txt", "utf8").split(/\r?\n/).map(l => l.replace(/\\/g, "/")));
+            const missing = files.filter(f => !packed.has("/" + f));
+            if (missing.length) { console.error("Missing from app.asar: " + missing.join(", ")); process.exit(1); }
+            console.log("All " + files.length + " listed files are packed.");
+          '
