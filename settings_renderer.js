@@ -20,6 +20,30 @@ document.addEventListener("DOMContentLoaded", function () {
       p.classList.toggle("active", p.id === "panel-" + id);
     });
   }
+  // Opening Settings at a given part (from the command palette):
+  // { panel: "general" | "plugins" } or { plugin: id } for that plugin's tab,
+  // which exists once the plugin settings scripts have run (pluginPanelsReady).
+  let pluginPanelsReady = null;
+  function showSettingsTarget(target) {
+    if (!target) return;
+    if (target.panel === "general" || target.panel === "plugins") { switchPanel(target.panel); return; }
+    if (typeof target.plugin !== "string" || !pluginPanelsReady) return;
+    pluginPanelsReady.then(function () {
+      const ids = pluginPanelIds.get(target.plugin);
+      if (ids && ids.length) switchPanel("plugin-" + ids[0]);
+    });
+  }
+  window.backupAPI.onSettingsShow(showSettingsTarget);
+  // The part to show when the window opened, from its address (?panel= or ?plugin=).
+  const startTarget = (function () {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      if (q.get("panel")) return { panel: q.get("panel") };
+      if (q.get("plugin")) return { plugin: q.get("plugin") };
+    } catch { /* no query */ }
+    return null;
+  }());
+
   // Event delegation covers both core and plugin-added nav buttons.
   (function () {
     const nav = document.querySelector(".settings-nav");
@@ -611,7 +635,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Inject plugin settings scripts, then give every other plugin a default tab.
-    pluginInfoLoaded.then(function () {
+    pluginPanelsReady = pluginInfoLoaded.then(function () {
       plugins.forEach(function (p) {
         (p.credentials || []).forEach(function (name) {
           oneShotSettingKeys.push(name, name + "Remove");
@@ -641,6 +665,7 @@ document.addEventListener("DOMContentLoaded", function () {
       });
       sortPluginNav();
     });
+    showSettingsTarget(startTarget);
 
     // Inject stylesheets from installed plugins
     window.backupAPI.getPluginStylesheets().then(function (sheetPaths) {

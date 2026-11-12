@@ -996,6 +996,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         sites: sitesFacade,
 
+        commands: makeCommandsFacade(),
+
         getSettings: function () { return Object.assign({}, appSettings); },
       });
 
@@ -2251,6 +2253,226 @@ document.addEventListener("DOMContentLoaded", function () {
     if (e.target === confirmOverlay) closeConfirm(false);
   });
 
+  // ==================== Command Palette (Ctrl+K) ====================
+  // One search box for open tabs, ticket numbers, addresses, side panel tabs,
+  // app commands and settings. Plugins add commands and search providers with
+  // pluginAPI.commands (docs/plugins.md); the Bookmarks Bar adds bookmarks.
+  // Matching and the list itself are in command-palette.js.
+  const paletteCommands = new Map();   // id → command (plugin-registered)
+  const paletteProviders = new Map();  // id → { group, items(query) }
+  let palettePlugins = [];             // from getPluginInfo, for the Settings items
+  const PALETTE_PROVIDER_TIMEOUT_MS = 3000;
+
+  window.backupAPI.getPluginInfo().then(function (info) {
+    palettePlugins = (Array.isArray(info) ? info : []).filter(function (p) {
+      return p && typeof p.id === "string";
+    });
+  }).catch(function () { /* the Settings items just leave plugins out */ });
+
+  function openSettingsAt(target) {
+    window.backupAPI.openSettingsWindow(target);
+  }
+
+  // The app's own commands. Shortcuts are shown beside them.
+  function coreCommands() {
+    const hasTab = !!activeTabId;
+    const list = [
+      { id: "tab.new", title: "New Tab", shortcut: "Ctrl+T", keywords: ["open tab"], run: function () { runTabShortcut({ action: "new-tab" }); } },
+      hasTab && { id: "tab.close", title: "Close Tab", shortcut: "Ctrl+W", run: function () { runTabShortcut({ action: "close-tab" }); } },
+      { id: "tab.reopen", title: "Reopen Closed Tab", shortcut: "Ctrl+Shift+T", keywords: ["undo close", "restore tab"], run: reopenClosedTab },
+      hasTab && { id: "tab.reload", title: "Reload Tab", shortcut: "Ctrl+R", keywords: ["refresh"], run: function () { const wv = getActiveWebview(); if (wv) try { wv.reload(); } catch { /* ignore */ } } },
+      hasTab && { id: "tab.hard-reload", title: "Hard Reload Tab", shortcut: "Ctrl+Shift+R", keywords: ["refresh", "clear cache"], run: function () { const wv = getActiveWebview(); if (wv) try { wv.reloadIgnoringCache(); } catch { /* ignore */ } } },
+      { id: "tab.refresh-all", title: "Refresh All Tabs", shortcut: "Ctrl+Alt+R", keywords: ["reload all"], run: function () { tabs.forEach(function (t) { try { t.webview.reload(); } catch { /* ignore */ } }); } },
+      hasTab && { id: "tab.back", title: "Go Back", shortcut: "Alt+Left", run: function () { const wv = getActiveWebview(); if (wv) try { wv.goBack(); } catch { /* ignore */ } } },
+      hasTab && { id: "tab.forward", title: "Go Forward", shortcut: "Alt+Right", run: function () { const wv = getActiveWebview(); if (wv) try { wv.goForward(); } catch { /* ignore */ } } },
+      hasTab && { id: "tab.new-window", title: "Open Tab in New Window", keywords: ["pop out", "window"], run: function () {
+        const url = getTabUrl(activeTabId);
+        if (isWebUrl(url)) window.backupAPI.openInNewWindow(url);
+      } },
+      hasTab && { id: "page.find", title: "Find in Page", shortcut: "Ctrl+F", keywords: ["search page"], run: showFindBar },
+      { id: "app.address", title: "Focus Address Bar", shortcut: "Ctrl+L", keywords: ["url", "location"], run: focusAddressBar },
+      sidePanelTabs.length > 0 && appSettings.sidePanelEnabled !== false && {
+        id: "panel.toggle", title: panelCollapsed ? "Show Side Panel" : "Hide Side Panel", shortcut: "Ctrl+Shift+B",
+        keywords: ["toggle side panel", "sidebar"], run: togglePanel,
+      },
+      hasTab && { id: "zoom.in", title: "Zoom In", shortcut: "Ctrl+=", keywords: ["bigger", "larger"], run: function () { zoomWebview(getActiveWebview(), "in"); } },
+      hasTab && { id: "zoom.out", title: "Zoom Out", shortcut: "Ctrl+-", keywords: ["smaller"], run: function () { zoomWebview(getActiveWebview(), "out"); } },
+      hasTab && { id: "zoom.reset", title: "Actual Size", shortcut: "Ctrl+0", keywords: ["reset zoom", "100%"], run: function () { zoomWebview(getActiveWebview(), "reset"); } },
+      { id: "app.updates", title: "Check for Updates", keywords: ["update", "version"], run: function () {
+        window.backupAPI.checkForUpdates().catch(function (err) { console.warn("[Palette] Update check:", err && err.message); });
+      } },
+    ];
+    return list.filter(Boolean).map(function (c) { return Object.assign({ group: "Commands" }, c); });
+  }
+
+  function settingsCommands() {
+    const list = [
+      { id: "settings.open", title: "Open Settings", shortcut: "Ctrl+,", keywords: ["preferences", "options"], run: function () { openSettingsAt(); } },
+      { id: "settings.general", title: "Settings: General", keywords: ["home page", "theme", "dark mode", "updates", "permissions"], run: function () { openSettingsAt({ panel: "general" }); } },
+      { id: "settings.plugins", title: "Settings: Plugins", keywords: ["turn plugins on or off", "import plugin"], run: function () { openSettingsAt({ panel: "plugins" }); } },
+    ];
+    palettePlugins.forEach(function (p) {
+      list.push({
+        id: "settings.plugin." + p.id,
+        title: "Settings: " + (p.name || p.id),
+        subtitle: p.enabled === false ? "Plugin is turned off" : (p.description || ""),
+        keywords: [p.id],
+        run: function () { openSettingsAt({ plugin: p.id }); },
+      });
+    });
+    return list.map(function (c) { return Object.assign({ group: "Settings" }, c); });
+  }
+
+  function tabItems() {
+    return tabs.map(function (t) {
+      const url = getTabUrl(t.id) || "";
+      let host = "";
+      try { host = new URL(url).hostname; } catch { /* blank tab */ }
+      return {
+        id: "tab:" + t.id,
+        group: "Tabs",
+        title: t.title || host || "New Tab",
+        subtitle: url && url !== "about:blank" ? url : "",
+        keywords: host ? [host] : [],
+        shortcut: t.id === activeTabId ? "Current tab" : (t.pinned ? "Pinned" : ""),
+        run: function () { activateTab(t.id); },
+      };
+    });
+  }
+
+  function sidePanelItems() {
+    if (appSettings.sidePanelEnabled === false) return [];
+    return sidePanelTabs.map(function (t) {
+      const label = t.button.querySelector(".side-panel-tab-label");
+      const name = (label && label.textContent) || t.id;
+      return {
+        id: "panel:" + t.id,
+        group: "Side Panel",
+        title: "Show " + name,
+        keywords: [name, "side panel " + name],
+        run: function () {
+          activateSidePanelTab(t.id, true);
+          if (panelCollapsed) togglePanel();
+        },
+      };
+    });
+  }
+
+  // "12345", "CW-12345" or an address typed in the palette: open it right away.
+  function typedItems(query) {
+    const out = [];
+    if (!query) return out;
+    const ticket = ticketAddressFor(query);
+    if (ticket) {
+      out.push({
+        id: "go:ticket", pinned: true, group: "Go to",
+        title: "Open ticket " + query, subtitle: ticket, shortcut: "Ticket",
+        run: function () { navigateActiveTab(ticket); },
+        runInNewTab: function () { createTab(ticket, { activate: true }); },
+      });
+    }
+    const url = window.AddressBar.parseAddress(query);
+    if (url && url !== ticket) {
+      out.push({
+        id: "go:url", pinned: true, group: "Go to",
+        title: "Go to " + url, subtitle: "Ctrl+Enter opens it in a new tab",
+        run: function () { navigateActiveTab(url); },
+        runInNewTab: function () { createTab(url, { activate: true }); },
+      });
+    }
+    return out;
+  }
+
+  // Asks each plugin provider for its items. Arrays count now; promises are
+  // added when they answer (or dropped after PALETTE_PROVIDER_TIMEOUT_MS).
+  function providerItems(query) {
+    const now = [];
+    const more = [];
+    paletteProviders.forEach(function (p) {
+      let res;
+      try { res = p.items(query); } catch (err) {
+        console.error("[Palette] Provider " + p.id + " failed:", err);
+        return;
+      }
+      const clean = function (items) {
+        return (Array.isArray(items) ? items : []).slice(0, 100).map(function (it, i) {
+          const c = window.CommandPalette.sanitizeCommand(Object.assign({ id: "item-" + i, group: p.group }, it), p.id + ":");
+          return c;
+        }).filter(Boolean);
+      };
+      if (res && typeof res.then === "function") {
+        more.push(Promise.race([
+          res,
+          new Promise(function (resolve) { setTimeout(function () { resolve([]); }, PALETTE_PROVIDER_TIMEOUT_MS); }),
+        ]).then(clean));
+      } else {
+        now.push.apply(now, clean(res));
+      }
+    });
+    return { now, more };
+  }
+
+  function paletteItems(query) {
+    const fromProviders = providerItems(query);
+    const items = typedItems(query)
+      .concat(tabItems())
+      .concat(fromProviders.now)
+      .concat(sidePanelItems())
+      .concat(coreCommands())
+      .concat(Array.from(paletteCommands.values()))
+      .concat(settingsCommands());
+    return { items: items, more: fromProviders.more };
+  }
+
+  const palette = window.CommandPalette.create({
+    overlay: document.getElementById("command-palette"),
+    input: document.getElementById("command-palette-input"),
+    list: document.getElementById("command-palette-list"),
+  }, paletteItems);
+
+  function openPalette(text) {
+    // A page in a tab holds focus apart from the app window, so take it back first.
+    const wv = getActiveWebview();
+    if (wv) try { wv.blur(); } catch { /* ignore */ }
+    window.focus();
+    hideTabContextMenu();
+    palette.open(text);
+  }
+
+  // pluginAPI.commands: see docs/plugins.md.
+  function makeCommandsFacade() {
+    return Object.freeze({
+      // { id, title, subtitle?, group?, keywords?, shortcut?, run, runInNewTab? }
+      // → a function that removes it. A second command with the same id replaces the first.
+      register: function (opts) {
+        const cmd = window.CommandPalette.sanitizeCommand(opts, "plugin:");
+        if (!cmd) throw new Error("commands.register: needs an id ([a-z0-9:_.-]), a title and a run function");
+        paletteCommands.set(cmd.id, cmd);
+        palette.refresh();
+        return function () {
+          if (paletteCommands.get(cmd.id) === cmd) paletteCommands.delete(cmd.id);
+        };
+      },
+      // { id, group?, items(query) } where items returns an array of commands
+      // (or a promise of one) for what is typed, "" when nothing is.
+      // → a function that removes it.
+      addProvider: function (opts) {
+        const id = opts && typeof opts.id === "string" ? opts.id : "";
+        if (!/^[a-z0-9][a-z0-9_-]{0,62}$/i.test(id)) throw new Error("commands.addProvider: invalid id");
+        if (typeof opts.items !== "function") throw new Error("commands.addProvider: items must be a function");
+        const provider = { id, group: typeof opts.group === "string" && opts.group ? opts.group.slice(0, 40) : "Results", items: opts.items };
+        paletteProviders.set(id, provider);
+        palette.refresh();
+        return function () {
+          if (paletteProviders.get(id) === provider) paletteProviders.delete(id);
+        };
+      },
+      // Opens the palette, optionally with text already typed.
+      open: function (text) { openPalette(typeof text === "string" ? text : ""); },
+      close: function () { palette.close(); },
+    });
+  }
+
   // ==================== Keyboard Shortcuts ====================
   // Runs a tab shortcut from tab-shortcuts.js, whether pressed in the app's own
   // window or in a page (relayed by the main process).
@@ -2261,6 +2483,7 @@ document.addEventListener("DOMContentLoaded", function () {
       case "close-tab": if (activeTabId) closeTab(activeTabId); return;
       case "reopen-closed": reopenClosedTab(); return;
       case "find": showFindBar(); return;
+      case "command-palette": if (palette.isOpen()) palette.close(); else openPalette(""); return;
     }
     const activeIdx = tabs.findIndex(function (t) { return t.id === activeTabId; });
     const target = window.TabShortcuts.targetTabIndex(shortcut, activeIdx, tabs.length);

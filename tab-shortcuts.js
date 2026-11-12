@@ -6,7 +6,7 @@
 
   // The action for a key press, or null:
   //   { action: "new-tab" | "close-tab" | "reopen-closed" | "next-tab" |
-  //             "prev-tab" | "last-tab" | "find" }
+  //             "prev-tab" | "last-tab" | "find" | "command-palette" }
   //   { action: "select-tab", index: 0-7 }   (Ctrl+1 to Ctrl+8)
   // Ctrl+9 is the last tab, as in browsers. Accepts Electron's input object
   // (before-input-event) and DOM KeyboardEvents alike.
@@ -25,6 +25,7 @@
     if (shift) return null;
     if (lower === "w") return { action: "close-tab" };
     if (lower === "f") return { action: "find" };
+    if (lower === "k") return { action: "command-palette" };
     if (key >= "1" && key <= "8" && key.length === 1) return { action: "select-tab", index: Number(key) - 1 };
     if (key === "9") return { action: "last-tab" };
     return null;

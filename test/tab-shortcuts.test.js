@@ -12,6 +12,8 @@ describe("tabShortcutForKey", () => {
     expect(tabShortcutForKey(key("w"))).toEqual({ action: "close-tab" });
     expect(tabShortcutForKey(key("f"))).toEqual({ action: "find" });
     expect(tabShortcutForKey(key("F"))).toEqual({ action: "find" });
+    expect(tabShortcutForKey(key("k"))).toEqual({ action: "command-palette" });
+    expect(tabShortcutForKey({ key: "K", ctrlKey: true })).toEqual({ action: "command-palette" });
     expect(tabShortcutForKey(key("Tab"))).toEqual({ action: "next-tab" });
     expect(tabShortcutForKey(key("Tab", { shift: true }))).toEqual({ action: "prev-tab" });
     expect(tabShortcutForKey(key("PageDown"))).toEqual({ action: "next-tab" });
@@ -29,6 +31,7 @@ describe("tabShortcutForKey", () => {
     expect(tabShortcutForKey(key("t", { alt: true }))).toBeNull();
     expect(tabShortcutForKey(key("w", { shift: true }))).toBeNull();
     expect(tabShortcutForKey(key("f", { shift: true }))).toBeNull();
+    expect(tabShortcutForKey(key("k", { shift: true }))).toBeNull();
     expect(tabShortcutForKey(key("1", { shift: true }))).toBeNull();
     expect(tabShortcutForKey(key("0"))).toBeNull();
     expect(tabShortcutForKey(key("c"))).toBeNull();
