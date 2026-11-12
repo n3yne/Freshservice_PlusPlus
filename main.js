@@ -386,7 +386,7 @@ function setupGuestContents(hostWin, webviewContents) {
 
     // Normal links: open in a new tab instead (web pages only — no file: or other schemes)
     if (isWebUrl(url)) {
-      openInMainTab(url);
+      openInMainTab(url, hostWin === mainWindow ? webviewContents.id : null);
     } else {
       console.warn("[Popup] Blocked non-web URL:", url);
     }
@@ -459,7 +459,7 @@ function setupGuestContents(hostWin, webviewContents) {
       if (isWebUrl(params.linkURL)) {
         menuItems.push({
           label: "Open Link in New Tab",
-          click: () => openInMainTab(params.linkURL),
+          click: () => openInMainTab(params.linkURL, hostWin === mainWindow ? webviewContents.id : null),
         });
         menuItems.push({
           label: "Open Link in New Window",
@@ -526,7 +526,7 @@ function setupGuestContents(hostWin, webviewContents) {
       if (isWebUrl(params.srcURL)) {
         menuItems.push({
           label: "Open Image in New Tab",
-          click: () => openInMainTab(params.srcURL),
+          click: () => openInMainTab(params.srcURL, hostWin === mainWindow ? webviewContents.id : null),
         });
       }
       menuItems.push({
@@ -576,10 +576,12 @@ const CHILD_WINDOW_MAX = 20;
 
 // Opens url in a tab of the main window, or in a child window if the main window
 // has gone (a child window's popups and links normally open as tabs, like a browser).
-function openInMainTab(url) {
+// openerId is the webContents id of the tab page that opened the link, if any,
+// so plugins (Tree Style Tabs) can nest the new tab under it.
+function openInMainTab(url, openerId) {
   if (!isWebUrl(url)) return;
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("open-in-new-tab", url);
+    mainWindow.webContents.send("open-in-new-tab", url, typeof openerId === "number" ? openerId : null);
   } else {
     createChildBrowserWindow(url);
   }
