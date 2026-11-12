@@ -689,6 +689,11 @@ document.addEventListener("DOMContentLoaded", function () {
         return "knowledge needs search(term) and getArticle(id)";
       }
     }
+    if (a.ticketSearch !== undefined) {
+      const ts = a.ticketSearch;
+      if (!ts || typeof ts !== "object" || typeof ts.search !== "function") return "ticketSearch needs search(term, options)";
+      if (ts.placeholder !== undefined && typeof ts.placeholder !== "string") return "ticketSearch.placeholder must be a string";
+    }
     if (a.timeEntry !== undefined) {
       const te = a.timeEntry;
       if (!te || typeof te !== "object" || typeof te.log !== "function") return "timeEntry needs log(ctx)";
@@ -709,6 +714,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     if (a.knowledge) out.knowledge = Object.freeze(Object.assign({ name: "Knowledge base" }, a.knowledge));
     if (a.reply) out.reply = Object.freeze(Object.assign({ label: "reply box" }, a.reply));
+    if (a.ticketSearch) {
+      out.ticketSearch = Object.freeze(Object.assign({ placeholder: "Search " + (a.shortName || a.name) + " tickets" }, a.ticketSearch));
+    }
     if (a.timeEntry) {
       out.timeEntry = Object.freeze(Object.assign({}, a.timeEntry, {
         label: a.timeEntry.label || "Log in " + (a.shortName || a.name),

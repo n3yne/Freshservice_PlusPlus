@@ -1,0 +1,145 @@
+/* ===== Ticket Search: its side panel tab ===== */
+.ts-panel {
+  background: var(--panel-content-bg);
+}
+
+.ts-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ts-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  outline: none;
+}
+
+.ts-input:focus {
+  border-color: var(--primary);
+}
+
+.ts-site {
+  flex-shrink: 0;
+  max-width: 90px;
+  padding: 4px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+}
+
+.ts-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ts-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ts-item:hover,
+.ts-item:focus-visible,
+.ts-item.ts-item-active {
+  border-color: var(--primary);
+  outline: none;
+}
+
+.ts-item-top {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.ts-item-num {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ts-item-subject {
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ts-item-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ts-item-tags {
+  display: flex;
+  gap: 4px;
+}
+
+.ts-tag {
+  font-size: 10px;
+  line-height: 1.4;
+  padding: 0 5px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.ts-empty {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  padding: 8px 0;
+}
+
+.ts-empty p {
+  margin: 0 0 8px;
+}
+
+.ts-status {
+  flex-shrink: 0;
+  padding: 0 12px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.ts-status:not(:empty) {
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.ts-status-busy {
+  font-style: italic;
+}
+
+.ts-status-error {
+  color: var(--warning);
+}

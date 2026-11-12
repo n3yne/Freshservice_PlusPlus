@@ -118,6 +118,14 @@ A **⏱ Time** tab in the side panel that times the ticket you're working on.
 - **Safe on close** – Running timers are paused when MSP++ closes, and saved every minute so a crash loses at most a minute
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
 
+### Ticket Search
+A **🔎 Search** tab in the side panel that finds Freshservice tickets as you type, through the Freshservice API.
+- **What you can type** – A ticket number (`48211`, `#48211`, `INC-48211`), words from the subject (every word has to appear), or a requester's name or email. Matches are tagged **number**, **subject** or **requester**, with the requester, status, priority and when the ticket was last updated
+- **Open** – Click a result (or press `Enter` for the highlighted one, arrow keys to move) to open it in a new tab, or in the current tab if you choose that in **Settings → Plugins → Ticket Search**. `Ctrl`+click or middle-click opens it in a background tab
+- **How far back** – Freshservice's API can't search subjects, so MSP++ fetches up to the 300 most recent tickets updated in the last 30 days (7 days to a year in Settings) and matches subjects itself, keeping the list for two minutes so typing doesn't call the API again. Ticket numbers and requesters are looked up directly, however old the ticket
+- **Requirements** – the domain and API key in **Settings → Plugins → Freshservice**
+- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes. After a suggestion is returned, a **Refine** textarea appears — type follow-up instructions (e.g. "make it shorter", "keep this as a client-facing message") and click **↺ Refine** to generate a revised version without losing the Apply option
 - **📋 Summarize** – Reads the ticket description, replies and notes from the open ticket (on Freshservice through the Freshservice API when it's set up, otherwise from the page; on ConnectWise Manage from the page) and asks the AI to produce a concise bullet-point summary
@@ -128,6 +136,7 @@ A **⏱ Time** tab in the side panel that times the ticket you're working on.
 - **Ticket details through the API** – With your Freshservice domain and API key entered under Settings → Plugins → Freshservice, Summarize and Suggest read the ticket's subject, status, priority, requester, description and every reply and note through the Freshservice REST API (v2) instead of scraping the page
 - **Automatic fallback** – If the API is turned off, not set up, rate-limited or returns an error, or the open record is a change, problem or release, the page is read exactly as before
 - **Time entries** – The Time Tracker's **Log in Freshservice** adds time entries through the API. The key's agent needs permission to add time entries, and the entries are added for that agent
+- **Ticket search** – The Ticket Search tab searches tickets and requesters through the API. The key's agent needs permission to view tickets and requesters
 - **Safe key storage** – The API key is encrypted with the operating system's credential storage, never sent to the main window, and only sent to the configured domain over https. The key is tied to the domain it was entered for: if you change the domain, enter the key again. **Test connection** checks it and **Remove key** deletes it
 - **Delivered as a bundled plugin** — part of the Freshservice plugin. To stop using the API but keep Freshservice support, untick **Read ticket details through the API**; turning the whole plugin off also turns off ticket detection and note sync on Freshservice pages
 
@@ -144,7 +153,7 @@ A **⏱ Time** tab in the side panel that times the ticket you're working on.
 
 Extend the app with self-contained plugin directories — no build step required.
 
-- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **Time Tracker**, **AI Features** and **Solutions Chat**
+- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **Time Tracker**, **Ticket Search**, **AI Features** and **Solutions Chat**
 - **User-installed plugins** – Drop a plugin folder into `%APPDATA%\MSP++\plugins\` (or `%APPDATA%\Freshservice++\plugins\` if you upgraded) for plugins that survive app updates
 - **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply. Every plugin gets a settings tab, and one with nothing to set up says so
 - **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed
