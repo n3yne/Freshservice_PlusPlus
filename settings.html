@@ -13,7 +13,7 @@
       <!-- Left category nav -->
       <nav class="settings-nav" aria-label="Settings categories">
         <button type="button" class="settings-nav-item active" data-panel="general">General</button>
-        <button type="button" class="settings-nav-item" data-panel="plugins">Plugins</button>
+        <button type="button" class="settings-nav-item" data-panel="plugins">Plugins <span id="nav-plugin-update-count" class="plugin-update-count" hidden></span></button>
       </nav>
 
       <!-- Right content panels -->
@@ -172,30 +172,82 @@
           <div class="settings-section">
             <h3 class="settings-section-title">Plugins</h3>
             <p class="settings-description settings-description-field settings-description-field-spaced">
-              Manage installed plugins, grouped by what they do. Each plugin also has its own tab below with its
-              settings and the same on/off switch. Turning a plugin on or off takes effect after restarting the app.
+              Installed shows the plugins you have, grouped by what they do. Browse lists more plugins you can
+              install from the MSP++ plugin directory. Turning a plugin on or off, installing, updating or removing
+              one all take effect after restarting the app.
             </p>
 
             <div id="plugin-restart-notice" class="plugin-restart-notice">
-              Restart the app to apply plugin changes.
+              <span>Restart the app to apply plugin changes.</span>
+              <button type="button" class="btn btn-small btn-secondary plugin-restart-now">Restart Now</button>
             </div>
 
-            <div class="plugin-list-toolbar">
-              <span id="plugin-summary" class="plugin-summary"></span>
-              <div class="plugin-filter" role="group" aria-label="Show plugins">
-                <button type="button" class="plugin-filter-btn active" data-filter="all" aria-pressed="true">All</button>
-                <button type="button" class="plugin-filter-btn" data-filter="on" aria-pressed="false">On</button>
-                <button type="button" class="plugin-filter-btn" data-filter="off" aria-pressed="false">Off</button>
+            <div class="plugin-view-tabs" role="tablist" aria-label="Plugins">
+              <button type="button" class="plugin-view-tab active" data-view="installed" role="tab" aria-selected="true">Installed</button>
+              <button type="button" class="plugin-view-tab" data-view="browse" role="tab" aria-selected="false">
+                Browse <span id="plugin-update-count" class="plugin-update-count" hidden></span>
+              </button>
+            </div>
+
+            <div id="plugin-view-installed" class="plugin-view active">
+              <div class="plugin-list-toolbar">
+                <span id="plugin-summary" class="plugin-summary"></span>
+                <div class="plugin-filter" role="group" aria-label="Show plugins">
+                  <button type="button" class="plugin-filter-btn active" data-filter="all" aria-pressed="true">All</button>
+                  <button type="button" class="plugin-filter-btn" data-filter="on" aria-pressed="false">On</button>
+                  <button type="button" class="plugin-filter-btn" data-filter="off" aria-pressed="false">Off</button>
+                </div>
+              </div>
+
+              <div id="plugin-list" class="plugin-list"></div>
+
+              <div class="plugin-import-row">
+                <button type="button" id="btn-import-plugin" class="btn btn-small btn-secondary">
+                  + Import Plugin File
+                </button>
+                <button type="button" id="btn-import-plugin-folder" class="btn btn-small btn-secondary">
+                  Import Folder
+                </button>
+                <span id="plugin-import-status" class="plugin-import-status"></span>
               </div>
             </div>
 
-            <div id="plugin-list" class="plugin-list"></div>
+            <div id="plugin-view-browse" class="plugin-view" hidden>
+              <p class="plugin-directory-trust">
+                Plugins can read the pages and tickets you open, use your saved API keys and run code on this PC,
+                the same as MSP++ itself. Only install plugins you trust. Every download is checked against the
+                directory's checksum before it's unpacked.
+              </p>
 
-            <div class="plugin-import-row">
-              <button type="button" id="btn-import-plugin" class="btn btn-small btn-secondary">
-                + Import Plugin
-              </button>
-              <span id="plugin-import-status" class="plugin-import-status"></span>
+              <div class="plugin-list-toolbar">
+                <span id="plugin-directory-status" class="plugin-summary"></span>
+                <div class="plugin-directory-actions">
+                  <button type="button" id="btn-plugin-update-all" class="btn btn-small btn-primary" hidden>Update All</button>
+                  <button type="button" id="btn-plugin-directory-check" class="btn btn-small btn-secondary">Check Now</button>
+                </div>
+              </div>
+
+              <div class="plugin-list-toolbar">
+                <div class="plugin-filter" role="group" aria-label="Show directory plugins">
+                  <button type="button" class="plugin-browse-filter-btn plugin-filter-btn active" data-filter="all" aria-pressed="true">All</button>
+                  <button type="button" class="plugin-browse-filter-btn plugin-filter-btn" data-filter="available" aria-pressed="false">Not Installed</button>
+                  <button type="button" class="plugin-browse-filter-btn plugin-filter-btn" data-filter="updates" aria-pressed="false">Updates</button>
+                </div>
+                <span id="plugin-browse-action-status" class="plugin-import-status"></span>
+              </div>
+
+              <div id="plugin-browse-list" class="plugin-list"></div>
+
+              <label class="settings-toggle">
+                <input type="checkbox" id="setting-plugin-auto-update" />
+                <span class="settings-toggle-slider"></span>
+                <span class="settings-toggle-label">Install Plugin Updates Automatically</span>
+              </label>
+              <p class="settings-description">
+                MSP++ checks the plugin directory 30 seconds after it starts and once a day. With this on, updates for
+                your plugins download by themselves and apply the next time you start MSP++. With it off, they're
+                listed here and in the notifications.
+              </p>
             </div>
           </div>
 

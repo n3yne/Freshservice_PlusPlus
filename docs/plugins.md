@@ -734,33 +734,56 @@ MSP_PlusPlus/
 
 These plugins ship with the app and are loaded for all users.
 
-### User-installed plugins
+### The plugin directory
 
-**Option A — Import via the UI (recommended)**
+**Settings → Plugins → Browse** lists plugins from the MSP++ plugin directory, grouped by the same categories as the Installed list. Each one can be installed, updated or removed there.
 
-1. Open **Settings → Plugins**
-2. Click **Import Plugin** and select your plugin folder in the file dialog
-3. The app copies it into the user data directory and confirms the name; restart to activate
+- The directory is `index.json` on the `plugin-directory` release of this repo: `https://github.com/n3yne/MSP_PlusPlus/releases/download/plugin-directory/index.json`. That release is a pre-release, so the app updater (which follows the latest release) never mistakes it for an app version.
+- Each entry gives the plugin's id, name, description, category, version, `minAppVersion`, `requires` (ids of other plugins it needs; installing it installs those too), the package file name, its SHA-256 and its size in bytes. A download that doesn't match the size and SHA-256 exactly is refused before anything is unpacked. Package URLs have to stay inside the same release folder.
+- MSP++ checks the directory 30 seconds after it starts and then once a day, plus **Check Now**. Updates for installed plugins show a count on Plugins and Browse, an **Update All** button and a notification in the main window. **Install Plugin Updates Automatically** (off by default) downloads them by itself.
+- If an installed plugin has the same `id` as a bundled one, the newer version loads and the other is skipped (a tie goes to the bundled copy). A fixed bundled plugin can go out through the directory before the next app release that way; removing the directory copy brings back the bundled one.
 
-If a plugin with the same `id` is already installed, the import is blocked and an error is shown — remove the existing plugin first.
+Index entry example:
 
-**Option B — Copy manually**
-
-Drop the plugin directory into the app's data folder. You can open it from within the app via **📁 Open Folder** in the Notes tab, then navigate up one level:
-
+```json
+{
+  "id": "time-tracker",
+  "name": "Time Tracker",
+  "description": "A Time tab in the side panel with a timer per ticket.",
+  "category": "Time & Reminders",
+  "version": "0.8.0",
+  "minAppVersion": "0.8.0",
+  "requires": [],
+  "url": "time-tracker-0.8.0.mspplugin",
+  "sha256": "<64 hex characters>",
+  "size": 16097,
+  "changelog": "Optional notes shown on hover."
+}
 ```
-%APPDATA%\MSP++\plugins\
-  my-plugin\
-    manifest.json
-    main.js
-    renderer.js
-```
 
-If you upgraded from Freshservice++, the data folder is still `%APPDATA%\Freshservice++\` (or `%APPDATA%\freshservice-pp\`), so use its `plugins\` folder instead. See [`data-files.md`](data-files.md) for every folder the app uses.
+### Plugin packages (`.mspplugin`)
 
-Plugins in both locations are loaded on every launch. User-installed plugins survive app updates.
+A package is a zip of the plugin folder with `manifest.json` at the top (a zip of the folder itself, with everything under one top folder, also works). Files only, stored or deflated: no encryption, no zip64, no links, no paths with `..`, at most 5 MB packed and 20 MB unpacked. `plugin-package.js` reads and writes them; `packFolder(dir)` builds one from a folder, with the same bytes every time for the same files.
 
-> **Restart required.** Plugins are loaded once at startup. Add, remove, or update a plugin, then restart the app for changes to take effect.
+### Importing a plugin yourself
+
+1. Open **Settings → Plugins → Installed**
+2. Click **Import Plugin File** and pick a `.mspplugin` file, or **Import Folder** and pick a plugin folder
+3. Restart to activate
+
+Importing a plugin that's already installed replaces it. Imported plugins show an **Imported** badge and can be removed with **Remove** like directory plugins.
+
+### Where installed plugins live
+
+Installed plugins go in `installed-plugins\<id>\` in the app's data folder, separate from each plugin's own data in `plugins\<id>\` (`api.getDataPath()`). So updating or removing a plugin never touches its saved data, unless you tick **Also delete its saved data** when removing it.
+
+Every install, update and removal is staged in `installed-plugins\.pending\` and applied at the next start, before any plugin loads, because a plugin's main-process code can't be unloaded while the app runs.
+
+Plugins imported before 0.8 were copied straight into `plugins\<id>\`, where their code and data share one folder. They still load (shown as **Imported**). Removing one removes that folder, data included; Settings says so before you confirm.
+
+If you upgraded from Freshservice++, the data folder is still `%APPDATA%\Freshservice++\` (or `%APPDATA%\freshservice-pp\`). See [`data-files.md`](data-files.md) for every folder the app uses.
+
+> **Restart required.** Plugins are loaded once at startup. Add, remove, or update a plugin, then restart the app (Settings shows a **Restart Now** button) for changes to take effect.
 
 ---
 

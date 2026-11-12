@@ -396,6 +396,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (dismissBtn) {
       const id = parseInt(dismissBtn.dataset.notifId, 10);
       const notif = pendingNotifications.find((n) => n.id === id);
+      if (notif?.type === "plugin-updates") dismissedPluginUpdates = notif.key;
       if (notif?.type === "update" && !notif.ready) {
         appSettings.dismissedReleaseVersion = notif.version;
         window.backupAPI.saveSettings({ dismissedReleaseVersion: notif.version });
@@ -464,6 +465,46 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   window.backupAPI.onAppUpdateStatus(showUpdateStatus);
+
+  // ==================== Plugin Updates ====================
+  // main.js checks the plugin directory (plugin-directory.js) after startup and
+  // once a day. Updates for installed plugins show up here until installed.
+
+  let dismissedPluginUpdates = "";
+
+  function showPluginDirectoryStatus(state) {
+    const updates = state && Array.isArray(state.updates) ? state.updates : [];
+    const key = updates.map((u) => u.id + "@" + u.version).sort().join(",");
+    const idx = pendingNotifications.findIndex((n) => n.type === "plugin-updates");
+    if (idx !== -1) {
+      if (pendingNotifications[idx].key === key) return;
+      pendingNotifications.splice(idx, 1);
+    }
+    if (key && key !== dismissedPluginUpdates) {
+      const names = updates.map((u) => u.name);
+      addUniqueNotification({
+        id: notifNextId++,
+        type: "plugin-updates",
+        key,
+        title: updates.length === 1 ? `Plugin Update: ${names[0]} v${updates[0].version}` : `${updates.length} Plugin Updates`,
+        desc: updates.length === 1
+          ? `A newer version of ${names[0]} is in the plugin directory.`
+          : `New versions of ${names.join(", ")} are in the plugin directory.`,
+        action: {
+          label: "Open Plugins",
+          kind: "callback",
+          onClick: () => {
+            dismissedPluginUpdates = key;
+            window.backupAPI.openSettingsWindow({ panel: "browse" });
+          },
+        },
+      });
+    }
+    renderNotifications();
+    updateNotificationsBadge();
+  }
+
+  window.backupAPI.onPluginDirectoryStatus(showPluginDirectoryStatus);
 
   // ==================== Side Panel Host ====================
   //
@@ -2369,6 +2410,7 @@ document.addEventListener("DOMContentLoaded", function () {
       { id: "settings.open", title: "Open Settings", shortcut: "Ctrl+,", keywords: ["preferences", "options"], run: function () { openSettingsAt(); } },
       { id: "settings.general", title: "Settings: General", keywords: ["home page", "theme", "dark mode", "updates", "permissions"], run: function () { openSettingsAt({ panel: "general" }); } },
       { id: "settings.plugins", title: "Settings: Plugins", keywords: ["turn plugins on or off", "import plugin"], run: function () { openSettingsAt({ panel: "plugins" }); } },
+      { id: "settings.browse-plugins", title: "Settings: Browse Plugins", keywords: ["plugin directory", "install plugin", "update plugins"], run: function () { openSettingsAt({ panel: "browse" }); } },
     ];
     palettePlugins.forEach(function (p) {
       list.push({

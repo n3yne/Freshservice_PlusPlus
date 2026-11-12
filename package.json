@@ -55,6 +55,8 @@
       "permissions.js",
       "settings-transfer.js",
       "plugin-manager.js",
+      "plugin-directory.js",
+      "plugin-package.js",
       "index.html",
       "child-window.html",
       "child-window.js",

@@ -27,6 +27,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function showSettingsTarget(target) {
     if (!target) return;
     if (target.panel === "general" || target.panel === "plugins") { switchPanel(target.panel); return; }
+    if (target.panel === "browse") { switchPanel("plugins"); showPluginView("browse"); return; }
     if (typeof target.plugin !== "string" || !pluginPanelsReady) return;
     pluginPanelsReady.then(function () {
       const ids = pluginPanelIds.get(target.plugin);
@@ -69,6 +70,7 @@ document.addEventListener("DOMContentLoaded", function () {
     restoreTabs: true,
     unreadTabBadges: true,
     siteTabColors: true,
+    pluginAutoUpdate: false,
   };
 
   // ==================== Element References ====================
@@ -89,7 +91,17 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnImportPlugin       = document.getElementById("btn-import-plugin");
   const pluginImportStatus    = document.getElementById("plugin-import-status");
   const pluginSummary         = document.getElementById("plugin-summary");
-  const pluginFilterBtns      = document.querySelectorAll(".plugin-filter-btn");
+  const pluginFilterBtns      = document.querySelectorAll(".plugin-filter-btn:not(.plugin-browse-filter-btn)");
+  const btnImportFolder       = document.getElementById("btn-import-plugin-folder");
+  const pluginViewTabs        = document.querySelectorAll(".plugin-view-tab");
+  const pluginBrowseList      = document.getElementById("plugin-browse-list");
+  const pluginDirectoryStatus = document.getElementById("plugin-directory-status");
+  const pluginBrowseStatus    = document.getElementById("plugin-browse-action-status");
+  const pluginBrowseFilterBtns = document.querySelectorAll(".plugin-browse-filter-btn");
+  const btnPluginUpdateAll    = document.getElementById("btn-plugin-update-all");
+  const btnPluginDirCheck     = document.getElementById("btn-plugin-directory-check");
+  const settingPluginAutoUpd  = document.getElementById("setting-plugin-auto-update");
+  const pluginUpdateCounts    = [document.getElementById("plugin-update-count"), document.getElementById("nav-plugin-update-count")];
 
   // ==================== Utilities ====================
   function debounce(fn, ms) {
@@ -113,6 +125,7 @@ document.addEventListener("DOMContentLoaded", function () {
     document.body.setAttribute("data-theme", theme);
     settingTheme.checked = theme === "light";
     settingAutoUpdate.checked = settings.autoUpdate !== false;
+    if (settingPluginAutoUpd) settingPluginAutoUpd.checked = settings.pluginAutoUpdate === true;
     settingRestoreTabs.checked = settings.restoreTabs !== false;
     settingUnreadBadges.checked = settings.unreadTabBadges !== false;
     settingSiteColors.checked = settings.siteTabColors !== false;
@@ -233,6 +246,13 @@ document.addEventListener("DOMContentLoaded", function () {
     appSettings.autoUpdate = settingAutoUpdate.checked;
     saveSettings({ autoUpdate: appSettings.autoUpdate });
   });
+
+  if (settingPluginAutoUpd) {
+    settingPluginAutoUpd.addEventListener("change", function () {
+      appSettings.pluginAutoUpdate = settingPluginAutoUpd.checked;
+      saveSettings({ pluginAutoUpdate: appSettings.pluginAutoUpdate });
+    });
+  }
 
   // ==================== Updates ====================
 
@@ -440,11 +460,22 @@ document.addEventListener("DOMContentLoaded", function () {
       ver.textContent = "v" + plugin.version;
       frag.appendChild(ver);
     }
+    const source = SOURCE_BADGES[plugin.source] || SOURCE_BADGES.user;
     const sourceBadge = document.createElement("span");
-    sourceBadge.className = "plugin-badge " +
-      (plugin.source === "bundled" ? "plugin-badge-bundled" : "plugin-badge-user");
-    sourceBadge.textContent = plugin.source === "bundled" ? "Bundled" : "Installed";
+    sourceBadge.className = "plugin-badge " + source.className;
+    sourceBadge.textContent = source.label;
+    sourceBadge.title = plugin.replacesBundled
+      ? source.title + " It replaces the bundled v" + plugin.replacesBundled + "."
+      : source.title;
     frag.appendChild(sourceBadge);
+
+    const pendingLabel = pendingBadgeText(plugin.id);
+    if (pendingLabel) {
+      const pendingBadge = document.createElement("span");
+      pendingBadge.className = "plugin-badge plugin-badge-pending";
+      pendingBadge.textContent = pendingLabel;
+      frag.appendChild(pendingBadge);
+    }
 
     if (!plugin.enabled) {
       const disabledBadge = document.createElement("span");
@@ -459,6 +490,25 @@ document.addEventListener("DOMContentLoaded", function () {
       frag.appendChild(errBadge);
     }
     return frag;
+  }
+
+  const SOURCE_BADGES = {
+    bundled: { label: "Bundled", className: "plugin-badge-bundled", title: "Comes with MSP++." },
+    directory: { label: "Directory", className: "plugin-badge-directory", title: "Installed from the plugin directory." },
+    imported: { label: "Imported", className: "plugin-badge-user", title: "Imported from a file or folder." },
+    user: {
+      label: "Imported", className: "plugin-badge-user",
+      title: "Imported before MSP++ 0.8. Its code and saved data share one folder, so removing it removes its data too.",
+    },
+  };
+
+  // "Removed on restart" etc. for a plugin with a change waiting for restart.
+  function pendingBadgeText(id) {
+    const pending = directoryState && directoryState.pending;
+    if (!pending) return "";
+    if (pending.remove.includes(id)) return "Removed on restart";
+    if (pending.install.includes(id)) return "Updated on restart";
+    return "";
   }
 
   // Which plugins the list shows: "all", "on" or "off" (the buttons above it).
@@ -508,8 +558,87 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     item.appendChild(info);
-    item.appendChild(createPluginToggle(plugin));
+    const actions = document.createElement("div");
+    actions.className = "plugin-item-actions";
+    if (plugin.source !== "bundled") {
+      const pendingRemove = directoryState && directoryState.pending.remove.includes(plugin.id);
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "btn-link-danger";
+      removeBtn.textContent = pendingRemove ? "Keep" : "Remove";
+      removeBtn.title = pendingRemove
+        ? "Don't remove " + (plugin.name || plugin.id)
+        : "Remove " + (plugin.name || plugin.id) + " from MSP++";
+      removeBtn.addEventListener("click", function () {
+        if (pendingRemove) cancelPluginChange(plugin.id);
+        else showRemoveConfirm(item, plugin);
+      });
+      actions.appendChild(removeBtn);
+    }
+    actions.appendChild(createPluginToggle(plugin));
+    item.appendChild(actions);
     return item;
+  }
+
+  function cancelPluginChange(id) {
+    window.backupAPI.cancelPluginChange(id).then(refreshDirectoryState);
+  }
+
+  // Inline "Remove X?" row under a plugin, with the "also delete its data" choice.
+  function showRemoveConfirm(item, plugin) {
+    if (item.querySelector(".plugin-remove-confirm")) return;
+    item.classList.add("confirming");
+    const row = document.createElement("div");
+    row.className = "plugin-remove-confirm";
+    const text = document.createElement("span");
+    const name = plugin.name || plugin.id;
+    text.textContent = plugin.source === "user"
+      ? "Remove " + name + "? It was imported before MSP++ 0.8, so its saved data is removed with it."
+      : "Remove " + name + " at the next restart?";
+    row.appendChild(text);
+
+    let dataBox = null;
+    if (plugin.source !== "user") {
+      const label = document.createElement("label");
+      dataBox = document.createElement("input");
+      dataBox.type = "checkbox";
+      label.appendChild(dataBox);
+      label.appendChild(document.createTextNode(" Also delete its saved data"));
+      row.appendChild(label);
+    }
+
+    const confirmBtn = document.createElement("button");
+    confirmBtn.type = "button";
+    confirmBtn.className = "btn btn-small btn-warning";
+    confirmBtn.textContent = "Remove";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn btn-small btn-secondary";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", function () {
+      row.remove();
+      item.classList.remove("confirming");
+    });
+    confirmBtn.addEventListener("click", function () {
+      confirmBtn.disabled = true;
+      window.backupAPI.removePlugin(plugin.id, !!(dataBox && dataBox.checked)).then(function (result) {
+        if (!result || !result.success) {
+          text.textContent = (result && result.error) || "Couldn't remove the plugin.";
+          confirmBtn.disabled = false;
+          return;
+        }
+        if (result.neededBy && result.neededBy.length) {
+          pluginImportStatus.textContent = name + " will be removed. " + result.neededBy.join(", ") +
+            (result.neededBy.length === 1 ? " needs" : " need") + " it and may stop working.";
+          pluginImportStatus.className = "plugin-import-status error";
+        }
+        if (!result.cancelled) showRestartNotice();
+        refreshDirectoryState();
+      });
+    });
+    row.appendChild(confirmBtn);
+    row.appendChild(cancelBtn);
+    item.appendChild(row);
   }
 
   // The Plugins list, one section per category (see plugin-categories.js), each
@@ -614,7 +743,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const notice = document.createElement("div");
     notice.className = "plugin-restart-notice plugin-panel-restart" + (pluginRestartPending ? " visible" : "");
-    notice.textContent = "Restart the app to apply plugin changes.";
+    const noticeText = document.createElement("span");
+    noticeText.textContent = "Restart the app to apply plugin changes.";
+    notice.appendChild(noticeText);
+    notice.appendChild(createRestartButton());
     header.appendChild(notice);
     return header;
   }
@@ -727,27 +859,334 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  if (btnImportPlugin) {
-    btnImportPlugin.addEventListener("click", function () {
-      pluginImportStatus.textContent = "";
-      pluginImportStatus.className = "plugin-import-status";
-      window.backupAPI.importPlugin().then(function (result) {
-        if (result.cancelled) return;
-        if (result.success) {
-          pluginImportStatus.textContent = "Imported \"" + (result.name || result.id) + "\". Restart to activate.";
-          pluginImportStatus.className = "plugin-import-status success";
-          showRestartNotice();
-          loadPluginInfo();
-        } else {
-          pluginImportStatus.textContent = result.error || "Import failed.";
-          pluginImportStatus.className = "plugin-import-status error";
-        }
-      }).catch(function (err) {
-        pluginImportStatus.textContent = "Import error: " + (err.message || err);
+  function importPlugin(kind) {
+    pluginImportStatus.textContent = "";
+    pluginImportStatus.className = "plugin-import-status";
+    window.backupAPI.importPlugin(kind).then(function (result) {
+      if (result.cancelled) return;
+      if (result.success) {
+        pluginImportStatus.textContent = "Imported \"" + (result.name || result.id) + "\". Restart to activate.";
+        pluginImportStatus.className = "plugin-import-status success";
+        showRestartNotice();
+        refreshDirectoryState();
+      } else {
+        pluginImportStatus.textContent = result.error || "Import failed.";
         pluginImportStatus.className = "plugin-import-status error";
-      });
+      }
+    }).catch(function (err) {
+      pluginImportStatus.textContent = "Import error: " + (err.message || err);
+      pluginImportStatus.className = "plugin-import-status error";
     });
   }
+
+  if (btnImportPlugin) btnImportPlugin.addEventListener("click", function () { importPlugin("file"); });
+  if (btnImportFolder) btnImportFolder.addEventListener("click", function () { importPlugin("folder"); });
+
+  // ==================== Plugin directory (Browse) ====================
+  //
+  // main.js (plugin-directory.js) fetches the directory's index and keeps track
+  // of installs waiting for restart. This view lists the directory by category.
+
+  let directoryState = null;
+  let browseFilter = "all";
+  let browseChecked = false;
+
+  function createRestartButton() {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-small btn-secondary plugin-restart-now";
+    btn.textContent = "Restart Now";
+    btn.addEventListener("click", restartApp);
+    return btn;
+  }
+
+  function restartApp() {
+    window.backupAPI.restartApp();
+  }
+  document.querySelectorAll("#plugin-restart-notice .plugin-restart-now").forEach(function (btn) {
+    btn.addEventListener("click", restartApp);
+  });
+
+  function showPluginView(view) {
+    pluginViewTabs.forEach(function (tab) {
+      const on = tab.dataset.view === view;
+      tab.classList.toggle("active", on);
+      tab.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    document.querySelectorAll(".plugin-view").forEach(function (el) {
+      const on = el.id === "plugin-view-" + view;
+      el.classList.toggle("active", on);
+      el.hidden = !on;
+    });
+    if (view === "browse" && !browseChecked) {
+      browseChecked = true;
+      if (!directoryState || !directoryState.fetchedAt) checkDirectory();
+    }
+  }
+
+  pluginViewTabs.forEach(function (tab) {
+    tab.addEventListener("click", function () { showPluginView(tab.dataset.view); });
+  });
+
+  pluginBrowseFilterBtns.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      browseFilter = btn.dataset.filter || "all";
+      pluginBrowseFilterBtns.forEach(function (b) {
+        const on = b === btn;
+        b.classList.toggle("active", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      renderBrowseList();
+    });
+  });
+
+  function formatSize(bytes) {
+    if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    return Math.max(1, Math.round(bytes / 1024)) + " KB";
+  }
+
+  function formatAgo(ms) {
+    const mins = Math.floor((Date.now() - ms) / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return mins + (mins === 1 ? " minute ago" : " minutes ago");
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return hours + (hours === 1 ? " hour ago" : " hours ago");
+    return new Date(ms).toLocaleDateString();
+  }
+
+  function setDirectoryState(state) {
+    if (!state) return;
+    directoryState = state;
+    const count = state.updates.length;
+    pluginUpdateCounts.forEach(function (el) {
+      if (!el) return;
+      el.hidden = count === 0;
+      el.textContent = String(count);
+      el.title = count + (count === 1 ? " plugin update" : " plugin updates");
+    });
+    if (btnPluginUpdateAll) {
+      btnPluginUpdateAll.hidden = count === 0;
+      btnPluginUpdateAll.textContent = count > 1 ? "Update All (" + count + ")" : "Update";
+    }
+    if (pluginDirectoryStatus) {
+      if (state.error) pluginDirectoryStatus.textContent = "Can't reach the plugin directory: " + state.error;
+      else if (state.fetchedAt) pluginDirectoryStatus.textContent = state.plugins.length + " plugins in the directory · checked " + formatAgo(state.fetchedAt);
+      else pluginDirectoryStatus.textContent = "Not checked yet.";
+    }
+    if (state.pending.install.length || state.pending.remove.length) showRestartNotice();
+    renderBrowseList();
+    renderPluginList();
+  }
+
+  function refreshDirectoryState() {
+    return Promise.all([window.backupAPI.getPluginDirectory(), loadPluginInfo()]).then(function (r) {
+      setDirectoryState(r[0]);
+    }).catch(function (err) {
+      console.error("[Settings] Failed to load the plugin directory:", err);
+    });
+  }
+
+  function checkDirectory() {
+    if (btnPluginDirCheck) btnPluginDirCheck.disabled = true;
+    if (pluginDirectoryStatus) pluginDirectoryStatus.textContent = "Checking the plugin directory…";
+    return window.backupAPI.checkPluginDirectory().then(setDirectoryState).catch(function (err) {
+      if (pluginDirectoryStatus) pluginDirectoryStatus.textContent = "Check failed: " + (err.message || err);
+    }).finally(function () {
+      if (btnPluginDirCheck) btnPluginDirCheck.disabled = false;
+    });
+  }
+
+  if (btnPluginDirCheck) btnPluginDirCheck.addEventListener("click", checkDirectory);
+
+  function reportInstall(promise, busyText) {
+    pluginBrowseStatus.textContent = busyText;
+    pluginBrowseStatus.className = "plugin-import-status";
+    pluginBrowseList.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+    if (btnPluginUpdateAll) btnPluginUpdateAll.disabled = true;
+    return promise.then(function (result) {
+      const names = (result && result.staged || []).map(function (s) { return s.name + " " + s.version; });
+      if (result && result.success) {
+        pluginBrowseStatus.textContent = names.length
+          ? "Downloaded " + names.join(", ") + ". Restart to finish."
+          : "Nothing to update.";
+        pluginBrowseStatus.className = "plugin-import-status success";
+        if (names.length) showRestartNotice();
+      } else {
+        pluginBrowseStatus.textContent = (names.length ? "Downloaded " + names.join(", ") + ", then: " : "") +
+          ((result && result.error) || "Install failed.");
+        pluginBrowseStatus.className = "plugin-import-status error";
+        if (names.length) showRestartNotice();
+      }
+    }).catch(function (err) {
+      pluginBrowseStatus.textContent = "Install error: " + (err.message || err);
+      pluginBrowseStatus.className = "plugin-import-status error";
+    }).finally(function () {
+      if (btnPluginUpdateAll) btnPluginUpdateAll.disabled = false;
+      refreshDirectoryState();
+    });
+  }
+
+  if (btnPluginUpdateAll) {
+    btnPluginUpdateAll.addEventListener("click", function () {
+      reportInstall(window.backupAPI.updateAllPlugins(), "Downloading updates…");
+    });
+  }
+
+  function directoryName(id) {
+    const e = directoryState && directoryState.plugins.find(function (p) { return p.id === id; });
+    if (e) return e.name;
+    const p = findPlugin(id);
+    return p ? p.name || id : id;
+  }
+
+  // The button (or state text) on the right of a directory card.
+  function buildBrowseAction(entry) {
+    const wrap = document.createElement("div");
+    wrap.className = "plugin-item-actions";
+    function stateText(text) {
+      const el = document.createElement("span");
+      el.className = "plugin-item-state";
+      el.textContent = text;
+      wrap.appendChild(el);
+    }
+    function button(label, cls, onClick) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-small " + cls;
+      btn.textContent = label;
+      btn.addEventListener("click", onClick);
+      wrap.appendChild(btn);
+      return btn;
+    }
+    const install = function () {
+      const needs = entry.requires.filter(function (r) { return !findPlugin(r); });
+      const label = needs.length
+        ? "Downloading " + entry.name + " and " + needs.map(directoryName).join(", ") + "…"
+        : "Downloading " + entry.name + "…";
+      reportInstall(window.backupAPI.installFromDirectory([entry.id]), label);
+    };
+
+    if (entry.pendingAction === "remove") {
+      stateText("Removed on restart");
+      button("Keep", "btn-secondary", function () { cancelPluginChange(entry.id); });
+    } else if (entry.pendingAction) {
+      stateText((entry.pendingAction === "install" ? "Installs" : "Updates to v" + entry.pendingVersion) + " on restart");
+      button("Cancel", "btn-secondary", function () { cancelPluginChange(entry.id); });
+    } else if (entry.status === "incompatible") {
+      stateText("Needs MSP++ " + entry.minAppVersion);
+    } else if (entry.status === "update") {
+      button("Update to v" + entry.version, "btn-primary", install);
+    } else if (entry.status === "installed") {
+      stateText("Installed");
+    } else {
+      button("Install", "btn-primary", install);
+    }
+    return wrap;
+  }
+
+  function buildBrowseItem(entry) {
+    const item = document.createElement("div");
+    item.className = "plugin-list-item plugin-browse-item";
+    const info = document.createElement("div");
+    info.className = "plugin-item-info";
+
+    const header = document.createElement("div");
+    header.className = "plugin-item-header";
+    const name = document.createElement("span");
+    name.className = "plugin-item-name";
+    name.textContent = entry.name;
+    header.appendChild(name);
+    const ver = document.createElement("span");
+    ver.className = "plugin-item-version";
+    ver.textContent = entry.status === "update"
+      ? "v" + entry.installedVersion + " → v" + entry.version
+      : "v" + (entry.installedVersion && entry.status === "installed" ? entry.installedVersion : entry.version);
+    header.appendChild(ver);
+    if (entry.installedSource === "bundled") {
+      const b = document.createElement("span");
+      b.className = "plugin-badge plugin-badge-bundled";
+      b.textContent = "Bundled";
+      header.appendChild(b);
+    }
+    info.appendChild(header);
+
+    if (entry.description) {
+      const desc = document.createElement("div");
+      desc.className = "plugin-item-desc";
+      desc.textContent = entry.description;
+      info.appendChild(desc);
+    }
+    const meta = [formatSize(entry.size)];
+    if (entry.requires.length) meta.push("Needs " + entry.requires.map(directoryName).join(", "));
+    if (entry.minAppVersion) meta.push("MSP++ " + entry.minAppVersion + "+");
+    const metaEl = document.createElement("div");
+    metaEl.className = "plugin-item-meta";
+    metaEl.textContent = meta.join(" · ");
+    if (entry.changelog) metaEl.title = entry.changelog;
+    info.appendChild(metaEl);
+
+    item.appendChild(info);
+    item.appendChild(buildBrowseAction(entry));
+    return item;
+  }
+
+  function renderBrowseList() {
+    if (!pluginBrowseList) return;
+    pluginBrowseList.innerHTML = "";
+    const entries = directoryState ? directoryState.plugins : [];
+    if (entries.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "plugin-list-empty";
+      empty.textContent = directoryState && directoryState.error
+        ? "The plugin directory couldn't be loaded. Your installed plugins still work."
+        : directoryState && directoryState.fetchedAt ? "The plugin directory is empty." : "Loading the plugin directory…";
+      pluginBrowseList.appendChild(empty);
+      return;
+    }
+    // groupPlugins counts "enabled"; here that means installed.
+    const forGrouping = entries.map(function (e) {
+      return Object.assign({}, e, { enabled: e.status === "installed" || e.status === "update" });
+    });
+    let shown = 0;
+    window.PluginCategories.groupPlugins(forGrouping).forEach(function (group) {
+      const visible = group.plugins.filter(function (e) {
+        if (browseFilter === "available") return e.status === "available" || e.status === "incompatible";
+        if (browseFilter === "updates") return e.status === "update";
+        return true;
+      });
+      if (visible.length === 0) return;
+      shown += visible.length;
+      const section = document.createElement("section");
+      section.className = "plugin-category";
+      section.dataset.category = group.name;
+      const head = document.createElement("div");
+      head.className = "plugin-category-header";
+      const title = document.createElement("h4");
+      title.className = "plugin-category-title";
+      title.textContent = group.name;
+      head.appendChild(title);
+      const count = document.createElement("span");
+      count.className = "plugin-category-count" + (group.enabledCount === 0 ? " all-off" : "");
+      count.textContent = group.enabledCount + " of " + group.plugins.length + " installed";
+      head.appendChild(count);
+      section.appendChild(head);
+      const items = document.createElement("div");
+      items.className = "plugin-category-items";
+      visible.forEach(function (e) { items.appendChild(buildBrowseItem(e)); });
+      section.appendChild(items);
+      pluginBrowseList.appendChild(section);
+    });
+    if (shown === 0) {
+      const empty = document.createElement("p");
+      empty.className = "plugin-list-empty";
+      empty.textContent = browseFilter === "updates" ? "Your plugins are up to date." : "You've installed everything in the directory.";
+      pluginBrowseList.appendChild(empty);
+    }
+  }
+
+  window.backupAPI.onPluginDirectoryStatus(function (state) {
+    loadPluginInfo().then(function () { setDirectoryState(state); });
+  });
 
   // ==================== Startup ====================
 
@@ -756,6 +1195,7 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   const pluginInfoLoaded = loadPluginInfo();
+  window.backupAPI.getPluginDirectory().then(setDirectoryState).catch(function () { /* shown when Browse opens */ });
 
   window.backupAPI.loadSettings().then(function (settings) {
     applySettingsForm(settings);

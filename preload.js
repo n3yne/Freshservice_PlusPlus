@@ -69,5 +69,14 @@ contextBridge.exposeInMainWorld("backupAPI", {
     ipcRenderer.send("plugin-event-from-renderer", { name, data }),
   getPluginInfo: () => ipcRenderer.invoke("plugin-get-info"),
   setPluginEnabled: (id, enabled) => ipcRenderer.invoke("plugin-set-enabled", { id, enabled }),
-  importPlugin: () => ipcRenderer.invoke("plugin-import"),
+  importPlugin: (kind) => ipcRenderer.invoke("plugin-import", kind === "folder" ? "folder" : "file"),
+  removePlugin: (id, deleteData) => ipcRenderer.invoke("plugin-remove", { id, deleteData: deleteData === true }),
+  cancelPluginChange: (id) => ipcRenderer.invoke("plugin-cancel-pending", id),
+  getPluginDirectory: () => ipcRenderer.invoke("plugin-directory-state"),
+  checkPluginDirectory: () => ipcRenderer.invoke("plugin-directory-check"),
+  installFromDirectory: (ids) => ipcRenderer.invoke("plugin-directory-install", ids),
+  updateAllPlugins: () => ipcRenderer.invoke("plugin-directory-update-all"),
+  onPluginDirectoryStatus: (callback) =>
+    onIpc("plugin-directory-status", (event, state) => callback(state)),
+  restartApp: () => ipcRenderer.invoke("restart-app"),
 });

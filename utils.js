@@ -30,6 +30,10 @@ const DEFAULT_SETTINGS = {
   // Coloured stripe on tabs of site plugins (Freshservice, ConnectWise). Per-site
   // colours the user picked live in siteTabColorOverrides; see site-colors.js.
   siteTabColors: true,
+  // Plugins installed from the plugin directory: download updates by themselves
+  // (applied at the next start). Off: show them in Settings > Plugins > Browse
+  // and the notifications list. See plugin-directory.js.
+  pluginAutoUpdate: false,
 };
 
 function validateSettings(s) {
@@ -50,6 +54,7 @@ function validateSettings(s) {
   if (s.restoreTabs !== undefined && typeof s.restoreTabs !== "boolean") return false;
   if (s.unreadTabBadges !== undefined && typeof s.unreadTabBadges !== "boolean") return false;
   if (s.siteTabColors !== undefined && typeof s.siteTabColors !== "boolean") return false;
+  if (s.pluginAutoUpdate !== undefined && typeof s.pluginAutoUpdate !== "boolean") return false;
   if (!SiteColors.validOverrides(s.siteTabColorOverrides)) return false;
   if (s.dismissedReleaseVersion !== undefined && (typeof s.dismissedReleaseVersion !== "string" || s.dismissedReleaseVersion.length > 20)) return false;
   return true;
