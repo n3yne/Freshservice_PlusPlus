@@ -378,9 +378,8 @@ body {
 /* ===== Panel Header (side panel tab strip) ===== */
 #panel-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  align-items: flex-end;
+  gap: 4px;
   padding: 6px 10px 0;
   background: var(--header-bg);
   border-bottom: 1px solid var(--border);
@@ -388,12 +387,74 @@ body {
 }
 
 #side-panel-tabs {
+  flex: 1;
   display: flex;
   align-items: flex-end;
   gap: 2px;
   min-width: 0;
+}
+
+/* Default: tabs wrap onto more rows. Each row is a run of folder tabs; only the
+   last row touches the panel body, so the earlier rows get a bottom border. */
+#panel-header.tabs-wrap #side-panel-tabs {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+#panel-header.tabs-wrap .side-panel-tab {
+  border-radius: 6px;
+  border-bottom: 1px solid transparent;
+  margin-bottom: 4px;
+}
+
+#panel-header.tabs-wrap .side-panel-tab.active {
+  border-bottom-color: var(--border);
+}
+
+#panel-header.tabs-wrap {
+  align-items: flex-start;
+}
+
+#panel-header.tabs-wrap #panel-header-buttons {
+  padding-bottom: 4px;
+}
+
+/* Scroll setting: one row that scrolls sideways, with arrow buttons at the ends. */
+#panel-header.tabs-scroll #side-panel-tabs {
+  flex-wrap: nowrap;
   overflow-x: auto;
   scrollbar-width: none;
+}
+
+.side-panel-scroll {
+  display: none;
+  align-self: center;
+  flex-shrink: 0;
+  margin-bottom: 4px;
+  width: 20px;
+  height: 22px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.side-panel-scroll.visible {
+  display: block;
+}
+
+.side-panel-scroll:hover:not(:disabled) {
+  background: var(--border);
+  color: var(--text);
+}
+
+.side-panel-scroll:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 #side-panel-tabs::-webkit-scrollbar {
@@ -444,20 +505,21 @@ body {
   flex-shrink: 0;
 }
 
+/* Hide button: a plain ✕ like the metrics bar's hide button. */
 #btn-toggle-panel {
   background: none;
-  border: 1px solid var(--border);
+  border: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 3px 8px;
+  padding: 2px 6px;
   border-radius: 4px;
-  font-size: 12px;
-  transition: all 0.2s;
+  font-size: 14px;
+  line-height: 1;
 }
 
 #btn-toggle-panel:hover {
-  color: var(--primary);
-  border-color: var(--primary);
+  background: var(--border);
+  color: var(--text);
 }
 
 /* ===== Side Panel Body: one view per tab, only the active one shown ===== */

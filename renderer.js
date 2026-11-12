@@ -7,6 +7,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const sidePanel = document.getElementById("side-panel");
   const sidePanelTabsEl = document.getElementById("side-panel-tabs");
   const sidePanelBody = document.getElementById("side-panel-body");
+  const sidePanelScrollLeft = document.getElementById("side-panel-scroll-left");
+  const sidePanelScrollRight = document.getElementById("side-panel-scroll-right");
   const resizeHandle = document.getElementById("resize-handle");
   const btnToggle = document.getElementById("btn-toggle-panel");
   const btnExpand = document.getElementById("btn-expand-panel");
@@ -76,6 +78,7 @@ document.addEventListener("DOMContentLoaded", function () {
     sidePanelEnabled: true,
     panelCollapsed: false,
     sidePanelTab: "",
+    sidePanelTabScroll: false,
     defaultUrl: "about:blank",
     theme: "dark",
     dismissedReleaseVersion: "",
@@ -87,6 +90,7 @@ document.addEventListener("DOMContentLoaded", function () {
     panelCollapsed = settings.panelCollapsed || false;
     document.body.setAttribute("data-theme", settings.theme || "dark");
     updateSidePanelVisibility();
+    applySidePanelTabLayout();
   }
 
   // ==================== Download Manager ====================
@@ -439,6 +443,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     if (previous && previous !== tab) previous.onHide.forEach(function (fn) { try { fn(); } catch (e) { console.error("[SidePanel]", e); } });
     if (previous !== tab) tab.onShow.forEach(function (fn) { try { fn(); } catch (e) { console.error("[SidePanel]", e); } });
+    revealSidePanelTab(tab);
     if (remember && appSettings.sidePanelTab !== id) {
       appSettings.sidePanelTab = id;
       window.backupAPI.saveSettings({ sidePanelTab: id });
@@ -502,6 +507,7 @@ document.addEventListener("DOMContentLoaded", function () {
       button.tabIndex = -1;
     }
     updateSidePanelVisibility();
+    updateSidePanelScrollButtons();
 
     return Object.freeze({
       id,
@@ -526,6 +532,69 @@ document.addEventListener("DOMContentLoaded", function () {
     next.button.focus();
     e.preventDefault();
   });
+
+  // ==================== Side Panel Tab Strip Layout ====================
+  //
+  // By default the tabs wrap onto more rows so every tab is visible. With the
+  // "Scroll Side Panel Tabs" setting they stay on one row that scrolls sideways:
+  // arrow buttons appear at either end while tabs are cut off, the mouse wheel
+  // scrolls the row, and the active tab is scrolled into view.
+
+  const panelHeader = document.getElementById("panel-header");
+
+  function isSidePanelTabScroll() {
+    return appSettings.sidePanelTabScroll === true;
+  }
+
+  function applySidePanelTabLayout() {
+    panelHeader.classList.toggle("tabs-scroll", isSidePanelTabScroll());
+    panelHeader.classList.toggle("tabs-wrap", !isSidePanelTabScroll());
+    if (activeSidePanelTab) revealSidePanelTab(activeSidePanelTab);
+    updateSidePanelScrollButtons();
+  }
+
+  function updateSidePanelScrollButtons() {
+    const el = sidePanelTabsEl;
+    const overflow = isSidePanelTabScroll() && el.scrollWidth - el.clientWidth > 1;
+    sidePanelScrollLeft.classList.toggle("visible", overflow);
+    sidePanelScrollRight.classList.toggle("visible", overflow);
+    sidePanelScrollLeft.disabled = !overflow || el.scrollLeft <= 0;
+    sidePanelScrollRight.disabled = !overflow || el.scrollLeft >= el.scrollWidth - el.clientWidth - 1;
+  }
+
+  function revealSidePanelTab(tab) {
+    if (!isSidePanelTabScroll() || !tab) return;
+    const el = sidePanelTabsEl;
+    const left = tab.button.offsetLeft - el.offsetLeft;
+    const right = left + tab.button.offsetWidth;
+    if (left < el.scrollLeft) el.scrollLeft = left;
+    else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth;
+  }
+
+  function scrollSidePanelTabs(direction) {
+    const el = sidePanelTabsEl;
+    el.scrollBy({ left: direction * Math.max(60, el.clientWidth * 0.7), behavior: "smooth" });
+  }
+
+  sidePanelScrollLeft.addEventListener("click", function () { scrollSidePanelTabs(-1); });
+  sidePanelScrollRight.addEventListener("click", function () { scrollSidePanelTabs(1); });
+  sidePanelTabsEl.addEventListener("scroll", updateSidePanelScrollButtons, { passive: true });
+
+  // The mouse wheel (or a touchpad's vertical swipe) scrolls the row sideways.
+  sidePanelTabsEl.addEventListener("wheel", function (e) {
+    if (!isSidePanelTabScroll()) return;
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (!delta) return;
+    sidePanelTabsEl.scrollLeft += e.deltaMode === 1 ? delta * 20 : delta;
+    e.preventDefault();
+  }, { passive: false });
+
+  // The panel can be resized and tabs change, so recheck whether the row overflows.
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(updateSidePanelScrollButtons).observe(sidePanelTabsEl);
+  }
+  new MutationObserver(updateSidePanelScrollButtons).observe(sidePanelTabsEl, { childList: true, subtree: true, characterData: true });
+  applySidePanelTabLayout();
 
   // ==================== Notes Facade ====================
   //

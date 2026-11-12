@@ -8,6 +8,9 @@ const DEFAULT_SETTINGS = {
   sidePanelEnabled: true,
   panelCollapsed: false,
   sidePanelTab: "",
+  // Side panel tab strip: false wraps the tabs onto more rows, true keeps one
+  // row that scrolls sideways (arrow buttons and the mouse wheel).
+  sidePanelTabScroll: false,
   // The first site plugin's start page replaces this (manifest "site.defaultUrl");
   // with no site plugin loaded, new tabs open blank.
   defaultUrl: "about:blank",
@@ -34,6 +37,7 @@ function validateSettings(s) {
     } catch { return false; }
   }
   if (!["dark", "light"].includes(s.theme)) return false;
+  if (s.sidePanelTabScroll !== undefined && typeof s.sidePanelTabScroll !== "boolean") return false;
   if (s.autoUpdate !== undefined && typeof s.autoUpdate !== "boolean") return false;
   if (s.restoreTabs !== undefined && typeof s.restoreTabs !== "boolean") return false;
   if (s.dismissedReleaseVersion !== undefined && (typeof s.dismissedReleaseVersion !== "string" || s.dismissedReleaseVersion.length > 20)) return false;
