@@ -65,6 +65,7 @@ window.pluginAPI.sites.register({
   readRecord: async (ctx) => …,// optional
   formatTitle(title) { … },    // optional
   recordLink(url) { … },       // optional
+  ticketUrl(query, ctx) { … }, // optional
   notes: { … },                // optional: note editor sync
   knowledge: { … },            // optional: knowledge base
 });
@@ -110,6 +111,18 @@ Optional. Shortens the tab title for pages this site owns (for example, strippin
 ### `recordLink(url) → string | null`
 
 Optional. A clean link to the record open at `url`, without view, filter or tab parameters, for the tab menu's **Copy Ticket Link**. Return `null` when the URL isn't a record page. The menu item shows for tabs on a site plugin's hosts or the Home URL's host, and is greyed out when no site returns a link. Keep it cheap and pure (no page access): it runs each time the tab menu opens.
+
+### `ticketUrl(query, ctx) → string | null`
+
+Optional. Ticket quick-open: turns what the user typed in the address bar (when it isn't a URL) into a link to that record, e.g. `12345` → `https://acme.freshservice.com/a/tickets/12345`. Return `null` when the query isn't one of yours or you don't know which instance to use. `ctx` is:
+
+| Field | Meaning |
+|---|---|
+| `active` | `true` when the active tab is on your site. Sites ask for a prefix (`CW-12345`) and accept a bare number only when active, except the one that owns bare numbers (Freshservice). |
+| `tabUrls` | The URLs of the open tabs, active tab first. Use the first one on your site to pick the instance. |
+| `homeUrl` | The user's Home URL. |
+
+The active tab's site is asked first, then the others in registration order; the first link returned is loaded in the active tab. Keep it cheap and pure (no page access).
 
 ### `notes` (note editor sync)
 
