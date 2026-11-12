@@ -592,6 +592,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (a.readRecord !== undefined && typeof a.readRecord !== "function") return "readRecord must be a function";
     if (a.formatTitle !== undefined && typeof a.formatTitle !== "function") return "formatTitle must be a function";
     if (a.recordLink !== undefined && typeof a.recordLink !== "function") return "recordLink must be a function";
+    if (a.ticketUrl !== undefined && typeof a.ticketUrl !== "function") return "ticketUrl must be a function";
     if (a.notes !== undefined) {
       const n = a.notes;
       if (!n || typeof n !== "object") return "notes must be an object";
@@ -605,6 +606,13 @@ document.addEventListener("DOMContentLoaded", function () {
       for (const k of ["fieldTypeLabel", "pushDelay", "onWatcherMessage"]) {
         if (n[k] !== undefined && typeof n[k] !== "function") return "notes." + k + " must be a function";
       }
+    }
+    if (a.reply !== undefined) {
+      const r = a.reply;
+      if (!r || typeof r !== "object") return "reply must be an object";
+      if (typeof r.buildInsertScript !== "function") return "reply.buildInsertScript(text) is required";
+      if (r.readContext !== undefined && typeof r.readContext !== "function") return "reply.readContext must be a function";
+      if (r.label !== undefined && typeof r.label !== "string") return "reply.label must be a string";
     }
     if (a.knowledge !== undefined) {
       const kb = a.knowledge;
@@ -626,6 +634,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }));
     }
     if (a.knowledge) out.knowledge = Object.freeze(Object.assign({ name: "Knowledge base" }, a.knowledge));
+    if (a.reply) out.reply = Object.freeze(Object.assign({ label: "reply box" }, a.reply));
     return Object.freeze(out);
   }
 
@@ -1239,13 +1248,29 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function navigateFromAddressBar() {
-    const url = window.AddressBar.parseAddress(addressInput.value);
+    const url = window.AddressBar.parseAddress(addressInput.value) || ticketAddressFor(addressInput.value);
     if (!url) {
       addressInput.classList.add("invalid");
       addressInput.select();
       return;
     }
     navigateActiveTab(url);
+  }
+
+  // Ticket quick-open: "12345" or "CW-12345" typed in the address bar becomes a
+  // link to that ticket. The site plugins build the link (ticketUrl in
+  // docs/sites.md) from the open tabs, active tab first, so they know which
+  // instance to use.
+  function ticketAddressFor(text) {
+    const active = tabs.find(function (t) { return t.id === activeTabId; });
+    const ordered = active ? [active].concat(tabs.filter(function (t) { return t !== active; })) : tabs.slice();
+    const tabUrls = ordered.map(function (t) { return getTabUrl(t.id); }).filter(isWebUrl);
+    const hit = window.AddressBar.ticketAddress(text, siteAdapters, {
+      activeSite: active ? siteForWebview(active.webview) : null,
+      tabUrls: tabUrls,
+      homeUrl: appSettings.defaultUrl || "",
+    });
+    return hit ? hit.url : null;
   }
 
   // Loads url (an http/https address) in the active tab, or a new tab if none is open.

@@ -65,7 +65,9 @@ window.pluginAPI.sites.register({
   readRecord: async (ctx) => …,// optional
   formatTitle(title) { … },    // optional
   recordLink(url) { … },       // optional
+  ticketUrl(query, ctx) { … }, // optional
   notes: { … },                // optional: note editor sync
+  reply: { … },                // optional: insert text into the reply box
   knowledge: { … },            // optional: knowledge base
 });
 ```
@@ -111,6 +113,18 @@ Optional. Shortens the tab title for pages this site owns (for example, strippin
 
 Optional. A clean link to the record open at `url`, without view, filter or tab parameters, for the tab menu's **Copy Ticket Link**. Return `null` when the URL isn't a record page. The menu item shows for tabs on a site plugin's hosts or the Home URL's host, and is greyed out when no site returns a link. Keep it cheap and pure (no page access): it runs each time the tab menu opens.
 
+### `ticketUrl(query, ctx) → string | null`
+
+Optional. Ticket quick-open: turns what the user typed in the address bar (when it isn't a URL) into a link to that record, e.g. `12345` → `https://acme.freshservice.com/a/tickets/12345`. Return `null` when the query isn't one of yours or you don't know which instance to use. `ctx` is:
+
+| Field | Meaning |
+|---|---|
+| `active` | `true` when the active tab is on your site. Sites ask for a prefix (`CW-12345`) and accept a bare number only when active, except the one that owns bare numbers (Freshservice). |
+| `tabUrls` | The URLs of the open tabs, active tab first. Use the first one on your site to pick the instance. |
+| `homeUrl` | The user's Home URL. |
+
+The active tab's site is asked first, then the others in registration order; the first link returned is loaded in the active tab. Keep it cheap and pure (no page access).
+
 ### `notes` (note editor sync)
 
 Lets the Notes tab pull from, push to and live-sync with the page's note field.
@@ -142,6 +156,23 @@ notes: {
   Only messages from a tab whose current URL your adapter claims, starting with your exact prefix, are accepted, at most one every 50 ms per tab.
 - **`pushDelay(type, siteState)`** returns how many milliseconds to wait after the user stops typing in the panel before a live push (0 to 10,000). Return `undefined` for the default: 500 ms for type `"editor"`, 300 ms for anything else.
 - **`siteState`** is a plain object per tab that only your adapter reads or writes. It's reset when the tab navigates. Use it to carry state from `onWatcherMessage` to `pushDelay` (for example, "the stopwatch popup is visible").
+
+### `reply` (reply box)
+
+Lets Canned Responses insert a saved reply into the ticket's reply box.
+
+```js
+reply: {
+  label: "reply or note editor",            // optional: shown in messages ("No reply or note editor is open")
+  buildInsertScript(text) { … },            // → page script that inserts text, → { type } | null
+  readContext: async (ctx) => ({ … }),      // optional: values for placeholders
+}
+```
+
+- **`buildInsertScript(text)`** returns a page script that inserts `text` (plain text, `\n` line breaks) **at the cursor** in the reply or note box on screen, and returns `{ type }`, or `null` when no box is open. Unlike `notes.buildPushScript` it must never replace what's already there. When the caret isn't in the box, add the text at the end. Embed the text with `JSON.stringify(text)`.
+- **`readContext({ webview, url, record })`** returns `{ requester, requesterFirstName, subject }` (any may be missing) for the open record, for placeholders such as `{{requester_first}}`. `record` is the `recordScript` result. It's only called when a reply uses one of those placeholders.
+
+Freshservice inserts into the Froala reply/note editor (or a note textarea) and reads the requester and subject through its API, falling back to the page. ConnectWise Manage pastes into the Draft.js notes editor (or the stopwatch notes when that popup is open) and reads the Contact and Summary fields from the page.
 
 ### `knowledge` (knowledge base)
 

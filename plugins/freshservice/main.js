@@ -158,6 +158,25 @@ module.exports = {
       }
     });
 
+    // Subject and requester of a ticket, for reply placeholders (Canned Responses).
+    api.handle("get-ticket-fields", async function (data) {
+      const ticketId = String((data && data.ticketId) || "");
+      if (!/^\d{1,12}$/.test(ticketId)) return { skipped: true, error: "Only tickets can be read through the API." };
+      const conn = connection();
+      if (conn.error) return conn;
+      const host = typeof data.host === "string" ? data.host.toLowerCase() : "";
+      if (host && host !== conn.domain) {
+        return { skipped: true, error: `The open page (${host}) isn't the configured Freshservice domain.` };
+      }
+      try {
+        const json = await apiGet(conn, `/tickets/${ticketId}?include=requester`);
+        return Object.assign({ ticketId }, ticketFields(json.ticket || {}));
+      } catch (err) {
+        api.log("get-ticket-fields failed:", err.message);
+        return { error: err.message || String(err) };
+      }
+    });
+
     // Searches the Solutions (knowledge base) articles the API key can see.
     // Returns short entries; use get-solution-article for an article's full text.
     api.handle("search-solutions", async function (data) {
@@ -301,7 +320,21 @@ module.exports = {
   formatAgent,
   formatTicketSummary,
   formatConversation,
+  ticketFields,
 };
+
+// The bits of a ticket that reply placeholders use.
+function ticketFields(ticket) {
+  const r = ticket && ticket.requester && typeof ticket.requester === "object" ? ticket.requester : {};
+  const clean = (v) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().substring(0, 200) : "");
+  const first = clean(r.first_name);
+  const name = clean(r.name) || [first, clean(r.last_name)].filter(Boolean).join(" ");
+  return {
+    subject: clean(ticket && ticket.subject),
+    requester: name,
+    requesterFirstName: first || (name ? name.split(" ")[0] : ""),
+  };
+}
 
 // Accepts "acme.freshservice.com", "https://acme.freshservice.com/a/tickets/1", etc.
 // and returns the lowercase hostname, or null if it isn't a plain https host.

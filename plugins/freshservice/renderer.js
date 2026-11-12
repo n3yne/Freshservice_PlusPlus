@@ -299,6 +299,133 @@
     })()`;
   }
 
+  // ==================== Reply box (canned responses) ====================
+  //
+  // Inserts text into the reply or note editor at the cursor, for plugins such as
+  // Canned Responses. Uses the same field finder as note sync (the focused editor,
+  // then the one last clicked into, then the first visible one). When the caret
+  // isn't in the field, the text goes at the end. Never replaces what's there.
+  function buildReplyInsertScript(plainText) {
+    return `(function() {
+      var text = ${JSON.stringify(String(plainText == null ? "" : plainText))};
+      ${FS_FIELD_HELPERS}
+
+      var el = fsFindField();
+      if (!el) return null;
+
+      if (el.tagName === 'TEXTAREA') {
+        el.focus();
+        var start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+        var end = typeof el.selectionEnd === 'number' ? el.selectionEnd : start;
+        var next = el.value.slice(0, start) + text + el.value.slice(end);
+        var setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+        setter.call(el, next);
+        try { el.setSelectionRange(start + text.length, start + text.length); } catch (e) { /* ignore */ }
+        el.dispatchEvent(new Event('input',  { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return { type: 'textarea' };
+      }
+
+      // Blank lines become paragraphs, single line breaks <br>, like the editor's own.
+      var escaped = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      var paras = escaped.split(/\\n\\s*\\n/);
+      var html = paras.length > 1
+        ? paras.map(function(p) { return '<p>' + (p.replace(/\\n/g, '<br>') || '<br>') + '</p>'; }).join('')
+        : escaped.replace(/\\n/g, '<br>');
+
+      // Keep the caret where the user left it; otherwise move it to the end.
+      el.focus();
+      var sel = window.getSelection();
+      var inside = sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).commonAncestorContainer);
+      if (!inside && sel) {
+        var range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+
+      // Froala first (v3/v4 global, then the v2 jQuery plugin) so its model, undo
+      // stack and Freshservice's bindings see the change.
+      try {
+        var inst = null;
+        if (window.FroalaEditor && Array.isArray(window.FroalaEditor.INSTANCES)) {
+          inst = window.FroalaEditor.INSTANCES.find(function(i) { return i && i.el === el; }) || null;
+        }
+        if (!inst && window.jQuery) {
+          var box = window.jQuery(el).closest('.fr-box').prev();
+          var data = box.length ? box.data('froala.editor') : null;
+          if (data && data.html) inst = data;
+        }
+        if (inst && inst.html && typeof inst.html.insert === 'function') {
+          inst.html.insert(html);
+          if (inst.undo && typeof inst.undo.saveStep === 'function') inst.undo.saveStep();
+          if (inst.events && typeof inst.events.trigger === 'function') inst.events.trigger('contentChanged');
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          return { type: 'editor' };
+        }
+      } catch (froalaErr) { /* fall through to the DOM path */ }
+
+      var ok = false;
+      try { ok = document.execCommand('insertHTML', false, html); } catch (cmdErr) { ok = false; }
+      if (!ok) {
+        el.insertAdjacentHTML('beforeend', html);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+      return { type: 'editor' };
+    })()`;
+  }
+
+  // Requester name and subject for placeholders such as {{requester_first}}.
+  // Read through the API when it's set up, else from the page.
+  const REPLY_CONTEXT_SCRIPT = `(function() {
+    function txt(el) { return el ? String(el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim() : ''; }
+    function first(selectors) {
+      for (var i = 0; i < selectors.length; i++) {
+        var el = document.querySelector(selectors[i]);
+        var t = txt(el);
+        if (t && t.length <= 200) return t;
+      }
+      return '';
+    }
+    return {
+      subject: first(['[data-test-id="ticket-subject"]', '.ticket-subject-heading', '.ticket-subject', 'h1']),
+      requester: first([
+        '[data-test-id="requester-name"]', '[data-test-id*="requester"] a',
+        '.requester-name', '.requester-info a', '.ticket-requester a', 'a[href*="/requesters/"]'
+      ])
+    };
+  })()`;
+
+  async function readReplyContext(ctx) {
+    const out = {};
+    const record = ctx && ctx.record;
+    if (record && record.kind === "ticket" && record.id) {
+      let host = "";
+      try { host = new URL(ctx.url).hostname; } catch { /* no host */ }
+      try {
+        const res = await api.invoke(PLUGIN_ID, "get-ticket-fields", { ticketId: record.id, host: host });
+        if (res && !res.error) {
+          if (res.subject) out.subject = res.subject;
+          if (res.requester) out.requester = res.requester;
+          if (res.requesterFirstName) out.requesterFirstName = res.requesterFirstName;
+        }
+      } catch { /* fall back to the page */ }
+    }
+    if ((!out.subject || !out.requester) && ctx && ctx.webview) {
+      try {
+        const page = await ctx.webview.executeJavaScript(REPLY_CONTEXT_SCRIPT);
+        if (page && !out.subject && page.subject) out.subject = page.subject;
+        if (page && !out.requester && page.requester) out.requester = page.requester;
+      } catch { /* nothing more to read */ }
+    }
+    return out;
+  }
+
   // ==================== Record detection ====================
   //
   // Freshservice is a single-page app whose record URLs carry the numeric ID:
@@ -410,6 +537,40 @@
     return m ? parsed.origin + "/" + m[1].toLowerCase() + "/" + m[2].toLowerCase() + "/" + m[3] : null;
   }
 
+  // Ticket quick-open (typing a number in the address bar): a link to that record
+  // on the Freshservice instance in use. Accepts "12345", "#12345", "INC-12345",
+  // "SR-12345", "FS-12345" for tickets and "CHN-45", "PRB-67", "RL-89" for
+  // changes, problems and releases. The instance comes from an open Freshservice
+  // tab (active tab first), then the API domain, then the Home URL. Freshworks
+  // sign-in hosts (freshworks.com, myfreshworks.com) aren't instances, so skipped.
+  const QUICK_OPEN_PATTERN = /^#?(?:(INC|SR|FS|CHN|PRB|RL)-?)?(\d{1,12})$/i;
+  const QUICK_OPEN_KINDS = { CHN: "changes", PRB: "problems", RL: "releases" };
+  const SIGN_IN_HOSTNAME_PATTERN = /(?:^|\.)(?:freshworks|myfreshworks)\.com$/i;
+
+  function instanceBase(url) {
+    let parsed;
+    try { parsed = new URL(url); } catch { return null; }
+    if (!matchesUrl(parsed.href) || SIGN_IN_HOSTNAME_PATTERN.test(parsed.hostname)) return null;
+    const portal = /^\/(helpdesk|itil)\//i.exec(parsed.pathname);
+    return { origin: parsed.origin, portal: portal ? portal[1].toLowerCase() : "a" };
+  }
+
+  function ticketUrl(query, ctx) {
+    const m = QUICK_OPEN_PATTERN.exec(String(query || "").trim());
+    if (!m) return null;
+    const c = ctx || {};
+    const candidates = (Array.isArray(c.tabUrls) ? c.tabUrls : []).slice();
+    if (apiHost()) candidates.push("https://" + apiHost() + "/");
+    candidates.push(c.homeUrl || settings.defaultUrl || "");
+    let base = null;
+    for (const u of candidates) { base = instanceBase(u); if (base) break; }
+    if (!base) return null;
+    const kind = QUICK_OPEN_KINDS[(m[1] || "").toUpperCase()] || "tickets";
+    // The old /helpdesk portal has no changes/problems/releases; use /a there.
+    const portal = kind === "tickets" || base.portal !== "helpdesk" ? base.portal : "a";
+    return base.origin + "/" + portal + "/" + kind + "/" + Number(m[2]);
+  }
+
   // ==================== Register ====================
 
   api.sites.register({
@@ -418,6 +579,7 @@
     shortName: "FS",
     matchesUrl: matchesUrl,
     recordLink: recordLink,
+    ticketUrl: ticketUrl,
     recordScript: TICKET_GRAB_SCRIPT,
     scrapeScript: SCRAPE_SCRIPT,
     readRecord: readRecord,
@@ -430,6 +592,11 @@
       fieldTypeLabel: function (type) { return type === "editor" ? "note editor" : "notes field"; },
       // Rich-text editors push after a slightly longer pause than plain textareas.
       pushDelay: function (type) { return type === "editor" ? 500 : 300; },
+    },
+    reply: {
+      label: "reply or note editor",
+      buildInsertScript: buildReplyInsertScript,
+      readContext: readReplyContext,
     },
     knowledge: {
       name: "Solutions",
