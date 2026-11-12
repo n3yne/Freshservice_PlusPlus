@@ -166,6 +166,7 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 - **Native settings window** – Settings open in a separate OS window (`Ctrl+,` or **Edit → Settings**); the main window stays fully usable while settings are open. Re-invoking the shortcut focuses the existing window rather than opening a second one
 - **Category sidebar** – Settings are organised into General and Plugins in a left-hand nav, with a tab for every installed plugin as an indented sub-item under Plugins
 - All settings are persisted to disk and applied to the main window immediately
+- **Move settings to another PC** – **Export Settings…** under **Settings → General → Move Settings to Another PC** saves your app and plugin settings, bookmarks, canned responses and which plugins are on to a `.json` file; **Import Settings…** on the other PC loads it. API keys are never in the file (they are encrypted for this PC and couldn't be read elsewhere), so enter them again on the new PC; importing keeps any keys already saved there. Notes, timers and other plugin data aren't included
 
 ---
 

@@ -191,6 +191,54 @@ document.addEventListener("DOMContentLoaded", function () {
   window.addEventListener("focus", refreshSitePermissions);
   refreshSitePermissions();
 
+  // ==================== Settings Export / Import ====================
+
+  const btnExportSettings = document.getElementById("btn-export-settings");
+  const btnImportSettings = document.getElementById("btn-import-settings");
+  const settingsTransferStatus = document.getElementById("settings-transfer-status");
+
+  function runSettingsTransfer(action, done) {
+    btnExportSettings.disabled = true;
+    btnImportSettings.disabled = true;
+    settingsTransferStatus.textContent = "";
+    action()
+      .then(function (result) {
+        if (!result || result.cancelled) return;
+        if (!result.success) {
+          settingsTransferStatus.textContent = result.error || "Something went wrong.";
+          return;
+        }
+        done(result);
+      })
+      .catch(function () { settingsTransferStatus.textContent = "Something went wrong."; })
+      .finally(function () {
+        btnExportSettings.disabled = false;
+        btnImportSettings.disabled = false;
+      });
+  }
+
+  btnExportSettings.addEventListener("click", function () {
+    runSettingsTransfer(window.backupAPI.exportSettings, function () {
+      settingsTransferStatus.textContent = "Exported. API keys weren't included.";
+    });
+  });
+
+  btnImportSettings.addEventListener("click", function () {
+    runSettingsTransfer(window.backupAPI.importSettings, function (result) {
+      settingsTransferStatus.textContent = result.restartNeeded
+        ? "Imported. Restart the app to apply the plugin changes."
+        : "Imported.";
+      // Plugin on/off switches may have changed; the settings themselves arrive
+      // through settings-changed like any other save.
+      loadPluginInfo().then(function () {
+        plugins.forEach(function (p) {
+          (pluginToggles.get(p.id) || []).forEach(function (cb) { cb.checked = p.enabled; });
+        });
+        if (result.restartNeeded) showRestartNotice();
+      });
+    });
+  });
+
   const defaultUrlSave = debounce(function () {
     const val = settingDefaultUrl.value.trim();
     try {

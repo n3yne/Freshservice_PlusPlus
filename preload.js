@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld("backupAPI", {
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
   getSitePermissions: () => ipcRenderer.invoke("get-site-permissions"),
   clearSitePermissions: () => ipcRenderer.invoke("clear-site-permissions"),
+  exportSettings: () => ipcRenderer.invoke("export-settings"),
+  importSettings: () => ipcRenderer.invoke("import-settings"),
   getUpdateStatus: () => ipcRenderer.invoke("get-update-status"),
   downloadAppUpdate: () => ipcRenderer.invoke("download-app-update"),
   installAppUpdate: () => ipcRenderer.invoke("install-app-update"),
