@@ -2384,7 +2384,8 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // Asks each plugin provider for its items. Arrays count now; promises are
-  // added when they answer (or dropped after PALETTE_PROVIDER_TIMEOUT_MS).
+  // added when they answer (or dropped after the provider's timeout,
+  // PALETTE_PROVIDER_TIMEOUT_MS unless it asked for longer).
   function providerItems(query) {
     const now = [];
     const more = [];
@@ -2403,7 +2404,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (res && typeof res.then === "function") {
         more.push(Promise.race([
           res,
-          new Promise(function (resolve) { setTimeout(function () { resolve([]); }, PALETTE_PROVIDER_TIMEOUT_MS); }),
+          new Promise(function (resolve) { setTimeout(function () { resolve([]); }, p.timeout || PALETTE_PROVIDER_TIMEOUT_MS); }),
         ]).then(clean));
       } else {
         now.push.apply(now, clean(res));
@@ -2453,14 +2454,16 @@ document.addEventListener("DOMContentLoaded", function () {
           if (paletteCommands.get(cmd.id) === cmd) paletteCommands.delete(cmd.id);
         };
       },
-      // { id, group?, items(query) } where items returns an array of commands
-      // (or a promise of one) for what is typed, "" when nothing is.
+      // { id, group?, items(query), timeout? } where items returns an array of
+      // commands (or a promise of one) for what is typed, "" when nothing is.
+      // timeout: ms to wait for a promise (1000 to 15000, default 3000).
       // → a function that removes it.
       addProvider: function (opts) {
         const id = opts && typeof opts.id === "string" ? opts.id : "";
         if (!/^[a-z0-9][a-z0-9_-]{0,62}$/i.test(id)) throw new Error("commands.addProvider: invalid id");
         if (typeof opts.items !== "function") throw new Error("commands.addProvider: items must be a function");
-        const provider = { id, group: typeof opts.group === "string" && opts.group ? opts.group.slice(0, 40) : "Results", items: opts.items };
+        const timeout = Number.isFinite(opts.timeout) ? Math.min(15000, Math.max(1000, opts.timeout)) : 0;
+        const provider = { id, group: typeof opts.group === "string" && opts.group ? opts.group.slice(0, 40) : "Results", items: opts.items, timeout };
         paletteProviders.set(id, provider);
         palette.refresh();
         return function () {

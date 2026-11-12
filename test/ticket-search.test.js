@@ -38,6 +38,19 @@ describe("ticket-search renderer helpers", () => {
     expect(ts.pickSite([a, b, c], null, null)).toBe(a);
     expect(ts.pickSite([c], "c", null)).toBeNull();
   });
+
+  test("paletteEntry: label and subject, with the term kept as a keyword", () => {
+    const now = Date.parse("2026-11-12T12:00:00Z");
+    const t = { label: "#123", subject: "VPN down", requester: "Pat Lee", requesterEmail: "pat@example.com",
+      status: "Open", updatedAt: "2026-11-12T09:00:00Z", url: "https://acme.freshservice.com/a/tickets/123" };
+    expect(ts.paletteEntry(t, " pat ", 2, now)).toEqual({
+      id: "t2",
+      title: "#123  VPN down",
+      subtitle: "Pat Lee · Open · updated 3h ago",
+      keywords: ["pat", "#123", "Pat Lee", "pat@example.com"],
+    });
+    expect(ts.paletteEntry({ label: "", subject: "" }, "x", 0, now)).toMatchObject({ title: "(no subject)", keywords: ["x"] });
+  });
 });
 
 describe("ticket-search settings", () => {
