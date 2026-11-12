@@ -137,6 +137,14 @@ A **🕘 Recent** tab in the side panel listing the tickets you've viewed lately
 - **Settings → Plugins → Recent Tickets** sets how many tickets to remember (10 to 200; pinned ones don't count)
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
 
+### Follow-up Reminders
+A **⏰ Follow-ups** tab in the side panel for coming back to a ticket later.
+- **Set one in a click** – On any ticket (Freshservice, ConnectWise Manage, or any web page) pick **In 1 hour**, **In 3 hours**, **5 PM today**, **Tomorrow 9:00 AM**, **Monday 9:00 AM** or a date and time of your own, with an optional note. Also from a tab's right-click menu (**Remind Me to Follow Up…**) and the command palette (`Ctrl+K`, "Follow up")
+- **Desktop alert** – When it's due MSP++ shows a Windows notification and one under the bell; click either to open the ticket. Reminders that came due while MSP++ was closed go off when it next starts
+- **Due list** – Reminders that have gone off stay at the top under **Due** until you **💤 snooze** them (15 min, 1 hour, 3 hours, tomorrow or a time you pick) or mark them **✓ done** (with Undo). One reminder per ticket; setting a new time replaces it
+- **Settings → Plugins → Follow-up Reminders** turns the desktop alert and its sound on or off and sets what time "tomorrow" means (6 to 11 AM)
+- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes. After a suggestion is returned, a **Refine** textarea appears — type follow-up instructions (e.g. "make it shorter", "keep this as a client-facing message") and click **↺ Refine** to generate a revised version without losing the Apply option
 - **📋 Summarize** – Reads the ticket description, replies and notes from the open ticket (on Freshservice through the Freshservice API when it's set up, otherwise from the page; on ConnectWise Manage from the page) and asks the AI to produce a concise bullet-point summary
@@ -164,7 +172,7 @@ A **🕘 Recent** tab in the side panel listing the tickets you've viewed lately
 
 Extend the app with self-contained plugin directories — no build step required.
 
-- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **Time Tracker**, **Recent Tickets**, **Ticket Search**, **AI Features** and **Solutions Chat**
+- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **Time Tracker**, **Follow-up Reminders**, **Recent Tickets**, **Ticket Search**, **AI Features** and **Solutions Chat**
 - **User-installed plugins** – Drop a plugin folder into `%APPDATA%\MSP++\plugins\` (or `%APPDATA%\Freshservice++\plugins\` if you upgraded) for plugins that survive app updates
 - **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply. Every plugin gets a settings tab, and one with nothing to set up says so
 - **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed
