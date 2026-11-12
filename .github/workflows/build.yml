@@ -136,22 +136,46 @@ jobs:
           name: mac-build
           path: artifacts/
 
+      # The release is usually published on the GitHub page first, with notes
+      # (such as the generated "What's Changed"). Keep those: put the build
+      # block on top and the existing notes below it. The block sits between
+      # markers so a re-run replaces it instead of adding a second copy.
       - name: Build release notes
         env:
           CURRENT: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           PREV=$(git tag --sort=-version:refname | grep -v "^${CURRENT}$" | head -1)
+          START='<!-- msp-build-info:start -->'
+          END='<!-- msp-build-info:end -->'
+
+          # Existing notes, minus any build block an earlier run added.
+          # Empty when the release doesn't exist yet (tag pushed directly).
+          gh release view "$CURRENT" --repo "$GITHUB_REPOSITORY" --json body --jq .body > existing_body.md 2>/dev/null || : > existing_body.md
+          awk -v s="$START" -v e="$END" '
+            index($0, s) { skip = 1; next }
+            skip && index($0, e) { skip = 0; next }
+            !skip
+          ' existing_body.md | tr -d '\r' | sed -e '/./,$!d' > existing_notes.md
 
           {
+            echo "$START"
             echo "## MSP++ ${CURRENT}"
             echo ""
             echo "### Downloads"
             echo "- **Windows installer** — \`MSP-PlusPlus-Setup-${CURRENT#v}.exe\`, installs for just you (\`%LOCALAPPDATA%\\Programs\\MSP++\`, no admin) or everyone (\`C:\\Program Files\\MSP++\`); after that, MSP++ downloads and installs new versions itself"
             echo "- **Windows portable** — \`MSP++ ${CURRENT#v}.exe\`, no installation required (tells you about new versions but can't install them)"
             echo "- **macOS** — \`.dmg\` disk image, drag to Applications to install"
-            if [ -n "$PREV" ]; then
+            # Generated notes already end with a Full Changelog link.
+            if [ -n "$PREV" ] && ! grep -q "Full Changelog" existing_notes.md; then
               echo ""
               echo "**Full Changelog:** https://github.com/n3yne/MSP_PlusPlus/compare/${PREV}...${CURRENT}"
+            fi
+            echo ""
+            echo "$END"
+            if [ -s existing_notes.md ]; then
+              echo ""
+              cat existing_notes.md
             fi
           } > release_notes.md
 
