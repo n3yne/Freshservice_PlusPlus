@@ -55,7 +55,7 @@ Plugins get their own folder through `api.getDataPath()`. It is created the firs
 | File | Access | What it holds |
 |---|---|---|
 | `tree-tabs\tree.json` | R W | The Tree Style Tabs tree. |
-| `time-tracker\timers.json` | R W | Running and stopped timers. If it can't be read, it is kept as `timers.json.corrupt-<time>` and a new list is started. |
+| `time-tracker\timers.json` | R W | Running and stopped timers, and the log of time logged in the last 90 days (for the daily summary). If it can't be read, it is kept as `timers.json.corrupt-<time>` and a new list is started. |
 | `ticket-notifications\state.json` | R W | Which tickets and updates have already been seen. |
 | `ai-features\m365-token.dat` | R W D | The encrypted Microsoft 365 sign-in. Deleted when you sign out. |
 
