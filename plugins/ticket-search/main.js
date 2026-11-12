@@ -11,11 +11,13 @@ module.exports = {
   defaultSettings: {
     ticketSearchOpenIn: "new",
     ticketSearchDays: 30,
+    ticketSearchHoverPreview: true,
   },
 
   validateSettings: function (s) {
     if (s.ticketSearchOpenIn !== undefined && !OPEN_IN_CHOICES.includes(s.ticketSearchOpenIn)) return false;
     if (s.ticketSearchDays !== undefined && !DAY_CHOICES.includes(s.ticketSearchDays)) return false;
+    if (s.ticketSearchHoverPreview !== undefined && typeof s.ticketSearchHoverPreview !== "boolean") return false;
     return true;
   },
 

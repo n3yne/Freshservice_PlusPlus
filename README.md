@@ -129,6 +129,15 @@ A **🔎 Search** tab in the side panel that finds Freshservice tickets as you t
 - **Requirements** – the domain and API key in **Settings → Plugins → Freshservice**
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
 
+### Quick Actions
+A **⚡ Actions** tab in the side panel that changes the open ticket's status, priority, group and agent through the Freshservice API, without opening the ticket form.
+- **One click** – **👤 Assign to me**, **⏸ Pending** and **✔ Resolve** save straight away (Resolve asks first, since Freshservice may email the requester; turn that off in Settings)
+- **Status, priority, group, agent** – Pick new values and press **Save changes** (or **Undo**). Custom statuses from your Freshservice form are listed, and agents and groups come from the API (kept for 10 minutes; **↻** reloads them)
+- **The page catches up** – After a change the ticket's tab is reloaded so it shows the new values, unless you've typed something on the page, in which case you get a **Reload tab** button instead. Turn reloading off in **Settings → Plugins → Quick Actions**
+- **Command palette** – `Ctrl+K` has **Assign Ticket to Me**, **Resolve Ticket**, and **Set Ticket Status: …** / **Set Ticket Priority: …** for the open ticket
+- **Requirements** – the domain and API key in **Settings → Plugins → Freshservice**; the key's agent needs permission to edit tickets. Tickets only (not changes, problems or releases)
+- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+
 ### Recent Tickets
 A **🕘 Recent** tab in the side panel listing the tickets you've viewed lately, newest first.
 - **Every site** – A ticket is added when it shows in the active tab, on Freshservice (tickets, changes, problems, releases), ConnectWise Manage, or any site plugin that knows its tickets. Each entry shows the site, number, subject and when you last looked at it, grouped into Today, Yesterday, Earlier this week and Older
@@ -158,6 +167,7 @@ A **⏰ Follow-ups** tab in the side panel for coming back to a ticket later.
 - **Automatic fallback** – If the API is turned off, not set up, rate-limited or returns an error, or the open record is a change, problem or release, the page is read exactly as before
 - **Time entries** – The Time Tracker's **Log in Freshservice** adds time entries through the API. The key's agent needs permission to add time entries, and the entries are added for that agent
 - **Ticket search** – The Ticket Search tab searches tickets and requesters through the API. The key's agent needs permission to view tickets and requesters
+- **Quick actions** – The Actions tab changes a ticket's status, priority, group and agent through the API. The key's agent needs permission to edit tickets and list agents and groups
 - **Safe key storage** – The API key is encrypted with the operating system's credential storage, never sent to the main window, and only sent to the configured domain over https. The key is tied to the domain it was entered for: if you change the domain, enter the key again. **Test connection** checks it and **Remove key** deletes it
 - **Delivered as a bundled plugin** — part of the Freshservice plugin. To stop using the API but keep Freshservice support, untick **Read ticket details through the API**; turning the whole plugin off also turns off ticket detection and note sync on Freshservice pages
 
@@ -174,7 +184,7 @@ A **⏰ Follow-ups** tab in the side panel for coming back to a ticket later.
 
 Extend the app with self-contained plugin directories — no build step required.
 
-- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **Time Tracker**, **Follow-up Reminders**, **Recent Tickets**, **Ticket Search**, **AI Features** and **Solutions Chat**
+- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **Time Tracker**, **Follow-up Reminders**, **Recent Tickets**, **Ticket Search**, **Quick Actions**, **AI Features** and **Solutions Chat**
 - **User-installed plugins** – Drop a plugin folder into `%APPDATA%\MSP++\plugins\` (or `%APPDATA%\Freshservice++\plugins\` if you upgraded) for plugins that survive app updates
 - **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply. Every plugin gets a settings tab, and one with nothing to set up says so
 - **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed

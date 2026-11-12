@@ -753,6 +753,17 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!ts || typeof ts !== "object" || typeof ts.search !== "function") return "ticketSearch needs search(term, options)";
       if (ts.placeholder !== undefined && typeof ts.placeholder !== "string") return "ticketSearch.placeholder must be a string";
     }
+    if (a.ticketActions !== undefined) {
+      const ta = a.ticketActions;
+      if (!ta || typeof ta !== "object" || ["options", "get", "update"].some(function (k) { return typeof ta[k] !== "function"; })) {
+        return "ticketActions needs options(), get(ctx) and update(ctx, changes)";
+      }
+    }
+    if (a.ticketPreview !== undefined) {
+      const tp = a.ticketPreview;
+      if (!tp || typeof tp !== "object" || typeof tp.preview !== "function") return "ticketPreview needs preview(ref)";
+      if (tp.supports !== undefined && typeof tp.supports !== "function") return "ticketPreview.supports must be a function";
+    }
     if (a.timeEntry !== undefined) {
       const te = a.timeEntry;
       if (!te || typeof te !== "object" || typeof te.log !== "function") return "timeEntry needs log(ctx)";
@@ -776,6 +787,8 @@ document.addEventListener("DOMContentLoaded", function () {
     if (a.ticketSearch) {
       out.ticketSearch = Object.freeze(Object.assign({ placeholder: "Search " + (a.shortName || a.name) + " tickets" }, a.ticketSearch));
     }
+    if (a.ticketActions) out.ticketActions = Object.freeze(Object.assign({}, a.ticketActions));
+    if (a.ticketPreview) out.ticketPreview = Object.freeze(Object.assign({}, a.ticketPreview));
     if (a.timeEntry) {
       out.timeEntry = Object.freeze(Object.assign({}, a.timeEntry, {
         label: a.timeEntry.label || "Log in " + (a.shortName || a.name),
@@ -846,6 +859,11 @@ document.addEventListener("DOMContentLoaded", function () {
     const label = record && (record.label || record.ticket) ? String(record.label || record.ticket) : "";
     return { site: site, record: record, text: text, source: source, label: label };
   }
+
+  // The shared ticket preview hover card (pluginAPI.ui.attachTicketPreview).
+  const ticketPreviewCard = window.TicketPreview
+    ? window.TicketPreview.create(function (id) { return siteAdapters.find(function (si) { return si.id === id; }) || null; })
+    : null;
 
   const sitesFacade = Object.freeze({
     register: function (adapter) {
@@ -1023,6 +1041,12 @@ document.addEventListener("DOMContentLoaded", function () {
           },
           confirm: function (message, options) {
             return showConfirm(String(message || ""), !!(options && options.defaultYes));
+          },
+          // Shows a hover card with the ticket's status, requester and latest
+          // reply (from the site adapter's ticketPreview) when the mouse rests
+          // on el. Returns a function that detaches it. See ticket-preview.js.
+          attachTicketPreview: function (el, opts) {
+            return ticketPreviewCard ? ticketPreviewCard.attach(el, opts) : function () {};
           },
         }),
 
