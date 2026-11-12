@@ -31,19 +31,29 @@
       '    <span class="settings-toggle-label">Switch to the ticket\'s tab when it\'s already open (instead of opening another tab)</span>' +
       "  </label>" +
       '  <p class="settings-description">Pinned tickets don\'t count toward the limit.</p>' +
+      '  <label class="settings-toggle settings-toggle-spaced">' +
+      '    <input type="checkbox" id="plugin-rct-preview" />' +
+      '    <span class="settings-toggle-slider"></span>' +
+      '    <span class="settings-toggle-label">Preview a ticket when I rest the mouse on it (status, requester, agent and the latest reply)</span>' +
+      "  </label>" +
+      '  <p class="settings-description">Previews need the site\'s API (on Freshservice, the domain and API key under Freshservice). ' +
+      "    ConnectWise Manage tickets have no preview yet.</p>" +
       "</div>";
 
     const elMax = panel.querySelector("#plugin-rct-max");
     const elReuse = panel.querySelector("#plugin-rct-reuse");
+    const elPreview = panel.querySelector("#plugin-rct-preview");
 
     function populate(s) {
       elMax.value = String(s.recentTicketsMax || 50);
       elReuse.checked = s.recentTicketsReuseTab !== false;
+      elPreview.checked = s.recentTicketsHoverPreview !== false;
     }
     populate(settingsAPI.getSettings());
     settingsAPI.onSettingsChanged(populate);
 
     elMax.addEventListener("change", function () { settingsAPI.saveSettings({ recentTicketsMax: Number(elMax.value) }); });
     elReuse.addEventListener("change", function () { settingsAPI.saveSettings({ recentTicketsReuseTab: elReuse.checked }); });
+    elPreview.addEventListener("change", function () { settingsAPI.saveSettings({ recentTicketsHoverPreview: elPreview.checked }); });
   });
 })();

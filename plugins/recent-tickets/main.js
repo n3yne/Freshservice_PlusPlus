@@ -66,11 +66,13 @@ module.exports = {
   defaultSettings: {
     recentTicketsMax: 50,
     recentTicketsReuseTab: true,
+    recentTicketsHoverPreview: true,
   },
 
   validateSettings: function (s) {
     if (s.recentTicketsMax !== undefined && !MAX_CHOICES.includes(s.recentTicketsMax)) return false;
     if (s.recentTicketsReuseTab !== undefined && typeof s.recentTicketsReuseTab !== "boolean") return false;
+    if (s.recentTicketsHoverPreview !== undefined && typeof s.recentTicketsHoverPreview !== "boolean") return false;
     return true;
   },
 

@@ -11,6 +11,9 @@
 // For results of their own they can call a site's ticketSearch.search(term)
 // directly (see docs/sites.md).
 //
+// Resting the mouse on a result shows a preview card with the ticket's latest
+// reply, through the site's ticketPreview part (pluginAPI.ui.attachTicketPreview).
+//
 // The pure helpers at the top are exported for tests when loaded under Node.
 /* global module */
 (function () {
@@ -167,7 +170,29 @@
     setStatus("");
   }
 
-  function renderResults(list) {
+  // Hovering a result shows the ticket's latest reply (and what we already know
+  // from the search at once) in the app's preview card, when the site can.
+  function previewOn() { return settings.ticketSearchHoverPreview !== false; }
+  function attachPreview(item, t, site) {
+    if (!site || typeof api.ui.attachTicketPreview !== "function") return;
+    api.ui.attachTicketPreview(item, {
+      enabled: previewOn,
+      ref: {
+        siteId: site.id,
+        id: t.id,
+        kind: "ticket",
+        url: t.url,
+        label: t.label,
+        title: t.subject,
+        initial: {
+          label: t.label, subject: t.subject, status: t.status, priority: t.priority,
+          requester: t.requester, requesterEmail: t.requesterEmail, updatedAt: t.updatedAt,
+        },
+      },
+    });
+  }
+
+  function renderResults(list, site) {
     results = list;
     elList.innerHTML = "";
     const now = Date.now();
@@ -212,6 +237,7 @@
       item.addEventListener("click", function (e) {
         openResult(t, e.ctrlKey || e.metaKey ? "background" : null);
       });
+      attachPreview(item, t, site);
       item.addEventListener("auxclick", function (e) {
         if (e.button === 1) { e.preventDefault(); openResult(t, "background"); }
       });
@@ -272,7 +298,7 @@
     }
     resultsFor = key;
     const list = Array.isArray(res.tickets) ? res.tickets : [];
-    if (list.length) renderResults(list);
+    if (list.length) renderResults(list, site);
     else renderMessage("No tickets match “" + term + "”.");
     const notes = [];
     if (list.length) notes.push(list.length + (list.length === 1 ? " ticket" : " tickets") + ".");

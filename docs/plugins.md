@@ -375,6 +375,20 @@ window.pluginAPI.ui.notify({
 
 Shows the app's confirm dialog (use it instead of `window.confirm()`, which loses focus to the web page). Resolves `true` or `false`. Pass `{ defaultYes: true }` to focus **Yes**.
 
+#### `window.pluginAPI.ui.attachTicketPreview(el, opts)`
+
+Shows the app's ticket preview card (status, requester, agent and the latest reply) when the mouse rests on `el`, using the site adapter's `ticketPreview` part (see [sites.md](sites.md)). Nothing happens for sites without one. Returns a function that detaches it. While the card shows, `el`'s own `title` tooltip is hidden.
+
+```js
+const detach = window.pluginAPI.ui.attachTicketPreview(row, {
+  enabled: () => mySettings.preview !== false,   // optional
+  ref: { siteId: "freshservice", id: "48211", kind: "ticket", url: ticketUrl,
+         initial: { subject: "VPN down" } },     // or a function returning one
+});
+```
+
+`initial` fields show at once while the rest loads.
+
 #### `window.pluginAPI.ui.addToolbarButton(opts)`
 
 Appends a button to the note editor toolbar in the Notes tab. Returns the button element. The toolbar belongs to the Note Backup plugin, so the button appears once that plugin has loaded, and not at all while it is turned off.
@@ -644,6 +658,9 @@ pluginAPI.ui.notify(opts: {
 
 pluginAPI.ui.confirm(message: string, options?: { defaultYes?: boolean }): Promise<boolean>
 
+pluginAPI.ui.attachTicketPreview(el: HTMLElement, opts: {
+  ref: object | (() => object), enabled?: () => boolean
+}): () => void
 pluginAPI.ui.addToolbarButton(opts: {
   id?: string,
   label: string,

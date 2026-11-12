@@ -1702,3 +1702,94 @@ body[data-theme="light"] .downloads-panel {
 .plugin-panel-empty {
   font-style: italic;
 }
+
+/* ===== Ticket preview hover card (ticket-preview.js) ===== */
+.tp-card {
+  position: fixed;
+  z-index: 25000;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--panel-content-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.tp-card[hidden] {
+  display: none;
+}
+
+.tp-head {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.tp-subject {
+  margin: 2px 0 6px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tp-rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 0 0 6px;
+}
+
+.tp-rows dt {
+  color: var(--text-muted);
+}
+
+.tp-rows dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tp-reply {
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.tp-reply-head {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.tp-reply-note .tp-reply-head {
+  color: var(--saving-color);
+}
+
+.tp-reply-text {
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tp-muted {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.tp-busy {
+  font-style: italic;
+}
+
+.tp-error {
+  color: var(--warning);
+}
