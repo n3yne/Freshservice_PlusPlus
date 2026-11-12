@@ -19,6 +19,7 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 - **Tab management** – Pin tabs, duplicate (the copy opens next to the original), close others, reopen closed tabs (`Ctrl+Shift+T` puts a tab back where it was), copy URL, copy a clean ticket link (on Freshservice, ConnectWise and Home URL pages; greyed out when no ticket is open), open in default browser (right-click any tab). Tab shortcuts work while you're typing in a page too. Double-click an empty part of the tab bar to open a new tab
 - **Open in New Window** – Right-click a tab and choose **Open in New Window** to open its page in a plain browser window: just back, forward, reload and an address bar, with no tabs, side panel, metrics or bookmarks, so it can't be mistaken for the main window. It shares your sign-ins and closes when the main window closes. Links it opens go to tabs in the main window, and the ⇱ button moves its page to a tab. Right-clicking a link in a page also offers **Open Link in New Window**
 - **Page zoom** – `Ctrl`+mouse wheel, `Ctrl+=` / `Ctrl+-`, or **View → Zoom In / Zoom Out** zooms the page in the active tab (the app's own toolbar and side panel stay the same size). Zoom is kept per site, so other tabs on the same site follow along. When a tab isn't at 100%, its zoom level shows at the end of the address bar; click it or press `Ctrl+0` to reset
+- **Command palette** – `Ctrl+K` (or **View → Command Palette**) opens a search box over the page. Type to find an open tab, a bookmark, a side panel tab, a setting or an app command, and press `Enter`. A ticket number (`12345`, `CW-12345`) or an address opens straight away, as in the address bar; `Ctrl+Enter` opens a ticket, address or bookmark in a new tab. `Ctrl+K` works even while a page has focus, so in a ticket's reply editor it opens the palette instead of the editor's insert-link shortcut (use the editor's link button)
 - **Find in page** – `Ctrl+F` to search text on the current page, even on sites that use `Ctrl+F` for their own search; press it again to select the search text, `Escape` to close
 - **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions; a badge on the download icon shows how many files finished since you last opened the panel (resets when you open it)
 - **Passkey sign-in** – Sites that offer "sign in with a passkey" (for example Microsoft sign-in) work in tabs. On Windows the Windows Hello prompt handles this PC's passkeys, security keys and phones (scan the QR code); when a security key holds several accounts for a site, the app asks which one to use
@@ -176,6 +177,7 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 | `Ctrl+Shift+S` | Save snapshot |
 | `Ctrl+Shift+B` | Toggle side panel |
 | `Ctrl+Shift+V` | Paste as plain text (in note editor) |
+| `Ctrl+K` | Command palette |
 | `Ctrl+F` | Find in page |
 | `Ctrl+L` | Focus the address bar |
 | `Ctrl`+mouse wheel, `Ctrl+=` / `Ctrl+-` | Zoom the page in / out |

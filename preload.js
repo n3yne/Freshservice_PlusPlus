@@ -47,7 +47,8 @@ contextBridge.exposeInMainWorld("backupAPI", {
     onIpc("reload-active-tab", (event, options) => callback(options || {})),
   onSettingsChanged: (callback) =>
     onIpc("settings-changed", (event, settings) => callback(settings)),
-  openSettingsWindow: () => ipcRenderer.invoke("open-settings-window"),
+  openSettingsWindow: (target) => ipcRenderer.invoke("open-settings-window", target),
+  onSettingsShow: (callback) => onIpc("settings-show", (event, target) => callback(target)),
   getPluginScripts: () => ipcRenderer.invoke("plugin-get-scripts"),
   getPluginSettingsScripts: () => ipcRenderer.invoke("plugin-get-settings-scripts"),
   getPluginStylesheets: () => ipcRenderer.invoke("plugin-get-stylesheets"),

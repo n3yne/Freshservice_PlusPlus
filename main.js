@@ -311,8 +311,8 @@ function setupGuestContents(hostWin, webviewContents) {
       hostWin.webContents.send("page-zoom", { webContentsId: webviewContents.id, action: zoomAction });
       return;
     }
-    // Tab shortcuts (Ctrl+T, Ctrl+W, Ctrl+Shift+T, Ctrl+Tab, Ctrl+1 to 9) and
-    // Ctrl+F. Key presses in a page never reach the app window's document, and
+    // Tab shortcuts (Ctrl+T, Ctrl+W, Ctrl+Shift+T, Ctrl+Tab, Ctrl+1 to 9),
+    // Ctrl+F and Ctrl+K (command palette). Key presses in a page never reach the app window's document, and
     // a page that handles Ctrl+F itself would stop the Edit menu's Find.
     // Child windows have no tabs; their keys are handled above.
     if (hostWin !== mainWindow) return;
@@ -768,6 +768,15 @@ function setApplicationMenu() {
           },
         },
         {
+          label: "Command Palette...",
+          accelerator: "CmdOrCtrl+K",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("tab-shortcut", { action: "command-palette" });
+            }
+          },
+        },
+        {
           label: "Focus Address Bar",
           accelerator: "CmdOrCtrl+L",
           click: () => {
@@ -853,8 +862,19 @@ function saveMainWindowState(bounds, maximized) {
   }
 }
 
-function createSettingsWindow() {
+// target (optional): the part of Settings to show, { panel: "general" | "plugins" }
+// or { plugin: "<plugin id>" } for that plugin's tab. From the command palette.
+function settingsTarget(target) {
+  if (!target || typeof target !== "object") return null;
+  if (target.panel === "general" || target.panel === "plugins") return { panel: target.panel };
+  if (typeof target.plugin === "string" && /^[a-z0-9][a-z0-9_-]{0,62}$/.test(target.plugin)) return { plugin: target.plugin };
+  return null;
+}
+
+function createSettingsWindow(target) {
+  const show = settingsTarget(target);
   if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (show) settingsWindow.webContents.send("settings-show", show);
     settingsWindow.focus();
     return;
   }
@@ -892,7 +912,7 @@ function createSettingsWindow() {
     if (isWebUrl(url)) electron.shell.openExternal(url);
     return { action: "deny" };
   });
-  settingsWindow.loadFile("settings.html");
+  settingsWindow.loadFile("settings.html", show ? { query: show } : undefined);
   settingsWindow.on("closed", () => { settingsWindow = null; });
 }
 
@@ -965,8 +985,8 @@ function registerIpcHandlers() {
   });
 
   // Open (or focus) the settings window
-  electron.ipcMain.handle("open-settings-window", () => {
-    createSettingsWindow();
+  electron.ipcMain.handle("open-settings-window", (event, target) => {
+    createSettingsWindow(target);
   });
 
   // Load settings from disk (returns public form — aiApiKey stripped, aiApiKeySet added)

@@ -64,6 +64,18 @@
       </div>
     </div>
 
+    <!-- Command Palette (Ctrl+K): jump to a tab, ticket, bookmark, setting or command -->
+    <div id="command-palette" class="command-palette-overlay">
+      <div class="command-palette" role="dialog" aria-label="Command palette">
+        <input type="text" id="command-palette-input" class="command-palette-input"
+               placeholder="Search tabs, bookmarks, settings and commands, or type a ticket number"
+               autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true"
+               aria-controls="command-palette-list" aria-autocomplete="list" />
+        <div id="command-palette-list" class="command-palette-list" role="listbox"></div>
+        <div class="command-palette-footer">&#8593;&#8595; to move &middot; Enter to open &middot; Ctrl+Enter for a new tab &middot; Esc to close</div>
+      </div>
+    </div>
+
     <!-- Confirm Dialog (replaces native confirm() to avoid webview focus trap) -->
     <!-- Notifications Panel -->
     <div id="notifications-panel" class="downloads-panel">
@@ -146,6 +158,7 @@
     <script src="address-bar.js"></script>
     <script src="page-zoom.js"></script>
     <script src="tab-shortcuts.js"></script>
+    <script src="command-palette.js"></script>
     <script src="safe-html.js"></script>
     <script src="renderer.js"></script>
   </body>

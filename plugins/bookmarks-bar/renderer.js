@@ -533,6 +533,30 @@
     });
   }
 
+  // ---------- command palette (Ctrl+K) ----------
+  // Every bookmark is searchable there: Enter opens it in this tab, Ctrl+Enter
+  // in a new tab.
+  if (api.commands && typeof api.commands.addProvider === "function") {
+    api.commands.addProvider({
+      id: "bookmarks-bar",
+      group: "Bookmarks",
+      items: function () {
+        return items.map(function (b) {
+          let host = "";
+          try { host = new URL(b.url).hostname; } catch { /* checked by sanitize */ }
+          return {
+            id: b.id,
+            title: displayTitle(b),
+            subtitle: b.url,
+            keywords: host ? [host, "bookmark"] : ["bookmark"],
+            run: function () { open(b, "current"); },
+            runInNewTab: function () { open(b, "tab"); },
+          };
+        });
+      },
+    });
+  }
+
   // ---------- settings from other windows ----------
 
   api.events.on("settings:changed", function (s) {
