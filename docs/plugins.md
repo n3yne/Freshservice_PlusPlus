@@ -441,7 +441,7 @@ Interacts with the app's tab system and the active webview.
 | `browser.activateTab(tabId)` | `boolean` | Switches to the tab. `false` if no tab has that id |
 | `browser.closeTab(tabId)` | `boolean` | Closes the tab like its × button. `false` if no tab has that id or it is pinned (pinned tabs can't be closed) |
 
-A `TabInfo` is `{ tabId, webview, title, url, pinned, active }`: the tab's id, its `<webview>` element, the title shown on the tab, its address (the address it is loading if the page hasn't started yet), whether it is pinned and whether it is the active tab.
+A `TabInfo` is `{ tabId, webview, title, url, pinned, active, unread }`: the tab's id, its `<webview>` element, the title shown on the tab, its address (the address it is loading if the page hasn't started yet), whether it is pinned, whether it is the active tab, and whether it shows the unread badge (its page changed in the background since it was last viewed; `tab:updated` fires when that changes).
 
 Browser tabs also raise `tab:created`, `tab:activated`, `tab:updated` and `tab:closed` events (see [Events reference](#events-reference)). The Tree Style Tabs plugin (`plugins/tree-tabs`) is built on these. Tabs restored at startup are created before your script runs, so call `getTabs()` once as well as listening for `tab:created`. You can add your own listeners to a tab's `webview` (for example `did-navigate` or `console-message`); remove them on `tab:closed`.
 
@@ -636,7 +636,7 @@ pluginAPI.browser.getActiveTab(): TabInfo | null
 pluginAPI.browser.getTabs(): TabInfo[]
 pluginAPI.browser.activateTab(tabId: string): boolean
 pluginAPI.browser.closeTab(tabId: string): boolean
-// TabInfo = { tabId: string, webview: HTMLElement, title: string, url: string, pinned: boolean, active: boolean }
+// TabInfo = { tabId: string, webview: HTMLElement, title: string, url: string, pinned: boolean, active: boolean, unread: boolean }
 
 pluginAPI.getSettings(): AppSettings
 ```

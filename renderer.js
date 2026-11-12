@@ -83,6 +83,7 @@ document.addEventListener("DOMContentLoaded", function () {
     theme: "dark",
     dismissedReleaseVersion: "",
     autoUpdate: true,
+    unreadTabBadges: true,
   };
 
   function applySettings(settings) {
@@ -91,6 +92,31 @@ document.addEventListener("DOMContentLoaded", function () {
     document.body.setAttribute("data-theme", settings.theme || "dark");
     updateSidePanelVisibility();
     applySidePanelTabLayout();
+    if (!unreadBadgesEnabled()) tabs.forEach(function (t) { setTabUnread(t, false); });
+  }
+
+  // ==================== Unread Tab Badges ====================
+  // A dot on a background tab whose page changed on its own (see unread-tabs.js).
+
+  function unreadBadgesEnabled() {
+    return appSettings.unreadTabBadges !== false;
+  }
+
+  function setTabUnread(tab, unread) {
+    unread = !!unread;
+    if (!unread) window.UnreadTabs.viewed(tab.unread);
+    else tab.unread.unread = true;
+    if (tab.tabEl.classList.contains("tab-unread") === unread) return;
+    tab.tabEl.classList.toggle("tab-unread", unread);
+    if (tabs.indexOf(tab) !== -1) _busEmit("tab:updated", describeTab(tab));
+  }
+
+  // Records a title or favicon change and badges the tab if it's in the background.
+  function noteTabChange(tab, key, value) {
+    const isActive = tab.id === activeTabId;
+    const madeUnread = window.UnreadTabs.changed(tab.unread, key, value, isActive, Date.now());
+    if (madeUnread && unreadBadgesEnabled()) setTabUnread(tab, true);
+    else if (madeUnread) tab.unread.unread = false;
   }
 
   // ==================== Download Manager ====================
@@ -1080,6 +1106,7 @@ document.addEventListener("DOMContentLoaded", function () {
       url: url,
       pinned: !!tab.pinned,
       active: tab.id === activeTabId,
+      unread: tab.tabEl.classList.contains("tab-unread"),
     };
   }
 
@@ -1140,11 +1167,16 @@ document.addEventListener("DOMContentLoaded", function () {
     titleSpan.className = "tab-title";
     titleSpan.textContent = "Loading...";
 
+    const unreadDot = document.createElement("span");
+    unreadDot.className = "tab-unread-dot";
+    unreadDot.title = "Changed since you last looked";
+
     const closeBtn = document.createElement("button");
     closeBtn.className = "tab-close";
     closeBtn.innerHTML = "&times;";
     closeBtn.title = "Close tab";
 
+    tabEl.appendChild(unreadDot);
     tabEl.appendChild(titleSpan);
     tabEl.appendChild(closeBtn);
     tabList.appendChild(tabEl);
@@ -1157,6 +1189,7 @@ document.addEventListener("DOMContentLoaded", function () {
       title: "Loading...",
       pinned: false,
       pendingAddress: null, // URL typed in the address bar that hasn't committed yet
+      unread: window.UnreadTabs.createUnreadState(),
       _listeners: _listeners,
     };
     tabs.push(tabData);
@@ -1251,6 +1284,7 @@ document.addEventListener("DOMContentLoaded", function () {
           const display = cleanTitle(raw, webview);
           tabData.title = display;
           titleSpan.textContent = display;
+          noteTabChange(tabData, "title", display);
         }
       } catch {
         // webview may have been removed
@@ -1269,6 +1303,7 @@ document.addEventListener("DOMContentLoaded", function () {
         tabData.pendingAddress = null;
         if (activeTabId === id) updateAddressBar();
       }
+      window.UnreadTabs.loadStopped(tabData.unread, Date.now());
       updateTabTitle();
       saveTabSession();
     });
@@ -1278,11 +1313,17 @@ document.addEventListener("DOMContentLoaded", function () {
         const display = cleanTitle(e.title, webview);
         tabData.title = display;
         titleSpan.textContent = display;
+        noteTabChange(tabData, "title", display);
         emitTabUpdated();
       }
     });
 
+    on(webview, "page-favicon-updated", function (e) {
+      noteTabChange(tabData, "favicon", window.UnreadTabs.faviconKey(e && e.favicons));
+    });
+
     on(webview, "did-start-loading", function () {
+      window.UnreadTabs.loadStarted(tabData.unread, activeTabId === id);
       titleSpan.textContent = "Loading...";
     });
 
@@ -1521,6 +1562,8 @@ document.addEventListener("DOMContentLoaded", function () {
         tabHistory = tabHistory.slice(tabHistory.length - TAB_HISTORY_MAX);
       }
     }
+    const leaving = activeTabId && activeTabId !== id ? tabs.find(function (t) { return t.id === activeTabId; }) : null;
+    if (leaving) window.UnreadTabs.left(leaving.unread, Date.now());
     activeTabId = id;
 
     tabs.forEach(function (t) {
@@ -1537,7 +1580,10 @@ document.addEventListener("DOMContentLoaded", function () {
     updateAddressBar(true);
     updateZoomBadge();
     const activated = tabs.find(function (t) { return t.id === id; });
-    if (activated) _busEmit("tab:activated", describeTab(activated));
+    if (activated) {
+      setTabUnread(activated, false);
+      _busEmit("tab:activated", describeTab(activated));
+    }
 
     if (findActive && findInput.value) {
       const wv = getActiveWebview();
