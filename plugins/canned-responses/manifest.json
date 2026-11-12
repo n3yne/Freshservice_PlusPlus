@@ -1,7 +1,7 @@
 {
   "id": "canned-responses",
   "name": "Canned Responses",
-  "version": "0.7.5",
+  "version": "0.7.6-beta.1",
   "description": "Saved reply snippets in a side panel tab. Click one to insert it into the reply box of the ticket open in the tab (through a site plugin such as Freshservice or ConnectWise Manage), with placeholders for the requester, ticket and your name.",
   "main": "main.js",
   "renderer": "renderer.js",
