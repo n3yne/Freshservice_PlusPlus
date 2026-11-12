@@ -19,7 +19,7 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 - **Tab management** – Pin tabs, duplicate (the copy opens next to the original), close others, reopen closed tabs (`Ctrl+Shift+T` puts a tab back where it was), copy URL, copy a clean ticket link (on Freshservice, ConnectWise and Home URL pages; greyed out when no ticket is open), open in default browser (right-click any tab). Tab shortcuts work while you're typing in a page too. Double-click an empty part of the tab bar to open a new tab
 - **Open in New Window** – Right-click a tab and choose **Open in New Window** to open its page in a plain browser window: just back, forward, reload and an address bar, with no tabs, side panel, metrics or bookmarks, so it can't be mistaken for the main window. It shares your sign-ins and closes when the main window closes. Links it opens go to tabs in the main window, and the ⇱ button moves its page to a tab. Right-clicking a link in a page also offers **Open Link in New Window**
 - **Page zoom** – `Ctrl`+mouse wheel, `Ctrl+=` / `Ctrl+-`, or **View → Zoom In / Zoom Out** zooms the page in the active tab (the app's own toolbar and side panel stay the same size). Zoom is kept per site, so other tabs on the same site follow along. When a tab isn't at 100%, its zoom level shows at the end of the address bar; click it or press `Ctrl+0` to reset
-- **Command palette** – `Ctrl+K` (or **View → Command Palette**) opens a search box over the page. Type to find an open tab, a bookmark, a side panel tab, a setting or an app command, and press `Enter`. A ticket number (`12345`, `CW-12345`) or an address opens straight away, as in the address bar; `Ctrl+Enter` opens a ticket, address or bookmark in a new tab. `Ctrl+K` works even while a page has focus, so in a ticket's reply editor it opens the palette instead of the editor's insert-link shortcut (use the editor's link button)
+- **Command palette** – `Ctrl+K` (or **View → Command Palette**) opens a search box over the page. Type to find an open tab, a recently viewed ticket, a bookmark, a side panel tab, a setting or an app command, and press `Enter`. Words from a ticket's subject or a requester's name also search tickets through the Ticket Search plugin, and the matches are added as they arrive. A ticket number (`12345`, `CW-12345`) or an address opens straight away, as in the address bar; `Ctrl+Enter` opens a ticket, address or bookmark in a new tab. `Ctrl+K` works even while a page has focus, so in a ticket's reply editor it opens the palette instead of the editor's insert-link shortcut (use the editor's link button)
 - **Find in page** – `Ctrl+F` to search text on the current page, even on sites that use `Ctrl+F` for their own search; press it again to select the search text, `Escape` to close
 - **Download manager** – Tracks in-progress and completed downloads with open/show-in-folder actions; a badge on the download icon shows how many files finished since you last opened the panel (resets when you open it)
 - **Passkey sign-in** – Sites that offer "sign in with a passkey" (for example Microsoft sign-in) work in tabs. On Windows the Windows Hello prompt handles this PC's passkeys, security keys and phones (scan the QR code); when a security key holds several accounts for a site, the app asks which one to use
@@ -124,6 +124,7 @@ A **⏱ Time** tab in the side panel that times the ticket you're working on.
 A **🔎 Search** tab in the side panel that finds Freshservice tickets as you type, through the Freshservice API.
 - **What you can type** – A ticket number (`48211`, `#48211`, `INC-48211`), words from the subject (every word has to appear), or a requester's name or email. Matches are tagged **number**, **subject** or **requester**, with the requester, status, priority and when the ticket was last updated
 - **Open** – Click a result (or press `Enter` for the highlighted one, arrow keys to move) to open it in a new tab, or in the current tab if you choose that in **Settings → Plugins → Ticket Search**. `Ctrl`+click or middle-click opens it in a background tab
+- **From the command palette** – Type in the `Ctrl+K` palette and the tickets found are listed there too, under **Ticket Search** (`Enter` opens one as set above, `Ctrl+Enter` in a new tab), along with **Search tickets for “…”** to open this tab with the same search
 - **How far back** – Freshservice's API can't search subjects, so MSP++ fetches up to the 300 most recent tickets updated in the last 30 days (7 days to a year in Settings) and matches subjects itself, keeping the list for two minutes so typing doesn't call the API again. Ticket numbers and requesters are looked up directly, however old the ticket
 - **Requirements** – the domain and API key in **Settings → Plugins → Freshservice**
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
@@ -142,8 +143,17 @@ A **🕘 Recent** tab in the side panel listing the tickets you've viewed lately
 - **Every site** – A ticket is added when it shows in the active tab, on Freshservice (tickets, changes, problems, releases), ConnectWise Manage, or any site plugin that knows its tickets. Each entry shows the site, number, subject and when you last looked at it, grouped into Today, Yesterday, Earlier this week and Older
 - **One-click reopen** – Click an entry to switch to the tab already showing that ticket, or open it in a new tab if none is. Ctrl+click or middle-click always opens a new tab. Turn off **Switch to the ticket's tab** in Settings to always open a new one
 - **Filter** by number, subject or site, then press `Enter` to open the first match
+- **In the command palette** – `Ctrl+K` lists your pinned and latest few tickets straight away, and every remembered ticket once you type part of its number, subject or site
 - **Pin** (☆) keeps a ticket at the top of the list, and **Copy link** and **✕** are on each row. **Clear** empties the list but keeps pinned tickets
 - **Settings → Plugins → Recent Tickets** sets how many tickets to remember (10 to 200; pinned ones don't count)
+- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+
+### Follow-up Reminders
+A **⏰ Follow-ups** tab in the side panel for coming back to a ticket later.
+- **Set one in a click** – On any ticket (Freshservice, ConnectWise Manage, or any web page) pick **In 1 hour**, **In 3 hours**, **5 PM today**, **Tomorrow 9:00 AM**, **Monday 9:00 AM** or a date and time of your own, with an optional note. Also from a tab's right-click menu (**Remind Me to Follow Up…**) and the command palette (`Ctrl+K`, "Follow up")
+- **Desktop alert** – When it's due MSP++ shows a Windows notification and one under the bell; click either to open the ticket. Reminders that came due while MSP++ was closed go off when it next starts
+- **Due list** – Reminders that have gone off stay at the top under **Due** until you **💤 snooze** them (15 min, 1 hour, 3 hours, tomorrow or a time you pick) or mark them **✓ done** (with Undo). One reminder per ticket; setting a new time replaces it
+- **Settings → Plugins → Follow-up Reminders** turns the desktop alert and its sound on or off and sets what time "tomorrow" means (6 to 11 AM)
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
 
 ### AI Assistant
@@ -174,7 +184,7 @@ A **🕘 Recent** tab in the side panel listing the tickets you've viewed lately
 
 Extend the app with self-contained plugin directories — no build step required.
 
-- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **Time Tracker**, **Recent Tickets**, **Ticket Search**, **Quick Actions**, **AI Features** and **Solutions Chat**
+- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **Time Tracker**, **Follow-up Reminders**, **Recent Tickets**, **Ticket Search**, **Quick Actions**, **AI Features** and **Solutions Chat**
 - **User-installed plugins** – Drop a plugin folder into `%APPDATA%\MSP++\plugins\` (or `%APPDATA%\Freshservice++\plugins\` if you upgraded) for plugins that survive app updates
 - **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply. Every plugin gets a settings tab, and one with nothing to set up says so
 - **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed
@@ -307,6 +317,8 @@ npm run build-installer
 # macOS .dmg
 npm run build-mac
 ```
+
+Every pull request and push to `main` runs the Tests workflow on Windows: lint, the Jest tests, and a package check that builds the unpacked app and confirms every file in `build.files` made it in. A test also fails if code loads a file that isn't listed in `build.files`.
 
 Pushing a `v*` tag runs the GitHub Actions workflow, which lints, tests and builds both platforms and attaches them to a GitHub release. The release also gets `latest.yml` and the installer's `.blockmap`: installed copies read `latest.yml` to find and download updates, so a release without it won't reach them.
 

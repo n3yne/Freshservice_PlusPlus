@@ -126,3 +126,42 @@ describe("recent-tickets main process", () => {
     expect(rtMain.validateSettings({ recentTicketsReuseTab: "yes" })).toBe(false);
   });
 });
+
+describe("recent-tickets command palette entries", () => {
+  const now = Date.parse("2026-11-12T12:00:00Z");
+  function list() {
+    const out = [];
+    for (let i = 1; i <= 8; i++) {
+      out.push(Object.assign(rec(String(i), { title: "Subject " + i }), { viewedAt: "2026-11-12T11:30:00Z", views: 1, pinned: false }));
+    }
+    out[6].pinned = true;
+    return out;
+  }
+
+  test("with nothing typed: pinned first, then the latest, five in all", () => {
+    const items = rt.paletteEntries(list(), "", now);
+    expect(items.map((i) => i.entry.key)).toEqual(["7", "1", "2", "3", "4"]);
+    expect(items[0].shortcut).toBe("Pinned");
+    expect(items[1]).toMatchObject({
+      id: "r1",
+      title: "ticket #1  Subject 1",
+      subtitle: "FS · viewed 30 min ago",
+      keywords: ["1", "ticket #1", "FS"],
+      shortcut: "",
+    });
+  });
+
+  test("with a query: every entry, and none without a link", () => {
+    const entries = list();
+    entries[2].url = "";
+    const items = rt.paletteEntries(entries, "sub", now);
+    expect(items).toHaveLength(7);
+    expect(items.every((i) => /^r\d+$/.test(i.id))).toBe(true);
+  });
+
+  test("an entry without a subject shows its label", () => {
+    const items = rt.paletteEntries([Object.assign(rec("9"), { viewedAt: "bad" })], "9", now);
+    expect(items[0].title).toBe("ticket #9");
+    expect(items[0].subtitle).toBe("FS");
+  });
+});

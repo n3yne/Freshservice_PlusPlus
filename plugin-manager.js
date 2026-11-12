@@ -7,6 +7,7 @@ const { EventEmitter } = require("events");
 const { pathToFileURL } = require("url");
 
 const { version: APP_VERSION } = require("./package.json");
+const SiteColors = require("./site-colors");
 
 const pluginBus = new EventEmitter();
 pluginBus.setMaxListeners(100);
@@ -138,6 +139,7 @@ function parseSiteManifest(pluginId, site) {
     hosts,
     defaultUrl,
     chromeUserAgent: site.chromeUserAgent === true,
+    color: SiteColors.normalizeColor(site.color),
   };
 }
 
@@ -505,7 +507,7 @@ function getPluginInfo() {
   }));
 }
 
-// [{ pluginId, name, shortName, hosts, defaultUrl, chromeUserAgent }] for loaded site plugins.
+// [{ pluginId, name, shortName, hosts, defaultUrl, chromeUserAgent, color }] for loaded site plugins.
 function getSites() {
   return _sites.map(si => Object.assign({}, si, { hosts: si.hosts.slice() }));
 }

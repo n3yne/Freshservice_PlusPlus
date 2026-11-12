@@ -10,6 +10,9 @@
 // in a new tab. Ctrl/Cmd-click or middle-click always opens a new tab.
 // Pinned entries stay at the top and are never dropped from the list.
 //
+// The same list is searchable from the command palette (Ctrl+K): the latest
+// few show as soon as it opens, and every entry once something is typed.
+//
 // The list is saved by main.js (recent.json). The pure helpers at the top are
 // exported for tests when loaded under Node.
 /* global module */
@@ -128,10 +131,34 @@
     return (e.siteName ? e.siteName + " · " : "") + (e.label || e.key);
   }
 
+  // The entries to offer the command palette, as palette items without run
+  // (entry holds the entry each one is for). With nothing typed only the
+  // pinned ones and the latest few, so they don't push everything else down;
+  // with a query every entry, and the palette does the matching.
+  const PALETTE_IDLE = 5;
+  function paletteEntries(entries, query, now) {
+    const typed = String(query || "").trim() !== "";
+    const pinned = entries.filter(function (e) { return e.pinned; });
+    const rest = entries.filter(function (e) { return !e.pinned; });
+    const list = typed ? pinned.concat(rest) : pinned.concat(rest.slice(0, Math.max(0, PALETTE_IDLE - pinned.length)));
+    return list.filter(function (e) { return e && e.url; }).map(function (e, i) {
+      const label = e.label || e.key;
+      const when = timeAgo(e.viewedAt, now);
+      return {
+        id: "r" + i,
+        title: e.title ? label + "  " + e.title : label,
+        subtitle: [e.siteName, when ? "viewed " + when : ""].filter(Boolean).join(" · "),
+        keywords: [e.key, label, e.siteName].filter(function (k) { return typeof k === "string" && k !== ""; }),
+        shortcut: e.pinned ? "Pinned" : "",
+        entry: e,
+      };
+    });
+  }
+
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
       entryKey, sameRecord, pruneEntries, recordVisit, refreshEntry, matchesFilter,
-      groupEntries, timeAgo, entryName, HARD_MAX, DEFAULT_MAX,
+      groupEntries, timeAgo, entryName, paletteEntries, HARD_MAX, DEFAULT_MAX,
     };
     return;
   }
@@ -473,6 +500,26 @@
   setInterval(function () { if (sidePanelTab.isActive()) detectActive(); }, 5000);
 
   sidePanelTab.onShow(function () { render(); scheduleDetect(0); });
+
+  // ===================== Command palette (Ctrl+K) =====================
+  // Enter switches to a tab already showing the ticket (when that setting is
+  // on) or opens it; Ctrl+Enter always opens a new tab.
+  if (api.commands && typeof api.commands.addProvider === "function") {
+    api.commands.addProvider({
+      id: "recent-tickets",
+      group: "Recent Tickets",
+      items: function (query) {
+        if (!loaded) return [];
+        return paletteEntries(entries, query, Date.now()).map(function (item) {
+          const e = item.entry;
+          delete item.entry;
+          item.run = function () { open(e, false, false); };
+          item.runInNewTab = function () { open(e, true, false); };
+          return item;
+        });
+      },
+    });
+  }
 
   api.invoke(PLUGIN_ID, "load").then(function (store) {
     entries = store && Array.isArray(store.entries) ? store.entries : [];

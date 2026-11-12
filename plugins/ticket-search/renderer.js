@@ -11,6 +11,9 @@
 // For results of their own they can call a site's ticketSearch.search(term)
 // directly (see docs/sites.md).
 //
+// The command palette (Ctrl+K) searches too: what's typed there is looked up
+// the same way, and the tickets found are listed under "Ticket Search".
+//
 // The pure helpers at the top are exported for tests when loaded under Node.
 /* global module */
 (function () {
@@ -63,8 +66,24 @@
       able[0] || null;
   }
 
+  // A found ticket as a command palette entry (without run). The term is a
+  // keyword so the palette keeps tickets matched on requester or email,
+  // whose title doesn't hold what was typed.
+  function paletteEntry(ticket, term, index, now) {
+    const label = String(ticket.label || "").trim();
+    const subject = String(ticket.subject || "").trim() || "(no subject)";
+    const keywords = [String(term || "").trim(), label, ticket.requester, ticket.requesterEmail]
+      .filter(function (k) { return typeof k === "string" && k !== ""; });
+    return {
+      id: "t" + index,
+      title: label ? label + "  " + subject : subject,
+      subtitle: metaLine(ticket, now),
+      keywords: keywords,
+    };
+  }
+
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { shouldSearch, relativeTime, metaLine, pickSite };
+    module.exports = { shouldSearch, relativeTime, metaLine, pickSite, paletteEntry };
     return;
   }
   if (typeof window === "undefined" || !window.pluginAPI) return;
@@ -337,6 +356,81 @@
     }
     setTimeout(function () { elInput.focus(); }, 0);
   });
+
+  // ===================== Command palette (Ctrl+K) =====================
+  // Two providers: one answers straight away with "Search tickets for …"
+  // (opens this tab), the other searches the site once typing pauses and adds
+  // the tickets it finds. Enter opens a ticket the way this plugin's setting
+  // says; Ctrl+Enter always opens a new tab.
+
+  const PALETTE_DEBOUNCE_MS = 350;
+  const PALETTE_MAX = 15;
+  const PALETTE_CACHE_MS = 60000;
+  const paletteCache = new Map(); // site + term → { at, tickets }
+  let paletteSeq = 0;
+
+  async function paletteSearch(site, term) {
+    const key = searchKey(site, term) + "\u0000" + (Number(settings.ticketSearchDays) || 30);
+    const hit = paletteCache.get(key);
+    if (hit && Date.now() - hit.at < PALETTE_CACHE_MS) return hit.tickets;
+    let res;
+    try {
+      res = await site.ticketSearch.search(term, { days: Number(settings.ticketSearchDays) || 30 });
+    } catch (err) {
+      console.error("[Ticket Search] palette search:", err);
+      return [];
+    }
+    if (!res || res.error || !Array.isArray(res.tickets)) return [];
+    const tickets = res.tickets.filter(function (t) { return t && /^https?:\/\//i.test(t.url || ""); });
+    paletteCache.set(key, { at: Date.now(), tickets: tickets });
+    if (paletteCache.size > 20) paletteCache.delete(paletteCache.keys().next().value);
+    return tickets;
+  }
+
+  if (api.commands && typeof api.commands.addProvider === "function") {
+    api.commands.addProvider({
+      id: "ticket-search-open",
+      group: "Ticket Search",
+      items: function (query) {
+        const term = String(query || "").trim();
+        if (!shouldSearch(term) || !currentSite()) return [];
+        return [{
+          id: "open-tab",
+          title: "Search tickets for \u201c" + term + "\u201d",
+          subtitle: "Opens the Search tab in the side panel",
+          keywords: [term],
+          run: function () { api.events.emit("ticket-search:open", { term: term }); },
+        }];
+      },
+    });
+
+    api.commands.addProvider({
+      id: "ticket-search",
+      group: "Ticket Search",
+      timeout: 12000, // the first subject search lists recent tickets, which can take a while
+      items: function (query) {
+        const term = String(query || "").trim();
+        const mine = ++paletteSeq;
+        const site = currentSite();
+        if (!site || !shouldSearch(term)) return [];
+        return new Promise(function (resolve) { setTimeout(resolve, PALETTE_DEBOUNCE_MS); })
+          .then(function () {
+            if (mine !== paletteSeq) return [];
+            return paletteSearch(site, term);
+          })
+          .then(function (tickets) {
+            if (mine !== paletteSeq) return [];
+            const now = Date.now();
+            return tickets.slice(0, PALETTE_MAX).map(function (t, i) {
+              return Object.assign(paletteEntry(t, term, i, now), {
+                run: function () { openResult(t, null); },
+                runInNewTab: function () { api.browser.newTab(t.url); },
+              });
+            });
+          });
+      },
+    });
+  }
 
   refreshSitePicker();
   if (currentSite()) renderHint();

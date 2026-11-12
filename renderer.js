@@ -84,6 +84,7 @@ document.addEventListener("DOMContentLoaded", function () {
     dismissedReleaseVersion: "",
     autoUpdate: true,
     unreadTabBadges: true,
+    siteTabColors: true,
   };
 
   function applySettings(settings) {
@@ -93,6 +94,38 @@ document.addEventListener("DOMContentLoaded", function () {
     updateSidePanelVisibility();
     applySidePanelTabLayout();
     if (!unreadBadgesEnabled()) tabs.forEach(function (t) { setTabUnread(t, false); });
+    refreshTabSiteColors();
+  }
+
+  // ==================== Site Tab Colours ====================
+  // A coloured stripe on tabs whose page belongs to a site plugin (see site-colors.js).
+  // The plugin suggests a colour (manifest "site.color"); Settings can change it.
+
+  const siteDefaultColors = new Map(); // site plugin id → manifest colour
+  window.backupAPI.getPluginInfo().then(function (info) {
+    (info || []).forEach(function (p) {
+      if (p && p.site && p.site.color) siteDefaultColors.set(p.id, p.site.color);
+    });
+    refreshTabSiteColors();
+  }).catch(function (e) { console.warn("[SiteColors] Plugin info unavailable:", e); });
+
+  function applyTabSiteColor(tab) {
+    const site = siteForWebview(tab.webview);
+    const color = site ? window.SiteColors.colorForSite(site.id, siteDefaultColors.get(site.id), appSettings) : "";
+    if ((tab.tabEl.dataset.siteColor || "") === color) return;
+    if (color) {
+      tab.tabEl.dataset.siteColor = color;
+      tab.tabEl.style.setProperty("--site-color", color);
+      tab.tabEl.classList.add("tab-site-colored");
+    } else {
+      delete tab.tabEl.dataset.siteColor;
+      tab.tabEl.style.removeProperty("--site-color");
+      tab.tabEl.classList.remove("tab-site-colored");
+    }
+  }
+
+  function refreshTabSiteColors() {
+    tabs.forEach(applyTabSiteColor);
   }
 
   // ==================== Unread Tab Badges ====================
@@ -834,6 +867,7 @@ document.addEventListener("DOMContentLoaded", function () {
         try { fn(site); } catch (e) { console.error("[Sites]", e); }
       });
       _busEmit("site:registered", { siteId: site.id });
+      refreshTabSiteColors();
       return site;
     },
     list: function () { return siteAdapters.slice(); },
@@ -1306,6 +1340,7 @@ document.addEventListener("DOMContentLoaded", function () {
       } catch {
         // webview may have been removed
       }
+      applyTabSiteColor(tabData);
       emitTabUpdated();
     }
 
@@ -2391,7 +2426,8 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // Asks each plugin provider for its items. Arrays count now; promises are
-  // added when they answer (or dropped after PALETTE_PROVIDER_TIMEOUT_MS).
+  // added when they answer (or dropped after the provider's timeout,
+  // PALETTE_PROVIDER_TIMEOUT_MS unless it asked for longer).
   function providerItems(query) {
     const now = [];
     const more = [];
@@ -2410,7 +2446,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (res && typeof res.then === "function") {
         more.push(Promise.race([
           res,
-          new Promise(function (resolve) { setTimeout(function () { resolve([]); }, PALETTE_PROVIDER_TIMEOUT_MS); }),
+          new Promise(function (resolve) { setTimeout(function () { resolve([]); }, p.timeout || PALETTE_PROVIDER_TIMEOUT_MS); }),
         ]).then(clean));
       } else {
         now.push.apply(now, clean(res));
@@ -2460,14 +2496,16 @@ document.addEventListener("DOMContentLoaded", function () {
           if (paletteCommands.get(cmd.id) === cmd) paletteCommands.delete(cmd.id);
         };
       },
-      // { id, group?, items(query) } where items returns an array of commands
-      // (or a promise of one) for what is typed, "" when nothing is.
+      // { id, group?, items(query), timeout? } where items returns an array of
+      // commands (or a promise of one) for what is typed, "" when nothing is.
+      // timeout: ms to wait for a promise (1000 to 15000, default 3000).
       // → a function that removes it.
       addProvider: function (opts) {
         const id = opts && typeof opts.id === "string" ? opts.id : "";
         if (!/^[a-z0-9][a-z0-9_-]{0,62}$/i.test(id)) throw new Error("commands.addProvider: invalid id");
         if (typeof opts.items !== "function") throw new Error("commands.addProvider: items must be a function");
-        const provider = { id, group: typeof opts.group === "string" && opts.group ? opts.group.slice(0, 40) : "Results", items: opts.items };
+        const timeout = Number.isFinite(opts.timeout) ? Math.min(15000, Math.max(1000, opts.timeout)) : 0;
+        const provider = { id, group: typeof opts.group === "string" && opts.group ? opts.group.slice(0, 40) : "Results", items: opts.items, timeout };
         paletteProviders.set(id, provider);
         palette.refresh();
         return function () {

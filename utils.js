@@ -4,6 +4,8 @@
 // Contains only core app settings. Plugin-specific defaults and validators
 // live in each plugin's main.js (defaultSettings + validateSettings exports).
 
+const SiteColors = require("./site-colors");
+
 const DEFAULT_SETTINGS = {
   sidePanelEnabled: true,
   panelCollapsed: false,
@@ -25,6 +27,9 @@ const DEFAULT_SETTINGS = {
   // Mark a background tab with a dot when its page changes on its own (a new
   // reply changes the title or favicon), until the tab is viewed.
   unreadTabBadges: true,
+  // Coloured stripe on tabs of site plugins (Freshservice, ConnectWise). Per-site
+  // colours the user picked live in siteTabColorOverrides; see site-colors.js.
+  siteTabColors: true,
 };
 
 function validateSettings(s) {
@@ -44,6 +49,8 @@ function validateSettings(s) {
   if (s.autoUpdate !== undefined && typeof s.autoUpdate !== "boolean") return false;
   if (s.restoreTabs !== undefined && typeof s.restoreTabs !== "boolean") return false;
   if (s.unreadTabBadges !== undefined && typeof s.unreadTabBadges !== "boolean") return false;
+  if (s.siteTabColors !== undefined && typeof s.siteTabColors !== "boolean") return false;
+  if (!SiteColors.validOverrides(s.siteTabColorOverrides)) return false;
   if (s.dismissedReleaseVersion !== undefined && (typeof s.dismissedReleaseVersion !== "string" || s.dismissedReleaseVersion.length > 20)) return false;
   return true;
 }

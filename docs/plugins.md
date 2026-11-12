@@ -317,7 +317,7 @@ Adds a tab to the side panel on the right of the window and returns a handle for
 | `label` | Text on the tab. |
 | `icon` | Optional emoji or short text shown before the label. |
 | `title` | Optional tooltip. |
-| `order` | Optional number; lower comes first. Notes uses `10`, Ticket Search `15`, Solutions Chat `20`, Canned Responses `30`, Time Tracker `40`, Recent Tickets `50`, the default is `100`. |
+| `order` | Optional number; lower comes first. Notes uses `10`, Ticket Search `15`, Solutions Chat `20`, Canned Responses `30`, Time Tracker `40`, Follow-up Reminders `45`, Recent Tickets `50`, the default is `100`. |
 
 The handle:
 
@@ -393,7 +393,7 @@ window.pluginAPI.ui.addToolbarButton({
 
 #### `window.pluginAPI.commands`
 
-Adds entries to the command palette (`Ctrl+K`). The palette already lists open tabs, ticket numbers and addresses typed into it, side panel tabs, app commands and a Settings entry for every plugin; the Bookmarks Bar plugin adds bookmarks with a provider.
+Adds entries to the command palette (`Ctrl+K`). The palette already lists open tabs, ticket numbers and addresses typed into it, side panel tabs, app commands and a Settings entry for every plugin; the Bookmarks Bar, Recent Tickets and Ticket Search plugins add bookmarks, recently viewed tickets and ticket search results with providers.
 
 A command is `{ id, title, subtitle?, group?, keywords?, shortcut?, run, runInNewTab? }`. `id` matches `/^[a-z0-9][a-z0-9:_.-]{0,99}$/i`; `group` is the heading it lists under (default "Commands"); `keywords` are extra words it is found by; `shortcut` is text shown on the right. `run()` is called on `Enter` or a click, and `runInNewTab()`, if given, on `Ctrl+Enter` or `Ctrl`+click. The palette closes before either is called.
 
@@ -408,7 +408,8 @@ const remove = window.pluginAPI.commands.register({
 
 // A provider answers what is typed ("" when nothing is) with a list of
 // commands, or a promise of one for a search that takes time. Results from a
-// promise are added when it answers, and dropped after 3 seconds.
+// promise are added when it answers, and dropped after 3 seconds (or after
+// timeout milliseconds, 1000 to 15000, when the provider gives one).
 window.pluginAPI.commands.addProvider({
   id: "recent-tickets",
   group: "Recent Tickets",
@@ -428,7 +429,7 @@ window.pluginAPI.commands.addProvider({
 window.pluginAPI.commands.open("CW-");   // open the palette, optionally with text typed
 ```
 
-The palette ranks every item against what is typed itself (title first, then keywords, then subtitle), so a provider can return its whole list and leave the matching to it. A provider that searches a server should return `[]` for short queries and keep its own requests few. Items show in the order given while nothing is typed: typed ticket or address, tabs, provider results, side panel tabs, commands, then settings.
+The palette ranks every item against what is typed itself (title first, then keywords, then subtitle), so a provider can return its whole list and leave the matching to it. A provider that searches a server should return `[]` for short queries and keep its own requests few: the palette asks again on every keystroke, so wait for typing to pause (Ticket Search waits 350 ms and drops answers for text that has since changed), and put what was typed in `keywords` when a result's title may not contain it. Items show in the order given while nothing is typed: typed ticket or address, tabs, provider results, side panel tabs, commands, then settings.
 
 #### `window.pluginAPI.notes`
 

@@ -58,6 +58,17 @@
               Put a dot on a background tab when its page changes on its own, such as a new reply
               changing the page title. The dot goes when you switch to the tab.
             </p>
+
+            <label class="settings-toggle settings-toggle-spaced">
+              <input type="checkbox" id="setting-site-tab-colors" />
+              <span class="settings-toggle-slider"></span>
+              <span class="settings-toggle-label">Colour Tabs by Site</span>
+            </label>
+            <p class="settings-description">
+              Put a coloured stripe along the top of tabs open on a site, such as Freshservice or
+              ConnectWise Manage, so you can tell them apart at a glance. Pick each site's colour below.
+            </p>
+            <div id="site-tab-color-list" class="site-color-list"></div>
           </div>
 
           <div class="settings-section">
@@ -185,6 +196,7 @@
     </div><!-- .settings-layout -->
 
     <script src="safe-html.js"></script>
+    <script src="site-colors.js"></script>
     <script src="settings_renderer.js"></script>
   </body>
 </html>

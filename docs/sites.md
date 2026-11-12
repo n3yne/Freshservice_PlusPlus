@@ -31,7 +31,8 @@ A site plugin is an ordinary plugin (see [plugins.md](plugins.md)) with two extr
     "shortName": "FS",
     "hosts": ["freshservice.com", "freshworks.com", "myfreshworks.com"],
     "defaultUrl": "https://freshservice.com/login",
-    "chromeUserAgent": true
+    "chromeUserAgent": true,
+    "color": "#22b573"
   }
 }
 ```
@@ -43,6 +44,7 @@ A site plugin is an ordinary plugin (see [plugins.md](plugins.md)) with two extr
 | `hosts` | string[] | Bare domains (no scheme, port, path or wildcard), up to 20. Each matches that host and all its subdomains. Used for the two items below. |
 | `defaultUrl` | string | `http(s)` start page. The first loaded site plugin with one becomes the **Home URL** default for users who haven't set their own. |
 | `chromeUserAgent` | boolean | When `true`, requests to `hosts` carry a plain Chrome user agent (no `Electron/…` token), so the site doesn't reject the app as an unsupported browser. Other sites see the real user agent. |
+| `color` | string | `#rrggbb` (or `#rgb`). Tabs open on the site get a stripe of this colour along the top, so different sites stand out in the tab bar. Users can change or turn off each site's colour, or all of them, in Settings → General → Colour Tabs by Site. Leave it out for no stripe by default. |
 
 Core also opens **sign-in popups as real windows** (so `window.opener` / `postMessage` handshakes work) when the popup's URL is on one of `hosts` and its path has an auth segment (`/auth`, `/login`, `/sso`, `/oauth`, `/saml`, `/openid`, `/signin`). Popups to Microsoft and Google sign-in pages always open as windows. Every other popup opens in a new tab.
 
