@@ -43,6 +43,7 @@
     checkBackupSize: () => api.invoke(PLUGIN_ID, "check-backup-size"),
     loadEditorState: () => api.invoke(PLUGIN_ID, "load-editor-state"),
     openBackupFolder: () => api.invoke(PLUGIN_ID, "open-backup-folder"),
+    legacyImportResult: () => api.invoke(PLUGIN_ID, "legacy-import-result"),
   };
 
   // ==================== Panel DOM ====================
@@ -2124,6 +2125,28 @@
     }
   }
 
+  // ==================== Imported Notes ====================
+  // Notes copied over from ConnectWise Manage++ at startup (see legacy-import.js).
+  async function showLegacyImport() {
+    let results;
+    try { results = await store.legacyImportResult(); } catch { return; }
+    if (!Array.isArray(results)) return;
+    for (const r of results) {
+      if (r.error) {
+        notify("legacy-import", "Old Notes Not Imported",
+          `Notes from ${r.source} could not be copied: ${r.error}`);
+        continue;
+      }
+      const notes = (r.drafts || 0) + (r.draftsAsSnapshots || 0) + (r.snapshots || 0);
+      if (!notes) continue;
+      notify("legacy-import", `Notes Imported from ${r.source}`,
+        `Copied ${notes} saved note${notes === 1 ? "" : "s"} for ${r.tickets} ticket${r.tickets === 1 ? "" : "s"}. ` +
+        "ConnectWise tickets are listed as CW-<number>. Nothing already in MSP++ was replaced.",
+        { label: "Open Backup Folder", onClick: function () { store.openBackupFolder(); } });
+      refreshTicketList();
+    }
+  }
+
   // ==================== Notes Provider ====================
   // Backs pluginAPI.notes for every plugin.
   api.notes.registerProvider({
@@ -2148,6 +2171,7 @@
   applySettings(appSettings);
   loadAutosaved();
   checkBackupSize();
+  showLegacyImport();
   const active = api.browser.getActiveTab();
   if (active) onTabActivated(active.tabId);
 }());

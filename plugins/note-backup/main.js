@@ -13,6 +13,7 @@
 const path = require("path");
 const fs = require("fs");
 const fsp = fs.promises;
+const { importLegacyNotes } = require("./legacy-import");
 
 const MAX_NOTE_CHARS = 10 * 1024 * 1024;
 const SNAPSHOT_EXTENSIONS = [".html", ".txt"];
@@ -136,6 +137,17 @@ function createNoteStore(dir) {
     fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf-8");
     fs.renameSync(tmp, autosaveFile);
     return { success: true, timestamp, ticketId: safeTicketId };
+  }
+
+  // Read-modify-write of the drafts under the write lock. fn gets the current
+  // drafts object and returns the one to save.
+  async function updateAutosave(fn) {
+    await ensureDir();
+    return withAutosaveLock(async () => {
+      const data = await readAutosave();
+      const next = fn(typeof data === "object" && data !== null && !Array.isArray(data) ? data : {});
+      await writeAutosaveAtomic(next);
+    });
   }
 
   async function loadAutosave() {
@@ -343,7 +355,11 @@ function createNoteStore(dir) {
         const data = JSON.parse(await fsp.readFile(autosaveFile, "utf-8"));
         let changed = false;
         for (const [ticketId, info] of Object.entries(data)) {
-          if (new Date(info.updatedAt || 0).getTime() >= cutoff) continue;
+          // importedAt: brought over from ConnectWise Manage++ (legacy-import.js),
+          // which keeps the note's own date but starts its retention afresh.
+          const lastTouched = Math.max(new Date(info.updatedAt || 0).getTime() || 0,
+            new Date(info.importedAt || 0).getTime() || 0);
+          if (lastTouched >= cutoff) continue;
           let hasHistory = false;
           try {
             hasHistory = (await fsp.readdir(path.join(dir, ticketId))).some(isSnapshotFile);
@@ -381,6 +397,7 @@ function createNoteStore(dir) {
     dir,
     saveNote,
     loadAutosave,
+    updateAutosave,
     getHistory,
     getAllTickets,
     deleteAutosave,
@@ -472,8 +489,37 @@ module.exports = {
       }
     });
 
+    // Notes from ConnectWise Manage++, if it was used on this computer. Runs
+    // before the startup cleanup so the two don't touch the folder at once.
+    let legacyImportResult = null;
+    let legacyImportShown = false;
+    const legacyImport = (async function () {
+      try {
+        legacyImportResult = await importLegacyNotes(electron.app.getPath("appData"), store);
+        for (const r of legacyImportResult) {
+          if (r.error) api.log(`Could not import notes from ${r.source}: ${r.error}`);
+          else if (r.drafts || r.draftsAsSnapshots || r.snapshots) {
+            api.log(`Imported ${r.drafts} draft(s), ${r.draftsAsSnapshots} draft(s) as snapshots and ` +
+              `${r.snapshots} snapshot(s) for ${r.tickets} ticket(s) from ${r.source}`);
+          }
+        }
+      } catch (err) {
+        console.error("[NoteBackup] Legacy note import failed:", err);
+        legacyImportResult = [];
+      }
+    }());
+
+    // The Notes tab asks once per launch, to tell the person what came across.
+    api.handle("legacy-import-result", async function () {
+      await legacyImport;
+      if (legacyImportShown) return [];
+      legacyImportShown = true;
+      return legacyImportResult || [];
+    });
+
     // Clean up old snapshots shortly after startup, once settings have settled.
     setTimeout(async function () {
+      await legacyImport;
       const days = api.getSettings().backupRetentionDays;
       const retentionDays = typeof days === "number" ? days : 7;
       try {

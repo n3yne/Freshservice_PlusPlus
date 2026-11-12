@@ -14,7 +14,7 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 
 ### Browser
 - **Multi-tab browsing** – Open multiple ticketing pages simultaneously. The tabs you had open come back the next time the app starts; turn off **Settings → General → Restore Tabs from Last Session** to start on the Home URL instead (pinned tabs always come back)
-- **Address bar** – A row under the tab bar shows the active tab's URL, with back, forward and reload beside it. Type an address and press `Enter` to go there (`Ctrl+L` jumps to it, `Escape` puts the page's URL back). Only `http` and `https` pages open; a bare host such as `example.com` gets `https://` added. There is no web search, so plain words are ignored
+- **Address bar** – A row under the tab bar shows the active tab's URL, with back, forward and reload beside it. Type an address and press `Enter` to go there (`Ctrl+L` jumps to it, `Escape` puts the page's URL back). Only `http` and `https` pages open; a bare host such as `example.com` gets `https://` added. There is no web search, so plain words are ignored. Type a ticket number to jump to it: `12345` (or `INC-12345`, `CHN-45`, `PRB-67`, `RL-89`) opens it in Freshservice, and `CW-12345` opens a ConnectWise ticket. A bare number goes to the site of the tab you're on. The instance is taken from an open tab on that site (for Freshservice, also the API domain or Home URL), so ConnectWise needs a CW tab open
 - **Refresh all tabs** – **View → Refresh All Tabs** (`Ctrl+Alt+R`) reloads every open tab at once
 - **Tab management** – Pin tabs, duplicate (the copy opens next to the original), close others, reopen closed tabs (`Ctrl+Shift+T` puts a tab back where it was), copy URL, copy a clean ticket link (on Freshservice, ConnectWise and Home URL pages; greyed out when no ticket is open), open in default browser (right-click any tab). Tab shortcuts work while you're typing in a page too. Double-click an empty part of the tab bar to open a new tab
 - **Open in New Window** – Right-click a tab and choose **Open in New Window** to open its page in a plain browser window: just back, forward, reload and an address bar, with no tabs, side panel, metrics or bookmarks, so it can't be mistaken for the main window. It shares your sign-ins and closes when the main window closes. Links it opens go to tabs in the main window, and the ⇱ button moves its page to a tab. Right-clicking a link in a page also offers **Open Link in New Window**
@@ -186,6 +186,16 @@ Inside you'll find:
 - `main-window-state.json` – The main window's last size and position
 - `site-permissions.json` – Saved Allow / Block answers to site permission prompts
 - A folder per ticket ID containing timestamped `.html` snapshot files
+- `legacy-import.json` – Which ConnectWise Manage++ notes have been imported (see below)
+
+### Notes from ConnectWise Manage++
+
+If ConnectWise Manage++ was used on the same computer, MSP++ copies its note backups across at startup (from `%APPDATA%\connectwise-manage-pp\note-backups\` or `%APPDATA%\ConnectWise Manage++\note-backups\`, and the same names under `~/Library/Application Support/` on macOS). Ticket numbers are filed as `CW-<number>`, the way the ConnectWise Manage plugin names them, and a notification says how many notes came across.
+
+- The ConnectWise Manage++ folder is only read, never changed.
+- Nothing already in MSP++ is replaced. If a ticket already has a draft in MSP++, the old draft is added to that ticket's history as a snapshot instead.
+- Notes you delete in MSP++ don't come back. Notes still being written in ConnectWise Manage++ are picked up on the next start.
+- Imported notes count as new for **Backup Retention**, so the startup cleanup doesn't delete them straight away.
 
 Click **📁 Open Folder** in the app to jump there directly.
 

@@ -68,11 +68,16 @@
   // URL doesn't carry a ticket number (the newer screens keep it in an encoded
   // hash).
   function recordLink(url) {
-    let parsed;
-    try { parsed = new URL(url); } catch { return null; }
     if (!matchesUrl(url)) return null;
     const n = ticketFromUrl(url);
-    if (!n) return null;
+    return n ? ticketLinkOn(url, n) : null;
+  }
+
+  // ConnectWise's service ticket link for ticket n on the instance `url` is on,
+  // carrying the company id (companyName) when `url` has one.
+  function ticketLinkOn(url, n) {
+    let parsed;
+    try { parsed = new URL(url); } catch { return null; }
     const params = new URLSearchParams(parsed.search);
     const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ""));
     let company = "";
@@ -81,6 +86,20 @@
     let link = parsed.origin + "/v4_6_release/services/system_io/Service/fv_sr100_request.rails?service_recid=" + n;
     if (company) link += "&companyName=" + encodeURIComponent(company);
     return link;
+  }
+
+  // Ticket quick-open (typing in the address bar): "CW-12345" or "CW12345" opens
+  // that ticket; a bare "12345" does too when a ConnectWise tab is active. The
+  // instance comes from the open ConnectWise tabs (active first), so one must be
+  // open; null otherwise.
+  const QUICK_OPEN_PATTERN = /^(CW-?)?#?(\d{1,12})$/i;
+  function ticketUrl(query, ctx) {
+    const m = QUICK_OPEN_PATTERN.exec(String(query || "").trim());
+    const c = ctx || {};
+    if (!m || (!m[1] && !c.active)) return null;
+    const tabUrls = Array.isArray(c.tabUrls) ? c.tabUrls : [];
+    const onCw = tabUrls.find(function (u) { return matchesUrl(u); });
+    return onCw ? ticketLinkOn(onCw, String(Number(m[2]))) : null;
   }
 
   function fieldTypeLabel(type) {
@@ -532,6 +551,7 @@
     matchesUrl: matchesUrl,
     formatTitle: formatTitle,
     recordLink: recordLink,
+    ticketUrl: ticketUrl,
     recordScript: RECORD_SCRIPT,
     scrapeScript: SCRAPE_SCRIPT,
     notes: Object.freeze({
@@ -553,7 +573,7 @@
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
-      adapter, matchesUrl, formatTitle, ticketKey, ticketNumberFromKey, ticketFromUrl, recordLink,
+      adapter, matchesUrl, formatTitle, ticketKey, ticketNumberFromKey, ticketFromUrl, recordLink, ticketUrl,
       fieldTypeLabel, pushDelay, onWatcherMessage, buildPushScript, buildReplyInsertScript,
       NOTES_READ_SCRIPT, REPLY_CONTEXT_SCRIPT, WATCHER_SCRIPT, RECORD_SCRIPT, SCRAPE_SCRIPT, WATCHER_PREFIX,
     };
