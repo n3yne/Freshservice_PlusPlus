@@ -208,4 +208,11 @@ describe("tabsToRestore", () => {
     expect(validateSettings(Object.assign({}, base, { restoreTabs: false }))).toBe(true);
     expect(validateSettings(Object.assign({}, base, { restoreTabs: "no" }))).toBe(false);
   });
+
+  test("unreadTabBadges defaults on and must be a boolean when present", () => {
+    const base = Object.assign({}, DEFAULT_SETTINGS);
+    expect(DEFAULT_SETTINGS.unreadTabBadges).toBe(true);
+    expect(validateSettings(Object.assign({}, base, { unreadTabBadges: false }))).toBe(true);
+    expect(validateSettings(Object.assign({}, base, { unreadTabBadges: "off" }))).toBe(false);
+  });
 });

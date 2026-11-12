@@ -48,6 +48,16 @@
               When the app starts, reopen the tabs that were open when it last closed. Turn it off to
               start on the Home URL instead. Pinned tabs always come back.
             </p>
+
+            <label class="settings-toggle settings-toggle-spaced">
+              <input type="checkbox" id="setting-unread-tab-badges" />
+              <span class="settings-toggle-slider"></span>
+              <span class="settings-toggle-label">Unread Badge on Tabs</span>
+            </label>
+            <p class="settings-description">
+              Put a dot on a background tab when its page changes on its own, such as a new reply
+              changing the page title. The dot goes when you switch to the tab.
+            </p>
           </div>
 
           <div class="settings-section">
@@ -120,6 +130,26 @@
                 Forget Saved Answers
               </button>
               <span id="site-permissions-status" class="plugin-import-status"></span>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3 class="settings-section-title">Move Settings to Another PC</h3>
+            <p class="settings-description settings-description-field settings-description-field-spaced">
+              Export your settings to a file, then import it in MSP++ on the other PC. The file has your app and
+              plugin settings, bookmarks, canned responses and which plugins are on. API keys are left out:
+              enter them again on the other PC. Notes, timers and other plugin data aren't included.
+              Importing replaces the settings on this PC, except for its saved API keys.
+            </p>
+
+            <div class="plugin-import-row settings-update-row">
+              <button type="button" id="btn-export-settings" class="btn btn-small btn-secondary">
+                Export Settings…
+              </button>
+              <button type="button" id="btn-import-settings" class="btn btn-small btn-secondary">
+                Import Settings…
+              </button>
+              <span id="settings-transfer-status" class="plugin-import-status"></span>
             </div>
           </div>
 
