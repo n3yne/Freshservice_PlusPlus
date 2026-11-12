@@ -65,6 +65,7 @@ Every plugin must have a `manifest.json` at its root:
   "name": "My Plugin",
   "version": "1.0.0",
   "description": "One-line description of what this plugin does.",
+  "category": "Tickets",
   "author": "Your Name",
   "main": "main.js",
   "renderer": "renderer.js",
@@ -80,6 +81,7 @@ Every plugin must have a `manifest.json` at its root:
 | `name` | No | Human-readable display name. |
 | `version` | No | Plugin version string (semver recommended). |
 | `description` | No | One-line summary. |
+| `category` | No | The group the plugin is listed under in Settings → Plugins and in the Settings nav. The built-in categories, in display order, are `Sites`, `Tickets`, `Notes & Replies`, `Time & Reminders`, `AI` and `Tabs & Toolbars` (matched case-insensitively). Any other name (up to 40 characters) becomes its own group after those. Without one, a site plugin goes under `Sites` and anything else under `Other`. See `plugin-categories.js`. |
 | `author` | No | Plugin author name. |
 | `main` | No | Relative path to the main-process entry file. |
 | `renderer` | No | Relative path to the main-window renderer entry file. |

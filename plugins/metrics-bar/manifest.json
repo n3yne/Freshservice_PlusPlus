@@ -3,6 +3,7 @@
   "name": "Metrics Bar",
   "version": "0.7.7",
   "description": "Live stats bar displaying values scraped from BrightGauge and other dashboards.",
+  "category": "Tabs & Toolbars",
   "main": "main.js",
   "renderer": "renderer.js",
   "settings": "settings.js",

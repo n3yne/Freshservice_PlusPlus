@@ -88,6 +88,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const pluginRestartNotice   = document.getElementById("plugin-restart-notice");
   const btnImportPlugin       = document.getElementById("btn-import-plugin");
   const pluginImportStatus    = document.getElementById("plugin-import-status");
+  const pluginSummary         = document.getElementById("plugin-summary");
+  const pluginFilterBtns      = document.querySelectorAll(".plugin-filter-btn");
 
   // ==================== Utilities ====================
   function debounce(fn, ms) {
@@ -459,9 +461,69 @@ document.addEventListener("DOMContentLoaded", function () {
     return frag;
   }
 
+  // Which plugins the list shows: "all", "on" or "off" (the buttons above it).
+  let pluginFilter = "all";
+
+  pluginFilterBtns.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      pluginFilter = btn.dataset.filter || "all";
+      pluginFilterBtns.forEach(function (b) {
+        const on = b === btn;
+        b.classList.toggle("active", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      renderPluginList();
+    });
+  });
+
+  function buildPluginItem(plugin) {
+    const item = document.createElement("div");
+    item.className = "plugin-list-item" + (plugin.enabled ? "" : " plugin-list-item-off");
+
+    const info = document.createElement("div");
+    info.className = "plugin-item-info";
+
+    const header = document.createElement("div");
+    header.className = "plugin-item-header";
+
+    const nameBtn = document.createElement("button");
+    nameBtn.type = "button";
+    nameBtn.className = "plugin-item-name plugin-item-link";
+    nameBtn.textContent = plugin.name || plugin.id;
+    nameBtn.title = "Open " + (plugin.name || plugin.id) + " settings";
+    nameBtn.addEventListener("click", function () {
+      const ids = pluginPanelIds.get(plugin.id);
+      if (ids && ids.length) switchPanel("plugin-" + ids[0]);
+    });
+    header.appendChild(nameBtn);
+    header.appendChild(createBadges(plugin));
+    info.appendChild(header);
+
+    if (plugin.description) {
+      const desc = document.createElement("div");
+      desc.className = "plugin-item-desc";
+      desc.textContent = plugin.description;
+      desc.title = plugin.description;
+      info.appendChild(desc);
+    }
+
+    item.appendChild(info);
+    item.appendChild(createPluginToggle(plugin));
+    return item;
+  }
+
+  // The Plugins list, one section per category (see plugin-categories.js), each
+  // with a count of how many of its plugins are on.
   function renderPluginList() {
     if (!pluginList) return;
     pluginList.innerHTML = "";
+
+    const enabledTotal = plugins.filter(function (p) { return p.enabled; }).length;
+    if (pluginSummary) {
+      pluginSummary.textContent = plugins.length
+        ? enabledTotal + " of " + plugins.length + " plugins on"
+        : "";
+    }
 
     if (plugins.length === 0) {
       const empty = document.createElement("p");
@@ -476,41 +538,53 @@ document.addEventListener("DOMContentLoaded", function () {
       set.forEach(function (cb) { if (!cb.isConnected) set.delete(cb); });
     });
 
-    plugins.forEach(function (plugin) {
-      const item = document.createElement("div");
-      item.className = "plugin-list-item";
-
-      const info = document.createElement("div");
-      info.className = "plugin-item-info";
-
-      const header = document.createElement("div");
-      header.className = "plugin-item-header";
-
-      const nameBtn = document.createElement("button");
-      nameBtn.type = "button";
-      nameBtn.className = "plugin-item-name plugin-item-link";
-      nameBtn.textContent = plugin.name || plugin.id;
-      nameBtn.title = "Open " + (plugin.name || plugin.id) + " settings";
-      nameBtn.addEventListener("click", function () {
-        const ids = pluginPanelIds.get(plugin.id);
-        if (ids && ids.length) switchPanel("plugin-" + ids[0]);
+    let shown = 0;
+    window.PluginCategories.groupPlugins(plugins).forEach(function (group) {
+      const visible = group.plugins.filter(function (p) {
+        if (pluginFilter === "on") return p.enabled;
+        if (pluginFilter === "off") return !p.enabled;
+        return true;
       });
-      header.appendChild(nameBtn);
-      header.appendChild(createBadges(plugin));
-      info.appendChild(header);
+      if (visible.length === 0) return;
+      shown += visible.length;
 
-      if (plugin.description) {
+      const section = document.createElement("section");
+      section.className = "plugin-category";
+      section.dataset.category = group.name;
+
+      const head = document.createElement("div");
+      head.className = "plugin-category-header";
+      const title = document.createElement("h4");
+      title.className = "plugin-category-title";
+      title.textContent = group.name;
+      head.appendChild(title);
+      const count = document.createElement("span");
+      count.className = "plugin-category-count" +
+        (group.enabledCount === group.plugins.length ? " all-on" : group.enabledCount === 0 ? " all-off" : "");
+      count.textContent = group.enabledCount + " of " + group.plugins.length + " on";
+      head.appendChild(count);
+      section.appendChild(head);
+
+      if (group.description) {
         const desc = document.createElement("div");
-        desc.className = "plugin-item-desc";
-        desc.textContent = plugin.description;
-        desc.title = plugin.description;
-        info.appendChild(desc);
+        desc.className = "plugin-category-desc";
+        desc.textContent = group.description;
+        section.appendChild(desc);
       }
 
-      item.appendChild(info);
-      item.appendChild(createPluginToggle(plugin));
-      pluginList.appendChild(item);
+      const items = document.createElement("div");
+      items.className = "plugin-category-items";
+      visible.forEach(function (plugin) { items.appendChild(buildPluginItem(plugin)); });
+      section.appendChild(items);
+      pluginList.appendChild(section);
     });
+
+    if (shown === 0) {
+      const empty = document.createElement("p");
+      empty.className = "plugin-list-empty";
+      empty.textContent = pluginFilter === "on" ? "No plugins are on." : "Every plugin is on.";
+      pluginList.appendChild(empty);
+    }
   }
 
   function updatePanelHeaderState(header) {
@@ -604,20 +678,35 @@ document.addEventListener("DOMContentLoaded", function () {
     pluginPanelIds.set(plugin.id, [panelId]);
   }
 
-  // Puts plugin tabs in the nav in the same order as the Plugins list, right after Plugins.
+  // Puts plugin tabs in the nav in the same order as the Plugins list, right after
+  // Plugins, under a small heading for each category.
   function sortPluginNav() {
     const nav = document.querySelector(".settings-nav");
     const pluginsBtn = nav && nav.querySelector('[data-panel="plugins"]');
     if (!pluginsBtn) return;
+    nav.querySelectorAll(".settings-nav-group").forEach(function (el) { el.remove(); });
     const rank = new Map(plugins.map(function (p, i) { return [p.id, i]; }));
     const items = Array.from(nav.querySelectorAll(".settings-nav-subitem")).map(function (btn, i) {
       const panel = document.getElementById("panel-" + btn.dataset.panel);
-      const pluginId = panel && panel.dataset.pluginId;
-      return { btn, i, rank: rank.has(pluginId) ? rank.get(pluginId) : plugins.length };
+      const plugin = findPlugin(panel && panel.dataset.pluginId);
+      return {
+        btn, i,
+        rank: plugin ? rank.get(plugin.id) : plugins.length,
+        category: plugin ? window.PluginCategories.categoryOf(plugin) : "",
+      };
     });
     items.sort(function (a, b) { return a.rank - b.rank || a.i - b.i; });
     let anchor = pluginsBtn;
+    let lastCategory = null;
     items.forEach(function (item) {
+      if (item.category && item.category !== lastCategory) {
+        const heading = document.createElement("div");
+        heading.className = "settings-nav-group";
+        heading.textContent = item.category;
+        anchor.after(heading);
+        anchor = heading;
+        lastCategory = item.category;
+      }
       anchor.after(item.btn);
       anchor = item.btn;
     });
@@ -625,7 +714,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function loadPluginInfo() {
     return window.backupAPI.getPluginInfo().then(function (info) {
-      plugins = Array.isArray(info) ? info : [];
+      // In category order, the same order as the Plugins list and the nav.
+      plugins = window.PluginCategories.sortPlugins(Array.isArray(info) ? info : []);
       renderPluginList();
       renderSiteColorList();
       if (pluginRestartPending && pluginRestartNotice) pluginRestartNotice.classList.add("visible");

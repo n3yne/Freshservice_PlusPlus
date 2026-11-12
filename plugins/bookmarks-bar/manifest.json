@@ -3,6 +3,7 @@
   "name": "Bookmarks Bar",
   "version": "0.7.7",
   "description": "A bar of bookmarked sites under the address bar. Drag to reorder, middle-click for a new tab, right-click for more.",
+  "category": "Tabs & Toolbars",
   "main": "main.js",
   "renderer": "renderer.js",
   "settings": "settings.js",

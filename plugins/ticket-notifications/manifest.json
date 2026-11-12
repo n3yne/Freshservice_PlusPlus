@@ -3,6 +3,7 @@
   "name": "Ticket Notifications",
   "version": "0.7.7",
   "description": "Desktop notifications when a Freshservice ticket assigned to you gets a new reply, checked through the Freshservice API.",
+  "category": "Tickets",
   "main": "main.js",
   "renderer": "renderer.js",
   "settings": "settings.js",
