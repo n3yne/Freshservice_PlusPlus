@@ -4,6 +4,7 @@
   "version": "0.7.7",
   "description": "A Solutions tab in the side panel that answers questions from your Freshservice Solutions articles, using the AI provider set up in AI Features.",
   "category": "AI",
+  "requires": ["ai-features", "freshservice"],
   "renderer": "renderer.js",
   "settings": "settings.js",
   "minAppVersion": "0.5.7"

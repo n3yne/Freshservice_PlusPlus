@@ -761,6 +761,21 @@ Index entry example:
 }
 ```
 
+### Publishing a plugin to the directory
+
+Plugin source stays in `plugins/` in this repo, tested like every other plugin. Two manifest fields control the directory:
+
+| Field | Meaning |
+|---|---|
+| `"distribution"` | `"bundled"` (the default) ships the plugin inside the app. `"directory"` leaves it out of the app and publishes it to the directory instead. A directory plugin's folder name must match its `id`, and it needs a `version`, `name`, `description` and `category`. |
+| `"requires"` | Ids of other plugins this one needs, such as `["ai-features"]`. Installing it from the directory installs those too, and removing one of them warns about what needs it. |
+
+A directory plugin must also be left out of the app build: add `"!plugins/<id>/**"` to `build.files` in `package.json` (a test checks the list matches).
+
+Publishing is automatic. When a change to `plugins/` reaches `main`, the **Plugin directory** workflow (`.github/workflows/plugins.yml`) runs the tests, builds every directory plugin with `node scripts/build-plugin-directory.js`, and uploads the packages and `index.json` to the `plugin-directory` release, creating it the first time. It can also be run by hand from the Actions tab. Run the script locally to see what it would publish; it writes to `dist-plugins/`.
+
+**Versions:** a directory plugin keeps its own version. Bump it only when the plugin changes, because every new version shows up as an update for everyone who has it installed. Set `minAppVersion` when it needs something new in the app.
+
 ### Plugin packages (`.mspplugin`)
 
 A package is a zip of the plugin folder with `manifest.json` at the top (a zip of the folder itself, with everything under one top folder, also works). Files only, stored or deflated: no encryption, no zip64, no links, no paths with `..`, at most 5 MB packed and 20 MB unpacked. `plugin-package.js` reads and writes them; `packFolder(dir)` builds one from a folder, with the same bytes every time for the same files.
