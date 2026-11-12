@@ -14,7 +14,7 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 
 ### Browser
 - **Multi-tab browsing** – Open multiple ticketing pages simultaneously. The tabs you had open come back the next time the app starts; turn off **Settings → General → Restore Tabs from Last Session** to start on the Home URL instead (pinned tabs always come back)
-- **Address bar** – A row under the tab bar shows the active tab's URL, with back, forward and reload beside it. Type an address and press `Enter` to go there (`Ctrl+L` jumps to it, `Escape` puts the page's URL back). Only `http` and `https` pages open; a bare host such as `example.com` gets `https://` added. There is no web search, so plain words are ignored
+- **Address bar** – A row under the tab bar shows the active tab's URL, with back, forward and reload beside it. Type an address and press `Enter` to go there (`Ctrl+L` jumps to it, `Escape` puts the page's URL back). Only `http` and `https` pages open; a bare host such as `example.com` gets `https://` added. There is no web search, so plain words are ignored. Type a ticket number to jump to it: `12345` (or `INC-12345`, `CHN-45`, `PRB-67`, `RL-89`) opens it in Freshservice, and `CW-12345` opens a ConnectWise ticket. A bare number goes to the site of the tab you're on. The instance is taken from an open tab on that site (for Freshservice, also the API domain or Home URL), so ConnectWise needs a CW tab open
 - **Refresh all tabs** – **View → Refresh All Tabs** (`Ctrl+Alt+R`) reloads every open tab at once
 - **Tab management** – Pin tabs, duplicate (the copy opens next to the original), close others, reopen closed tabs (`Ctrl+Shift+T` puts a tab back where it was), copy URL, copy a clean ticket link (on Freshservice, ConnectWise and Home URL pages; greyed out when no ticket is open), open in default browser (right-click any tab). Tab shortcuts work while you're typing in a page too. Double-click an empty part of the tab bar to open a new tab
 - **Open in New Window** – Right-click a tab and choose **Open in New Window** to open its page in a plain browser window: just back, forward, reload and an address bar, with no tabs, side panel, metrics or bookmarks, so it can't be mistaken for the main window. It shares your sign-ins and closes when the main window closes. Links it opens go to tabs in the main window, and the ⇱ button moves its page to a tab. Right-clicking a link in a page also offers **Open Link in New Window**
@@ -82,6 +82,22 @@ A row of bookmarked sites under the address bar.
 - **Reorder** – Drag bookmarks along the bar. Bookmarks that don't fit are under the **»** button at the end
 - **Manage** – **Settings → Plugins → Bookmarks Bar** lists every bookmark with add, edit, delete, move up/down and drag to reorder, and a switch to show or hide the bar
 
+### Canned Responses
+Saved replies you can drop into a ticket in one click.
+- **💬 Replies tab** – The side panel lists your replies, grouped by category. Click one to insert it at the cursor in the ticket's reply box: the Freshservice reply or note editor, or the ConnectWise Manage notes editor. Nothing already in the box is replaced
+- **Search** – Type in the search box and press `Enter` to insert the top match, or use the arrow keys to pick another
+- **Placeholders** – `{{requester}}`, `{{requester_first}}`, `{{subject}}`, `{{ticket}}`, `{{agent}}`, `{{agent_first}}`, `{{date}}`, `{{time}}` and `{{site}}` are filled in as the reply goes in. On Freshservice the requester and subject come from the API when it's set up, otherwise from the page. Any that can't be read are left in place and the panel tells you to fill them in
+- **Copy** – Puts the filled-in reply on the clipboard, for sites without reply box support
+- **Manage** – **Settings → Plugins → Canned Responses** has your name (for `{{agent}}`) and the list of replies with add, edit, delete and reorder
+- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+
+### Ticket Notifications
+Desktop notifications when a Freshservice ticket assigned to you gets a new reply.
+- **Set up** – Set up the Freshservice API in **Settings → Freshservice**, then in **Settings → Plugins → Ticket Notifications** enter your Freshservice email and click **Find me** (or type your agent ID)
+- **What notifies** – Replies from the requester always; replies and private notes from other agents unless you turn that off; never your own replies. Checks every 2 minutes by default (1 to 30)
+- **Click a notification** to bring MSP++ forward and open the ticket in a new tab. Each one also stays under the bell, with an **Open ticket** button. No popup is shown for the ticket you're looking at
+- More than three tickets at once (after a break) show one summary popup instead
+
 ### Tree Style Tabs
 A **🌲 Tree** tab in the side panel that shows your open tabs as a tree, instead of flat tab groups.
 - **Groups** – **＋ Group** makes a named group (a folder for tabs). Double-click a group to rename it, or right-click a tab in the tab bar and choose **🌲 Move to New Group**
@@ -117,7 +133,7 @@ A **🌲 Tree** tab in the side panel that shows your open tabs as a tree, inste
 
 Extend the app with self-contained plugin directories — no build step required.
 
-- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Tree Style Tabs**, **AI Features** and **Solutions Chat**
+- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **AI Features** and **Solutions Chat**
 - **User-installed plugins** – Drop a plugin folder into `%APPDATA%\MSP++\plugins\` (or `%APPDATA%\Freshservice++\plugins\` if you upgraded) for plugins that survive app updates
 - **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply. Every plugin gets a settings tab, and one with nothing to set up says so
 - **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed
@@ -187,6 +203,16 @@ Inside you'll find:
 - `main-window-state.json` – The main window's last size and position
 - `site-permissions.json` – Saved Allow / Block answers to site permission prompts
 - A folder per ticket ID containing timestamped `.html` snapshot files
+- `legacy-import.json` – Which ConnectWise Manage++ notes have been imported (see below)
+
+### Notes from ConnectWise Manage++
+
+If ConnectWise Manage++ was used on the same computer, MSP++ copies its note backups across at startup (from `%APPDATA%\connectwise-manage-pp\note-backups\` or `%APPDATA%\ConnectWise Manage++\note-backups\`, and the same names under `~/Library/Application Support/` on macOS). Ticket numbers are filed as `CW-<number>`, the way the ConnectWise Manage plugin names them, and a notification says how many notes came across.
+
+- The ConnectWise Manage++ folder is only read, never changed.
+- Nothing already in MSP++ is replaced. If a ticket already has a draft in MSP++, the old draft is added to that ticket's history as a snapshot instead.
+- Notes you delete in MSP++ don't come back. Notes still being written in ConnectWise Manage++ are picked up on the next start.
+- Imported notes count as new for **Backup Retention**, so the startup cleanup doesn't delete them straight away.
 
 Click **📁 Open Folder** in the app to jump there directly.
 

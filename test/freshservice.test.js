@@ -275,6 +275,58 @@ describe("freshservice handlers", () => {
     expect((await handlers["count-tickets"]({ query: "status:2" })).skipped).toBe(true);
     expect(global.fetch).not.toHaveBeenCalled();
   });
+
+  test("find-agent looks an agent up by email", async () => {
+    global.fetch = jest.fn(async () => jsonResponse({ agents: [{ id: 77, first_name: "Sam", last_name: "Ray", email: "sam@acme.com" }] }));
+    expect(await handlers["find-agent"]({ email: " Sam@Acme.com " })).toEqual({ agent: { id: 77, name: "Sam Ray", email: "sam@acme.com" } });
+    expect(global.fetch.mock.calls[0][0]).toBe("https://acme.freshservice.com/api/v2/agents?email=sam%40acme.com");
+    global.fetch = jest.fn(async () => jsonResponse({ agents: [] }));
+    expect((await handlers["find-agent"]({ email: "nobody@acme.com" })).error).toMatch(/No Freshservice agent/);
+    global.fetch = jest.fn();
+    expect((await handlers["find-agent"]({ email: "not an email" })).error).toMatch(/email address/);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("filter-tickets pages through the results and trims each ticket", async () => {
+    const page1 = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, subject: "T", responder_id: 9, updated_at: "2026-11-11T10:00:00Z", description: "x" }));
+    const page2 = [{ id: 31, subject: "Last", requester_id: 4, updated_at: "2026-11-11T11:00:00Z" }];
+    global.fetch = jest.fn(async (url) => jsonResponse({ tickets: url.endsWith("page=1") ? page1 : page2, total: 31 }));
+    const res = await handlers["filter-tickets"]({ query: "agent_id:9 AND updated_at:>'2026-11-10'", maxPages: 5 });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(res.total).toBe(31);
+    expect(res.tickets).toHaveLength(31);
+    expect(res.tickets[30]).toEqual({
+      id: 31, subject: "Last", status: null, priority: null, responderId: null, requesterId: 4,
+      createdAt: "", updatedAt: "2026-11-11T11:00:00Z",
+    });
+    expect(res.tickets[0].description).toBeUndefined();
+  });
+
+  test("filter-tickets stops at maxPages and checks the query first", async () => {
+    const full = Array.from({ length: 30 }, (_, i) => ({ id: i + 1 }));
+    global.fetch = jest.fn(async () => jsonResponse({ tickets: full, total: 300 }));
+    await handlers["filter-tickets"]({ query: "status:2" });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    global.fetch = jest.fn();
+    expect((await handlers["filter-tickets"]({ query: "tag:\"x\"" })).error).toMatch(/single quotes/);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("get-conversations returns short entries oldest first", async () => {
+    global.fetch = jest.fn(async () => jsonResponse({
+      conversations: [
+        { id: 2, user_id: 9, incoming: false, private: true, body: "<p>Later   note</p>", created_at: "2026-11-11T12:00:00Z" },
+        { id: 1, user_id: 4, incoming: true, body_text: "x".repeat(400), from_email: "pat@example.com", created_at: "2026-11-11T09:00:00Z" },
+        { user_id: 4, body_text: "no id" },
+      ],
+    }));
+    const res = await handlers["get-conversations"]({ ticketId: 123 });
+    expect(res.conversations.map((c) => c.id)).toEqual([1, 2]);
+    expect(res.conversations[0]).toMatchObject({ userId: 4, incoming: true, private: false, fromEmail: "pat@example.com" });
+    expect(res.conversations[0].snippet).toHaveLength(300);
+    expect(res.conversations[1].snippet).toBe("Later note");
+    expect((await handlers["get-conversations"]({ ticketId: "1/../2" })).error).toMatch(/Invalid/);
+  });
 });
 
 describe("freshservice buildFilterQuery", () => {

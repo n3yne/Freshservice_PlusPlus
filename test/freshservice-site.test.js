@@ -117,3 +117,43 @@ describe("freshservice recordLink", () => {
     expect(adapter.recordLink("nope")).toBeNull();
   });
 });
+
+describe("freshservice ticketUrl (address bar quick-open)", () => {
+  const FS_TAB = "https://acme.freshservice.com/a/tickets?filter=open";
+
+  test("opens tickets and other records on the open instance", () => {
+    const { adapter } = loadAdapter({});
+    const ctx = { tabUrls: ["https://example.com/", FS_TAB] };
+    expect(adapter.ticketUrl("12345", ctx)).toBe("https://acme.freshservice.com/a/tickets/12345");
+    expect(adapter.ticketUrl("#INC-12", ctx)).toBe("https://acme.freshservice.com/a/tickets/12");
+    expect(adapter.ticketUrl("sr-7", ctx)).toBe("https://acme.freshservice.com/a/tickets/7");
+    expect(adapter.ticketUrl("FS-0042", ctx)).toBe("https://acme.freshservice.com/a/tickets/42");
+    expect(adapter.ticketUrl("CHN-45", ctx)).toBe("https://acme.freshservice.com/a/changes/45");
+    expect(adapter.ticketUrl("PRB-67", ctx)).toBe("https://acme.freshservice.com/a/problems/67");
+    expect(adapter.ticketUrl("RL-89", ctx)).toBe("https://acme.freshservice.com/a/releases/89");
+  });
+
+  test("leaves other queries alone", () => {
+    const { adapter } = loadAdapter({});
+    const ctx = { tabUrls: [FS_TAB] };
+    expect(adapter.ticketUrl("CW-12", ctx)).toBeNull();
+    expect(adapter.ticketUrl("printer", ctx)).toBeNull();
+    expect(adapter.ticketUrl("12a", ctx)).toBeNull();
+  });
+
+  test("keeps the old helpdesk portal for tickets", () => {
+    const { adapter } = loadAdapter({});
+    const ctx = { tabUrls: ["https://acme.freshservice.com/helpdesk/tickets/1"] };
+    expect(adapter.ticketUrl("5", ctx)).toBe("https://acme.freshservice.com/helpdesk/tickets/5");
+    expect(adapter.ticketUrl("CHN-5", ctx)).toBe("https://acme.freshservice.com/a/changes/5");
+  });
+
+  test("falls back to the API domain, then the Home URL, and skips sign-in hosts", () => {
+    const signIn = { tabUrls: ["https://acme.myfreshworks.com/login"] };
+    expect(loadAdapter({ fsApiDomain: "help.acme.com" }).adapter.ticketUrl("3", signIn))
+      .toBe("https://help.acme.com/a/tickets/3");
+    expect(loadAdapter({ defaultUrl: "https://acme.freshservice.com/a/" }).adapter.ticketUrl("3", signIn))
+      .toBe("https://acme.freshservice.com/a/tickets/3");
+    expect(loadAdapter({}).adapter.ticketUrl("3", signIn)).toBeNull();
+  });
+});
