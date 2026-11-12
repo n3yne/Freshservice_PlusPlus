@@ -91,6 +91,13 @@ Saved replies you can drop into a ticket in one click.
 - **Manage** – **Settings → Plugins → Canned Responses** has your name (for `{{agent}}`) and the list of replies with add, edit, delete and reorder
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
 
+### Ticket Notifications
+Desktop notifications when a Freshservice ticket assigned to you gets a new reply.
+- **Set up** – Set up the Freshservice API in **Settings → Freshservice**, then in **Settings → Plugins → Ticket Notifications** enter your Freshservice email and click **Find me** (or type your agent ID)
+- **What notifies** – Replies from the requester always; replies and private notes from other agents unless you turn that off; never your own replies. Checks every 2 minutes by default (1 to 30)
+- **Click a notification** to bring MSP++ forward and open the ticket in a new tab. Each one also stays under the bell, with an **Open ticket** button. No popup is shown for the ticket you're looking at
+- More than three tickets at once (after a break) show one summary popup instead
+
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes. After a suggestion is returned, a **Refine** textarea appears — type follow-up instructions (e.g. "make it shorter", "keep this as a client-facing message") and click **↺ Refine** to generate a revised version without losing the Apply option
 - **📋 Summarize** – Reads the ticket description, replies and notes from the open ticket (on Freshservice through the Freshservice API when it's set up, otherwise from the page; on ConnectWise Manage from the page) and asks the AI to produce a concise bullet-point summary
@@ -116,7 +123,7 @@ Saved replies you can drop into a ticket in one click.
 
 Extend the app with self-contained plugin directories — no build step required.
 
-- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **AI Features** and **Solutions Chat**
+- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **AI Features** and **Solutions Chat**
 - **User-installed plugins** – Drop a plugin folder into `%APPDATA%\MSP++\plugins\` (or `%APPDATA%\Freshservice++\plugins\` if you upgraded) for plugins that survive app updates
 - **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply. Every plugin gets a settings tab, and one with nothing to set up says so
 - **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed
