@@ -472,7 +472,33 @@ document.addEventListener("DOMContentLoaded", function () {
 
   let dismissedPluginUpdates = "";
 
+  function showMovedPlugins(state) {
+    const moved = state && Array.isArray(state.moved) ? state.moved : [];
+    const idx = pendingNotifications.findIndex((n) => n.type === "plugins-moved");
+    if (moved.length === 0) {
+      if (idx !== -1) pendingNotifications.splice(idx, 1);
+      return;
+    }
+    if (idx !== -1) return;
+    const used = moved.filter((m) => m.used).map((m) => m.name);
+    addUniqueNotification({
+      id: notifNextId++,
+      type: "plugins-moved",
+      title: "Some plugins moved to the plugin directory",
+      desc: (used.length
+        ? `You were using ${used.join(", ")}. `
+        : "") + "Plugins that used to come with MSP++ now install from Settings > Plugins > Browse. Choose which ones to reinstall; your settings and data are kept.",
+      action: {
+        label: "Choose Plugins",
+        kind: "callback",
+        onClick: () => window.backupAPI.openSettingsWindow({ panel: "browse" }),
+      },
+    });
+    openNotificationsPanel();
+  }
+
   function showPluginDirectoryStatus(state) {
+    showMovedPlugins(state);
     const updates = state && Array.isArray(state.updates) ? state.updates : [];
     const key = updates.map((u) => u.id + "@" + u.version).sort().join(",");
     const idx = pendingNotifications.findIndex((n) => n.type === "plugin-updates");
@@ -505,6 +531,10 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   window.backupAPI.onPluginDirectoryStatus(showPluginDirectoryStatus);
+  // Moved plugins are known right after startup, before the first directory check.
+  setTimeout(() => {
+    window.backupAPI.getPluginDirectory().then(showPluginDirectoryStatus).catch(() => {});
+  }, 3000);
 
   // ==================== Side Panel Host ====================
   //

@@ -2,6 +2,7 @@
   "id": "connectwise-manage",
   "name": "ConnectWise Manage",
   "version": "0.7.7",
+  "distribution": "directory",
   "description": "Site support for ConnectWise Manage: ticket detection, live note sync with time-entry and stopwatch notes, ticket notes for AI Summarize, and filling the hours of a time entry for the Time Tracker.",
   "category": "Sites",
   "renderer": "renderer.js",

@@ -2108,3 +2108,36 @@ body[data-theme="light"] .downloads-panel {
 .plugin-directory-actions .btn[hidden] {
   display: none;
 }
+/* One-time offer to reinstall plugins that moved to the directory */
+.plugin-moved {
+  border: 1px solid rgba(var(--primary-rgb), 0.5);
+  background: rgba(var(--primary-rgb), 0.08);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.plugin-moved[hidden] {
+  display: none;
+}
+
+.plugin-moved-title {
+  font-size: 13px;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+
+.plugin-moved-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+.plugin-moved-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 4px 12px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text);
+}

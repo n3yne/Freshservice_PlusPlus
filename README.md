@@ -28,7 +28,7 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 - **Image context menu** – Right-click any image for **Copy Image** (copies pixel data to clipboard) and **Save Image As…** (native save dialog); image links open as downloads instead of new tabs
 
 ### Side Panel
-- **One panel, a tab per plugin** – The panel on the right holds a tab for each plugin that adds one: **📋 Notes** (Note Backup) and **📚 Solutions** (Solutions Chat) out of the box. Your own plugins can add tabs too (see [`docs/plugins.md`](docs/plugins.md)). The last tab you used is reopened on launch
+- **One panel, a tab per plugin** – The panel on the right holds a tab for each plugin that adds one: **📋 Notes** (Note Backup) and **🕘 Recent** (Recent Tickets) out of the box, plus tabs from plugins you install, such as **📚 Solutions** (Solutions Chat). Your own plugins can add tabs too (see [`docs/plugins.md`](docs/plugins.md)). The last tab you used is reopened on launch
 - **Turn it on or off** under **Settings → General → Side Panel**; hide it with `Ctrl+Shift+B` or the ✕ button
 - **Lots of tabs** – Tabs wrap onto more rows by default. Turn on **Settings → General → Scroll Side Panel Tabs** to keep them on one row and scroll with the ‹ › buttons or the mouse wheel
 
@@ -58,7 +58,7 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 - **Pull from CW / Push to CW** – Manual sync buttons, as for Freshservice
 - **Auto ticket detection** – The ticket number is read from the URL or the page and saved as `CW-123456`, so it never collides with Freshservice numbers
 - **AI Summarize** – Reads the ticket's notes (author, date and text) from the page
-- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+- **From the plugin directory** — install it from **Settings → Plugins → Browse** (it no longer comes with MSP++)
 
 ### Metrics Bar
 
@@ -91,7 +91,7 @@ Saved replies you can drop into a ticket in one click.
 - **Placeholders** – `{{requester}}`, `{{requester_first}}`, `{{subject}}`, `{{ticket}}`, `{{agent}}`, `{{agent_first}}`, `{{date}}`, `{{time}}` and `{{site}}` are filled in as the reply goes in. On Freshservice the requester and subject come from the API when it's set up, otherwise from the page. Any that can't be read are left in place and the panel tells you to fill them in
 - **Copy** – Puts the filled-in reply on the clipboard, for sites without reply box support
 - **Manage** – **Settings → Plugins → Canned Responses** has your name (for `{{agent}}`) and the list of replies with add, edit, delete and reorder
-- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+- **From the plugin directory** — install it from **Settings → Plugins → Browse** (it no longer comes with MSP++)
 
 ### Ticket Notifications
 Desktop notifications when a Freshservice ticket assigned to you gets a new reply.
@@ -99,6 +99,7 @@ Desktop notifications when a Freshservice ticket assigned to you gets a new repl
 - **What notifies** – Replies from the requester always; replies and private notes from other agents unless you turn that off; never your own replies. Checks every 2 minutes by default (1 to 30)
 - **Click a notification** to bring MSP++ forward and open the ticket in a new tab. Each one also stays under the bell, with an **Open ticket** button. No popup is shown for the ticket you're looking at
 - More than three tickets at once (after a break) show one summary popup instead
+- **From the plugin directory** — install it from **Settings → Plugins → Browse** (it no longer comes with MSP++)
 
 ### Tree Style Tabs
 A **🌲 Tree** tab in the side panel that shows your open tabs as a tree, instead of flat tab groups.
@@ -109,6 +110,7 @@ A **🌲 Tree** tab in the side panel that shows your open tabs as a tree, inste
 - **Close** – Click a tab to switch to it; middle-click or × closes it, and its children move up a level. Right-click for **Close Tab and Its Children** or **Close Group and Its Tabs** (both ask first), **Ungroup (Keep Tabs)**, **Move Up a Level** and more
 - **Filter** the tree by title or address, collapse or expand groups (or all of them), and use the arrow keys, `Enter`, `F2` (rename) and `Delete` on the tree
 - The tree is kept when you restart (matched to the restored tabs by address). The tab bar keeps its own order
+- **From the plugin directory** — install it from **Settings → Plugins → Browse** (it no longer comes with MSP++)
 
 ### Time Tracker
 A **⏱ Time** tab in the side panel that times the ticket you're working on.
@@ -118,7 +120,7 @@ A **⏱ Time** tab in the side panel that times the ticket you're working on.
 - **Logged today** – A summary of the time you logged today, per ticket, with the total for the day. Expand a ticket to see each entry with its time and note, use **‹** and **›** to look back at earlier days (the last 90 days are kept), and **📋 Copy** puts the summary on the clipboard for a timesheet or a stand-up. Both **Log** and **Mark logged** count; taking an entry out of the summary (✕) doesn't change the time entry on the site
 - **Rounding** – Settings → Plugins → Time Tracker rounds the logged time up to the next 1, 5, 6, 10, 15 or 30 minutes. The timer itself keeps the exact time
 - **Safe on close** – Running timers are paused when MSP++ closes, and saved every minute so a crash loses at most a minute
-- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+- **From the plugin directory** — install it from **Settings → Plugins → Browse** (it no longer comes with MSP++)
 
 ### Ticket Search
 A **🔎 Search** tab in the side panel that finds Freshservice tickets as you type, through the Freshservice API.
@@ -127,7 +129,7 @@ A **🔎 Search** tab in the side panel that finds Freshservice tickets as you t
 - **From the command palette** – Type in the `Ctrl+K` palette and the tickets found are listed there too, under **Ticket Search** (`Enter` opens one as set above, `Ctrl+Enter` in a new tab), along with **Search tickets for “…”** to open this tab with the same search
 - **How far back** – Freshservice's API can't search subjects, so MSP++ fetches up to the 300 most recent tickets updated in the last 30 days (7 days to a year in Settings) and matches subjects itself, keeping the list for two minutes so typing doesn't call the API again. Ticket numbers and requesters are looked up directly, however old the ticket
 - **Requirements** – the domain and API key in **Settings → Plugins → Freshservice**
-- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+- **From the plugin directory** — install it from **Settings → Plugins → Browse** (it no longer comes with MSP++)
 
 ### Quick Actions
 A **⚡ Actions** tab in the side panel that changes the open ticket's status, priority, group and agent through the Freshservice API, without opening the ticket form.
@@ -136,7 +138,7 @@ A **⚡ Actions** tab in the side panel that changes the open ticket's status, p
 - **The page catches up** – After a change the ticket's tab is reloaded so it shows the new values, unless you've typed something on the page, in which case you get a **Reload tab** button instead. Turn reloading off in **Settings → Plugins → Quick Actions**
 - **Command palette** – `Ctrl+K` has **Assign Ticket to Me**, **Resolve Ticket**, and **Set Ticket Status: …** / **Set Ticket Priority: …** for the open ticket
 - **Requirements** – the domain and API key in **Settings → Plugins → Freshservice**; the key's agent needs permission to edit tickets. Tickets only (not changes, problems or releases)
-- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+- **From the plugin directory** — install it from **Settings → Plugins → Browse** (it no longer comes with MSP++)
 
 ### Recent Tickets
 A **🕘 Recent** tab in the side panel listing the tickets you've viewed lately, newest first.
@@ -154,13 +156,13 @@ A **⏰ Follow-ups** tab in the side panel for coming back to a ticket later.
 - **Desktop alert** – When it's due MSP++ shows a Windows notification and one under the bell; click either to open the ticket. Reminders that came due while MSP++ was closed go off when it next starts
 - **Due list** – Reminders that have gone off stay at the top under **Due** until you **💤 snooze** them (15 min, 1 hour, 3 hours, tomorrow or a time you pick) or mark them **✓ done** (with Undo). One reminder per ticket; setting a new time replaces it
 - **Settings → Plugins → Follow-up Reminders** turns the desktop alert and its sound on or off and sets what time "tomorrow" means (6 to 11 AM)
-- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+- **From the plugin directory** — install it from **Settings → Plugins → Browse** (it no longer comes with MSP++)
 
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes. After a suggestion is returned, a **Refine** textarea appears — type follow-up instructions (e.g. "make it shorter", "keep this as a client-facing message") and click **↺ Refine** to generate a revised version without losing the Apply option
 - **📋 Summarize** – Reads the ticket description, replies and notes from the open ticket (on Freshservice through the Freshservice API when it's set up, otherwise from the page; on ConnectWise Manage from the page) and asks the AI to produce a concise bullet-point summary
 - Supports **Hatz AI**, **OpenAI**, **Anthropic**, **Azure OpenAI**, and **Microsoft 365 Copilot** as providers; for Hatz, OpenAI and Anthropic the model dropdown is populated automatically from the provider's API once an API key is entered
-- **Delivered as a bundled plugin** — AI Features is implemented via the plugin system; it can be disabled independently from Settings → Plugins
+- **From the plugin directory** — install it from **Settings → Plugins → Browse** (it no longer comes with MSP++)
 
 ### Freshservice API (Freshservice plugin)
 - **Ticket details through the API** – With your Freshservice domain and API key entered under Settings → Plugins → Freshservice, Summarize and Suggest read the ticket's subject, status, priority, requester, description and every reply and note through the Freshservice REST API (v2) instead of scraping the page
@@ -178,16 +180,16 @@ A **⏰ Follow-ups** tab in the side panel for coming back to a ticket later.
 - **Copy** or **Add to note** puts the answer and its article links into your clipboard or the note in the Notes tab (a snapshot is saved first; **Add to note** needs Note Backup turned on)
 - **Setup check** – **Settings → Plugins → Solutions Chat** shows whether AI Features and the Freshservice API are ready, and has a test search to confirm your API key can read Solutions articles
 - **Requirements** – uses the provider set up in **Settings → Plugins → AI Features** and the domain and API key in **Settings → Plugins → Freshservice**; the API key needs permission to view Solutions articles. Each question makes two AI requests (one to choose search terms, one to answer)
-- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+- **From the plugin directory** — install it from **Settings → Plugins → Browse** (it no longer comes with MSP++)
 
 ### Plugin System
 
 Extend the app with self-contained plugin directories — no build step required.
 
-- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **Time Tracker**, **Follow-up Reminders**, **Recent Tickets**, **Ticket Search**, **Quick Actions**, **AI Features** and **Solutions Chat**
-- **User-installed plugins** – Drop a plugin folder into `%APPDATA%\MSP++\plugins\` (or `%APPDATA%\Freshservice++\plugins\` if you upgraded) for plugins that survive app updates
-- **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply. Every plugin gets a settings tab, and one with nothing to set up says so
-- **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed
+- **Bundled plugins** – Ship with the app: the **Freshservice** site plugin, **Note Backup**, **Recent Tickets**, **Bookmarks Bar** and **Metrics Bar**
+- **Plugin directory** – **Settings → Plugins → Browse** installs, updates and removes more plugins: **ConnectWise Manage**, **AI Features**, **Solutions Chat**, **Canned Responses**, **Follow-up Reminders**, **Time Tracker**, **Quick Actions**, **Ticket Notifications**, **Ticket Search** and **Tree Style Tabs**. Downloads are checked against the directory's SHA-256; MSP++ checks for plugin updates after it starts and once a day. After updating from 0.7, a one-time prompt offers to reinstall the ones you were using, with your settings and data kept
+- **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply (**Restart Now**). Every plugin gets a settings tab, and one with nothing to set up says so
+- **Import plugin** – **Import Plugin File** (a `.mspplugin` package) or **Import Folder** in Settings → Plugins; importing a plugin that's already installed replaces it, and installed plugins can be removed with **Remove**
 - Plugins can add side panel tabs, toolbar buttons, Settings panels, notifications, backend IPC handlers, DOM elements, and application menu items
 - See [`docs/plugins.md`](docs/plugins.md) for the full development guide and [`docs/example-plugin/`](docs/example-plugin/) for a reference skeleton
 

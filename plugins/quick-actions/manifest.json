@@ -2,6 +2,7 @@
   "id": "quick-actions",
   "name": "Quick Actions",
   "version": "0.7.7",
+  "distribution": "directory",
   "description": "An Actions tab in the side panel that changes the open ticket's status, priority, group and agent through the site's API (Freshservice), with Assign to me and Resolve in one click, without opening the ticket form.",
   "category": "Tickets",
   "main": "main.js",

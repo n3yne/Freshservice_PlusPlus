@@ -57,13 +57,24 @@
       "plugin-manager.js",
       "plugin-directory.js",
       "plugin-package.js",
+      "moved-plugins.json",
       "index.html",
       "child-window.html",
       "child-window.js",
       "settings.html",
       "styles.css",
       "icon.png",
-      "plugins/**/*"
+      "plugins/**/*",
+      "!plugins/ai-features/**",
+      "!plugins/canned-responses/**",
+      "!plugins/connectwise-manage/**",
+      "!plugins/follow-ups/**",
+      "!plugins/quick-actions/**",
+      "!plugins/solutions-chat/**",
+      "!plugins/ticket-notifications/**",
+      "!plugins/ticket-search/**",
+      "!plugins/time-tracker/**",
+      "!plugins/tree-tabs/**"
     ],
     "win": {
       "target": [

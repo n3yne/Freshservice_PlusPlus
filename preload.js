@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld("backupAPI", {
   checkPluginDirectory: () => ipcRenderer.invoke("plugin-directory-check"),
   installFromDirectory: (ids) => ipcRenderer.invoke("plugin-directory-install", ids),
   updateAllPlugins: () => ipcRenderer.invoke("plugin-directory-update-all"),
+  dismissMovedPlugins: (ids) => ipcRenderer.invoke("plugin-directory-dismiss-moved", ids),
   onPluginDirectoryStatus: (callback) =>
     onIpc("plugin-directory-status", (event, state) => callback(state)),
   restartApp: () => ipcRenderer.invoke("restart-app"),

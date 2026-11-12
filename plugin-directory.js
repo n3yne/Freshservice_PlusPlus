@@ -273,6 +273,64 @@ function cancelPending(userData, id) {
   writePending(userData, pending);
 }
 
+// ===================== Plugins that moved out of the app =====================
+
+// Plugins bundled up to 0.7 moved to the directory in 0.8 (moved-plugins.json).
+// The first start without them offers to reinstall them. A plugin is pre-ticked
+// when there are signs it was in use: a setting changed from its default, a
+// saved API key, a data file, one of its site's hosts in the open tabs or the
+// settings, or (alsoIf) another moved plugin that was in use.
+//
+//   moved          moved-plugins.json "plugins"
+//   settings       the raw settings.json object
+//   pluginsConfig  plugins-config.json ({ id: false } for plugins turned off)
+//   installedIds   ids loaded now (bundled or installed)
+//   handled        ids already offered (moved-handled.json)
+//   tabsText       open-tabs.json as text, for hosts
+// Returns [{ id, name, used }] for the plugins still to offer.
+function findMovedPlugins({ userData, moved, settings = {}, pluginsConfig = {}, installedIds = [], handled = [], tabsText = "" }) {
+  const list = Array.isArray(moved) ? moved : [];
+  const settingsText = JSON.stringify(settings || {});
+  const usedById = new Map();
+  function changedSetting(entry) {
+    return Object.entries(entry.settings || {}).some(([key, def]) =>
+      Object.prototype.hasOwnProperty.call(settings, key) && JSON.stringify(settings[key]) !== JSON.stringify(def));
+  }
+  function savedCredential(entry) {
+    return (entry.credentials || []).some(name => typeof settings[name + "Encrypted"] === "string" && settings[name + "Encrypted"]);
+  }
+  function hasDataFile(entry) {
+    return (entry.dataFiles || []).some((file) => {
+      try {
+        return fs.statSync(path.join(userData, "plugins", entry.id, file)).size > 2;
+      } catch { return false; }
+    });
+  }
+  function visitedHost(entry) {
+    return (entry.hosts || []).some(h => tabsText.includes(h) || settingsText.includes(h));
+  }
+  for (const entry of list) {
+    if (!entry || !ID_PATTERN.test(entry.id)) continue;
+    usedById.set(entry.id, pluginsConfig[entry.id] !== false &&
+      (changedSetting(entry) || savedCredential(entry) || hasDataFile(entry) || visitedHost(entry)));
+  }
+  for (const entry of list) {
+    if (entry && entry.alsoIf && usedById.get(entry.alsoIf) && pluginsConfig[entry.id] !== false) usedById.set(entry.id, true);
+  }
+  return list
+    .filter(e => e && usedById.has(e.id) && !installedIds.includes(e.id) && !handled.includes(e.id))
+    .map(e => ({ id: e.id, name: typeof e.name === "string" ? e.name : e.id, used: usedById.get(e.id) }));
+}
+
+function readMovedHandled(userData) {
+  const list = readJson(path.join(installedRoot(userData), "moved-handled.json"), {}).ids;
+  return Array.isArray(list) ? list.filter(id => typeof id === "string") : [];
+}
+
+function writeMovedHandled(userData, ids) {
+  writeJson(path.join(installedRoot(userData), "moved-handled.json"), { ids: Array.from(new Set(ids)) });
+}
+
 // ===================== The service =====================
 
 function sha256(buf) {
@@ -301,6 +359,7 @@ function createPluginDirectory(opts) {
   let lastError = "";
   let etag = "";
   let inFlight = null;
+  let moved = [];
 
   async function fetchIndex() {
     const headers = { "User-Agent": userAgent, Accept: "application/json" };
@@ -379,7 +438,22 @@ function createPluginDirectory(opts) {
         install: Object.keys(pending.install),
         remove: Object.keys(pending.remove),
       },
+      // Moved plugins still to offer, minus any already staged for install.
+      moved: moved.filter(m => !pending.install[m.id] && !installed.has(m.id)).map(m => Object.assign({}, m, {
+        available: index.plugins.some(p => p.id === m.id),
+      })),
     };
+  }
+
+  function setMoved(list) {
+    moved = Array.isArray(list) ? list.slice() : [];
+  }
+
+  // The moved-plugins offer was answered (reinstalled or declined): don't ask again.
+  function dismissMoved(ids) {
+    const done = Array.isArray(ids) ? ids.filter(id => typeof id === "string" && ID_PATTERN.test(id)) : moved.map(m => m.id);
+    writeMovedHandled(userData, readMovedHandled(userData).concat(done));
+    moved = moved.filter(m => !done.includes(m.id));
   }
 
   // The ids to install for `ids`, with everything they require, in an order where
@@ -502,6 +576,8 @@ function createPluginDirectory(opts) {
     importPackage,
     remove,
     cancel: (id) => cancelPending(userData, id),
+    setMoved,
+    dismissMoved,
     resolveInstallSet,
   };
 }
@@ -518,5 +594,7 @@ module.exports = {
   stagePackage,
   stageRemove,
   cancelPending,
+  findMovedPlugins,
+  readMovedHandled,
   createPluginDirectory,
 };

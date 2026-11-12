@@ -101,6 +101,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnPluginUpdateAll    = document.getElementById("btn-plugin-update-all");
   const btnPluginDirCheck     = document.getElementById("btn-plugin-directory-check");
   const settingPluginAutoUpd  = document.getElementById("setting-plugin-auto-update");
+  const pluginMovedBox        = document.getElementById("plugin-moved");
   const pluginUpdateCounts    = [document.getElementById("plugin-update-count"), document.getElementById("nav-plugin-update-count")];
 
   // ==================== Utilities ====================
@@ -974,6 +975,7 @@ document.addEventListener("DOMContentLoaded", function () {
       else pluginDirectoryStatus.textContent = "Not checked yet.";
     }
     if (state.pending.install.length || state.pending.remove.length) showRestartNotice();
+    renderMovedBox();
     renderBrowseList();
     renderPluginList();
   }
@@ -1128,6 +1130,77 @@ document.addEventListener("DOMContentLoaded", function () {
     item.appendChild(info);
     item.appendChild(buildBrowseAction(entry));
     return item;
+  }
+
+  // The one-time offer to reinstall plugins that moved out of the app into the
+  // directory. Plugins that look used are ticked.
+  let movedChoices = null; // id -> ticked, kept while the box is open
+  function renderMovedBox() {
+    if (!pluginMovedBox) return;
+    const moved = (directoryState && directoryState.moved) || [];
+    pluginMovedBox.innerHTML = "";
+    pluginMovedBox.hidden = moved.length === 0;
+    if (moved.length === 0) return;
+    if (!movedChoices) movedChoices = {};
+    moved.forEach(function (m) { if (!(m.id in movedChoices)) movedChoices[m.id] = m.used; });
+
+    const title = document.createElement("h4");
+    title.className = "plugin-moved-title";
+    title.textContent = "These plugins moved to the plugin directory";
+    pluginMovedBox.appendChild(title);
+    const intro = document.createElement("p");
+    intro.className = "plugin-moved-desc";
+    intro.textContent = "They used to come with MSP++. Reinstall the ones you want; your saved settings and data are still here. " +
+      "The ticked ones look like you've used them.";
+    pluginMovedBox.appendChild(intro);
+
+    const list = document.createElement("div");
+    list.className = "plugin-moved-list";
+    moved.forEach(function (m) {
+      const label = document.createElement("label");
+      label.className = "plugin-moved-item";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = movedChoices[m.id];
+      box.disabled = directoryState.fetchedAt > 0 && !m.available;
+      box.addEventListener("change", function () { movedChoices[m.id] = box.checked; });
+      label.appendChild(box);
+      label.appendChild(document.createTextNode(" " + m.name + (m.used ? " (in use)" : "")));
+      list.appendChild(label);
+    });
+    pluginMovedBox.appendChild(list);
+
+    const row = document.createElement("div");
+    row.className = "plugin-import-row";
+    const reinstall = document.createElement("button");
+    reinstall.type = "button";
+    reinstall.className = "btn btn-small btn-primary";
+    reinstall.textContent = "Reinstall Selected";
+    reinstall.addEventListener("click", function () {
+      const ids = moved.filter(function (m) { return movedChoices[m.id]; }).map(function (m) { return m.id; });
+      if (ids.length === 0) {
+        window.backupAPI.dismissMovedPlugins(moved.map(function (m) { return m.id; })).then(refreshDirectoryState);
+        return;
+      }
+      reportInstall(window.backupAPI.installFromDirectory(ids), "Downloading " + ids.length + (ids.length === 1 ? " plugin…" : " plugins…"))
+        .then(function () {
+          // Only stop asking once the download worked; a failure keeps the offer.
+          if (pluginBrowseStatus.classList.contains("success")) {
+            return window.backupAPI.dismissMovedPlugins(moved.map(function (m) { return m.id; })).then(refreshDirectoryState);
+          }
+        });
+    });
+    const skip = document.createElement("button");
+    skip.type = "button";
+    skip.className = "btn btn-small btn-secondary";
+    skip.textContent = "Don't Reinstall";
+    skip.title = "You can still install any of them from the list below later.";
+    skip.addEventListener("click", function () {
+      window.backupAPI.dismissMovedPlugins(moved.map(function (m) { return m.id; })).then(refreshDirectoryState);
+    });
+    row.appendChild(reinstall);
+    row.appendChild(skip);
+    pluginMovedBox.appendChild(row);
   }
 
   function renderBrowseList() {
