@@ -43,6 +43,7 @@ document.addEventListener("DOMContentLoaded", function () {
     dismissedReleaseVersion: "",
     autoUpdate: true,
     restoreTabs: true,
+    unreadTabBadges: true,
   };
 
   // ==================== Element References ====================
@@ -50,6 +51,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const settingTabScroll      = document.getElementById("setting-side-panel-tab-scroll");
   const settingDefaultUrl     = document.getElementById("setting-default-url");
   const settingRestoreTabs    = document.getElementById("setting-restore-tabs");
+  const settingUnreadBadges   = document.getElementById("setting-unread-tab-badges");
   const settingTheme          = document.getElementById("setting-theme");
   const settingAutoUpdate     = document.getElementById("setting-auto-update");
   const updateModeNote        = document.getElementById("update-mode-note");
@@ -83,6 +85,7 @@ document.addEventListener("DOMContentLoaded", function () {
     settingTheme.checked = theme === "light";
     settingAutoUpdate.checked = settings.autoUpdate !== false;
     settingRestoreTabs.checked = settings.restoreTabs !== false;
+    settingUnreadBadges.checked = settings.unreadTabBadges !== false;
 
     if (document.activeElement !== settingDefaultUrl) {
       settingDefaultUrl.value = settings.defaultUrl && settings.defaultUrl !== "about:blank" ? settings.defaultUrl : "";
@@ -104,6 +107,11 @@ document.addEventListener("DOMContentLoaded", function () {
   settingRestoreTabs.addEventListener("change", function () {
     appSettings.restoreTabs = settingRestoreTabs.checked;
     saveSettings({ restoreTabs: appSettings.restoreTabs });
+  });
+
+  settingUnreadBadges.addEventListener("change", function () {
+    appSettings.unreadTabBadges = settingUnreadBadges.checked;
+    saveSettings({ unreadTabBadges: appSettings.unreadTabBadges });
   });
 
   settingTheme.addEventListener("change", function () {

@@ -41,6 +41,7 @@
       "address-bar.js",
       "page-zoom.js",
       "tab-shortcuts.js",
+      "unread-tabs.js",
       "safe-html.js",
       "settings_renderer.js",
       "launch.js",
