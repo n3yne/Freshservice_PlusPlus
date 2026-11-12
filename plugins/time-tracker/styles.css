@@ -1,13 +1,13 @@
 /* ===== Time Tracker: its side panel tab ===== */
-.tt-panel {
+.tmr-panel {
   background: var(--panel-content-bg);
   overflow-y: auto;
   font-size: 12px;
   color: var(--text);
 }
 
-.tt-header,
-.tt-list-header {
+.tmr-header,
+.tmr-list-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -15,32 +15,32 @@
   padding: 8px 12px;
 }
 
-.tt-header {
+.tmr-header {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-.tt-title {
+.tmr-title {
   font-size: 13px;
   font-weight: 600;
 }
 
-.tt-muted {
+.tmr-muted {
   color: var(--text-muted);
   font-size: 11px;
 }
 
-.tt-flash {
+.tmr-flash {
   margin: 8px 12px 0;
   padding: 6px 8px;
   border-radius: 6px;
   border: 1px solid var(--border);
 }
 
-.tt-ok { color: var(--success); }
-.tt-error { color: var(--warning); }
+.tmr-ok { color: var(--success); }
+.tmr-error { color: var(--warning); }
 
-.tt-current {
+.tmr-current {
   margin: 10px 12px;
   padding: 10px;
   border: 1px solid var(--border);
@@ -51,34 +51,34 @@
   gap: 4px;
 }
 
-.tt-current-empty {
+.tmr-current-empty {
   color: var(--text-muted);
 }
 
-.tt-current-label,
-.tt-row-label {
+.tmr-current-label,
+.tmr-row-label {
   font-weight: 600;
   color: var(--text);
 }
 
-a.tt-row-label {
+a.tmr-row-label {
   text-decoration: none;
 }
 
-a.tt-row-label:hover {
+a.tmr-row-label:hover {
   color: var(--primary);
   text-decoration: underline;
 }
 
-.tt-current-title,
-.tt-row-title {
+.tmr-current-title,
+.tmr-row-title {
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.tt-current-row {
+.tmr-current-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -86,37 +86,37 @@ a.tt-row-label:hover {
   margin-top: 4px;
 }
 
-.tt-clock {
+.tmr-clock {
   font-family: "Source Code Pro", Consolas, monospace;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.tt-clock-big {
+.tmr-clock-big {
   font-size: 20px;
   font-weight: 600;
 }
 
-.tt-running {
+.tmr-running {
   color: var(--success);
 }
 
-.tt-buttons {
+.tmr-buttons {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
 }
 
-.tt-list-header {
+.tmr-list-header {
   font-weight: 600;
   padding-bottom: 4px;
 }
 
-.tt-empty {
+.tmr-empty {
   padding: 0 12px 12px;
 }
 
-.tt-row {
+.tmr-row {
   margin: 0 12px 6px;
   padding: 8px;
   border: 1px solid var(--border);
@@ -126,27 +126,27 @@ a.tt-row-label:hover {
   gap: 6px;
 }
 
-.tt-row-current {
+.tmr-row-current {
   border-color: var(--primary);
 }
 
-.tt-row-running {
+.tmr-row-running {
   border-left: 3px solid var(--success);
 }
 
-.tt-row-main {
+.tmr-row-main {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
 }
 
-.tt-row-text {
+.tmr-row-text {
   min-width: 0;
   flex: 1;
 }
 
-.tt-log {
+.tmr-log {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -154,22 +154,22 @@ a.tt-row-label:hover {
   border-top: 1px dashed var(--border);
 }
 
-.tt-log-row {
+.tmr-log-row {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.tt-log-label {
+.tmr-log-label {
   font-weight: 600;
 }
 
-.tt-log-time.settings-text-input {
+.tmr-log-time.settings-text-input {
   flex: 0 0 80px;
   width: 80px;
 }
 
-.tt-log-note {
+.tmr-log-note {
   width: 100%;
   box-sizing: border-box;
   resize: vertical;
@@ -181,12 +181,12 @@ a.tt-row-label:hover {
   font: inherit;
 }
 
-.tt-log-check {
+.tmr-log-check {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.tt-log-status:empty {
+.tmr-log-status:empty {
   display: none;
 }

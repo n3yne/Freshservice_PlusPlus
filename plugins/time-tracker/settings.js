@@ -22,9 +22,9 @@
       "    the hours of the time entry open on the page. Anywhere else, copy the time and paste it in." +
       "  </p>" +
       '  <div class="settings-field">' +
-      '    <label class="settings-field-label" for="plugin-tt-round">Round logged time up to</label>' +
+      '    <label class="settings-field-label" for="plugin-tmr-round">Round logged time up to</label>' +
       '    <div class="settings-field-row">' +
-      '      <select id="plugin-tt-round" class="settings-select-input">' +
+      '      <select id="plugin-tmr-round" class="settings-select-input">' +
       '        <option value="1">the next minute</option>' +
       '        <option value="5">5 minutes</option>' +
       '        <option value="6">6 minutes (0.1 hour)</option>' +
@@ -34,18 +34,18 @@
       "      </select>" +
       "    </div>" +
       "  </div>" +
-      toggle("plugin-tt-one", "Run one timer at a time (starting a timer pauses the others)") +
-      toggle("plugin-tt-auto", "Start a timer when I open a ticket") +
-      toggle("plugin-tt-billable", "Mark time entries billable by default") +
+      toggle("plugin-tmr-one", "Run one timer at a time (starting a timer pauses the others)") +
+      toggle("plugin-tmr-auto", "Start a timer when I open a ticket") +
+      toggle("plugin-tmr-billable", "Mark time entries billable by default") +
       '  <p class="settings-description">' +
       "    Running timers are paused when MSP++ closes. The time is only rounded when you log it; the timer keeps the exact time." +
       "  </p>" +
       "</div>";
 
-    const elRound = panel.querySelector("#plugin-tt-round");
-    const elOne = panel.querySelector("#plugin-tt-one");
-    const elAuto = panel.querySelector("#plugin-tt-auto");
-    const elBillable = panel.querySelector("#plugin-tt-billable");
+    const elRound = panel.querySelector("#plugin-tmr-round");
+    const elOne = panel.querySelector("#plugin-tmr-one");
+    const elAuto = panel.querySelector("#plugin-tmr-auto");
+    const elBillable = panel.querySelector("#plugin-tmr-billable");
 
     function populate(s) {
       elRound.value = String(s.timeTrackerRoundTo || 1);

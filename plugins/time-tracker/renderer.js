@@ -371,7 +371,7 @@
       statusKind: "",
     };
     render();
-    const box = panel.querySelector('.tt-log textarea');
+    const box = panel.querySelector('.tmr-log textarea');
     if (box) box.focus();
   }
 
@@ -474,7 +474,7 @@
     order: 40,
   });
   const panel = sidePanelTab.element;
-  panel.classList.add("tt-panel");
+  panel.classList.add("tmr-panel");
 
   function h(tag, attrs, children) {
     const el = document.createElement(tag);
@@ -511,30 +511,30 @@
     if (!logDraft) return;
     logDraft.status = text;
     logDraft.statusKind = kind;
-    const el = panel.querySelector(".tt-log-status");
+    const el = panel.querySelector(".tmr-log-status");
     if (el) {
       el.textContent = text;
-      el.className = "tt-log-status" + (kind ? " tt-" + kind : "");
+      el.className = "tmr-log-status" + (kind ? " tmr-" + kind : "");
     }
   }
 
   function renderCurrent() {
-    const box = h("div", { className: "tt-current" });
+    const box = h("div", { className: "tmr-current" });
     if (!current) {
-      box.appendChild(h("div", { className: "tt-current-empty" }, [
+      box.appendChild(h("div", { className: "tmr-current-empty" }, [
         "Open a ticket in the active tab to time it.",
       ]));
       return box;
     }
     const t = findTimer(current);
     const running = !!(t && t.runningSince);
-    box.appendChild(h("div", { className: "tt-current-label" }, [timerName(current)]));
-    if (current.title) box.appendChild(h("div", { className: "tt-current-title", title: current.title }, [current.title]));
-    const row = h("div", { className: "tt-current-row" }, [
-      h("span", { className: "tt-clock tt-clock-big" + (running ? " tt-running" : ""), "data-timer": t ? t.id : "" },
+    box.appendChild(h("div", { className: "tmr-current-label" }, [timerName(current)]));
+    if (current.title) box.appendChild(h("div", { className: "tmr-current-title", title: current.title }, [current.title]));
+    const row = h("div", { className: "tmr-current-row" }, [
+      h("span", { className: "tmr-clock tmr-clock-big" + (running ? " tmr-running" : ""), "data-timer": t ? t.id : "" },
         [formatClock(t ? elapsedMs(t, Date.now()) : 0)]),
     ]);
-    const buttons = h("div", { className: "tt-buttons" });
+    const buttons = h("div", { className: "tmr-buttons" });
     if (running) buttons.appendChild(button("Pause", "btn-secondary", "Pause this ticket's timer", function () { pause(t); }));
     else buttons.appendChild(button(t && t.accumulatedMs ? "Resume" : "Start", "btn-primary", "Start timing this ticket", function () { start(current); }));
     if (t) {
@@ -545,7 +545,7 @@
     row.appendChild(buttons);
     box.appendChild(row);
     if (t && t.loggedMinutes) {
-      box.appendChild(h("div", { className: "tt-muted" }, ["Logged so far: " + formatHM(t.loggedMinutes)]));
+      box.appendChild(h("div", { className: "tmr-muted" }, ["Logged so far: " + formatHM(t.loggedMinutes)]));
     }
     return box;
   }
@@ -553,24 +553,24 @@
   function renderLogForm(t) {
     const site = api.sites.get(t.siteId);
     const te = site && site.timeEntry;
-    const form = h("div", { className: "tt-log" });
+    const form = h("div", { className: "tmr-log" });
     const minutes = draftMinutes();
 
     const timeInput = h("input", {
-      type: "text", className: "settings-text-input tt-log-time", value: logDraft.time,
+      type: "text", className: "settings-text-input tmr-log-time", value: logDraft.time,
       placeholder: "h:mm", "aria-label": "Time to log", spellcheck: "false", autocomplete: "off", maxlength: "12",
     });
-    const hint = h("span", { className: "tt-muted tt-log-hint" }, [minutes != null ? "= " + decimalHours(minutes) + " h" : "Enter h:mm, e.g. 0:45"]);
+    const hint = h("span", { className: "tmr-muted tmr-log-hint" }, [minutes != null ? "= " + decimalHours(minutes) + " h" : "Enter h:mm, e.g. 0:45"]);
     timeInput.addEventListener("input", function () {
       logDraft.time = timeInput.value;
       const m = draftMinutes();
       hint.textContent = m != null ? "= " + decimalHours(m) + " h" : "Enter h:mm, e.g. 0:45";
-      form.querySelectorAll(".tt-needs-time").forEach(function (b) { b.disabled = m == null || logBusy; });
+      form.querySelectorAll(".tmr-needs-time").forEach(function (b) { b.disabled = m == null || logBusy; });
     });
-    form.appendChild(h("div", { className: "tt-log-row" }, [h("label", { className: "tt-log-label" }, ["Time"]), timeInput, hint]));
+    form.appendChild(h("div", { className: "tmr-log-row" }, [h("label", { className: "tmr-log-label" }, ["Time"]), timeInput, hint]));
 
     const note = h("textarea", {
-      className: "tt-log-note", rows: "3", maxlength: String(MAX_NOTE),
+      className: "tmr-log-note", rows: "3", maxlength: String(MAX_NOTE),
       placeholder: "What you did (goes in the time entry's note)",
     });
     note.value = logDraft.note;
@@ -584,24 +584,24 @@
     if (te && te.billable) {
       const cb = h("input", { type: "checkbox", checked: logDraft.billable });
       cb.addEventListener("change", function () { logDraft.billable = cb.checked; t.billable = cb.checked; scheduleSave(); });
-      form.appendChild(h("label", { className: "tt-log-check" }, [cb, " Billable"]));
+      form.appendChild(h("label", { className: "tmr-log-check" }, [cb, " Billable"]));
     }
 
-    const actions = h("div", { className: "tt-buttons" });
+    const actions = h("div", { className: "tmr-buttons" });
     if (te) {
-      const b = button(te.label, "btn-primary tt-needs-time", "Send this time to " + (site.name || "the site"), function () { logToSite(t); }, minutes == null || logBusy);
+      const b = button(te.label, "btn-primary tmr-needs-time", "Send this time to " + (site.name || "the site"), function () { logToSite(t); }, minutes == null || logBusy);
       actions.appendChild(b);
     }
-    actions.appendChild(button("📋 Copy", "btn-secondary tt-needs-time", "Copy the time and note", function () { copyLog(t); }, minutes == null));
-    actions.appendChild(button("Mark logged", "btn-secondary tt-needs-time", "You logged it yourself: reset this timer", function () { markLoggedFromForm(t); }, minutes == null));
+    actions.appendChild(button("📋 Copy", "btn-secondary tmr-needs-time", "Copy the time and note", function () { copyLog(t); }, minutes == null));
+    actions.appendChild(button("Mark logged", "btn-secondary tmr-needs-time", "You logged it yourself: reset this timer", function () { markLoggedFromForm(t); }, minutes == null));
     actions.appendChild(button("Cancel", "btn-secondary", null, closeLog));
     form.appendChild(actions);
     if (!te) {
-      form.appendChild(h("div", { className: "tt-muted" }, [
+      form.appendChild(h("div", { className: "tmr-muted" }, [
         (site ? site.name : "This site") + " can't take time entries from MSP++ yet, so copy the time and paste it in.",
       ]));
     }
-    form.appendChild(h("div", { className: "tt-log-status" + (logDraft.statusKind ? " tt-" + logDraft.statusKind : ""), "aria-live": "polite" }, [logDraft.status || ""]));
+    form.appendChild(h("div", { className: "tmr-log-status" + (logDraft.statusKind ? " tmr-" + logDraft.statusKind : ""), "aria-live": "polite" }, [logDraft.status || ""]));
     return form;
   }
 
@@ -609,21 +609,21 @@
     const running = !!t.runningSince;
     const ms = elapsedMs(t, Date.now());
     const isCurrent = sameRecord(t, current);
-    const row = h("div", { className: "tt-row" + (running ? " tt-row-running" : "") + (isCurrent ? " tt-row-current" : "") });
+    const row = h("div", { className: "tmr-row" + (running ? " tmr-row-running" : "") + (isCurrent ? " tmr-row-current" : "") });
     const name = t.url
-      ? h("a", { href: "#", className: "tt-row-label", title: "Open " + timerName(t), onclick: function (e) { e.preventDefault(); api.browser.newTab(t.url); } }, [timerName(t)])
-      : h("span", { className: "tt-row-label" }, [timerName(t)]);
-    row.appendChild(h("div", { className: "tt-row-main" }, [
-      h("div", { className: "tt-row-text" }, [
+      ? h("a", { href: "#", className: "tmr-row-label", title: "Open " + timerName(t), onclick: function (e) { e.preventDefault(); api.browser.newTab(t.url); } }, [timerName(t)])
+      : h("span", { className: "tmr-row-label" }, [timerName(t)]);
+    row.appendChild(h("div", { className: "tmr-row-main" }, [
+      h("div", { className: "tmr-row-text" }, [
         name,
-        t.title ? h("div", { className: "tt-row-title", title: t.title }, [t.title]) : null,
-        t.loggedAt ? h("div", { className: "tt-muted" }, [
+        t.title ? h("div", { className: "tmr-row-title", title: t.title }, [t.title]) : null,
+        t.loggedAt ? h("div", { className: "tmr-muted" }, [
           "Logged " + formatHM(t.loggedMinutes) + " · last " + new Date(t.loggedAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" }),
         ]) : null,
       ]),
-      h("span", { className: "tt-clock" + (running ? " tt-running" : ""), "data-timer": t.id }, [formatClock(ms)]),
+      h("span", { className: "tmr-clock" + (running ? " tmr-running" : ""), "data-timer": t.id }, [formatClock(ms)]),
     ]));
-    const actions = h("div", { className: "tt-buttons tt-row-actions" }, [
+    const actions = h("div", { className: "tmr-buttons tmr-row-actions" }, [
       running
         ? button("Pause", "btn-secondary", "Pause this timer", function () { pause(t); })
         : button(ms ? "Resume" : "Start", "btn-secondary", ms ? "Resume this timer" : "Start this timer", function () { resume(t); }),
@@ -644,20 +644,20 @@
     panel.textContent = "";
     const now = Date.now();
     const unlogged = timers.reduce(function (sum, t) { return sum + elapsedMs(t, now); }, 0);
-    panel.appendChild(h("div", { className: "tt-header" }, [
-      h("span", { className: "tt-title" }, ["Time Tracker"]),
-      h("span", { className: "tt-muted", title: "Time on all timers that hasn't been logged yet" }, ["Unlogged ", h("span", { className: "tt-total" }, [formatClock(unlogged)])]),
+    panel.appendChild(h("div", { className: "tmr-header" }, [
+      h("span", { className: "tmr-title" }, ["Time Tracker"]),
+      h("span", { className: "tmr-muted", title: "Time on all timers that hasn't been logged yet" }, ["Unlogged ", h("span", { className: "tmr-total" }, [formatClock(unlogged)])]),
     ]));
-    if (flashMsg) panel.appendChild(h("div", { className: "tt-flash tt-" + flashMsg.kind, "aria-live": "polite" }, [flashMsg.text]));
+    if (flashMsg) panel.appendChild(h("div", { className: "tmr-flash tmr-" + flashMsg.kind, "aria-live": "polite" }, [flashMsg.text]));
     panel.appendChild(renderCurrent());
 
-    const list = h("div", { className: "tt-list" });
+    const list = h("div", { className: "tmr-list" });
     const hasLogged = timers.some(function (t) { return t.loggedAt && !t.runningSince && !t.accumulatedMs; });
-    list.appendChild(h("div", { className: "tt-list-header" }, [
+    list.appendChild(h("div", { className: "tmr-list-header" }, [
       h("span", null, ["Timers"]),
       hasLogged ? button("Clear logged", "btn-secondary", "Remove timers that are logged and have no new time", clearLogged) : null,
     ]));
-    if (!timers.length) list.appendChild(h("div", { className: "tt-muted tt-empty" }, ["No timers yet."]));
+    if (!timers.length) list.appendChild(h("div", { className: "tmr-muted tmr-empty" }, ["No timers yet."]));
     timers.forEach(function (t) { list.appendChild(renderRow(t)); });
     panel.appendChild(list);
 
@@ -678,11 +678,11 @@
     if (!loaded || !sidePanelTab.isActive()) return;
     if (!timers.some(function (t) { return t.runningSince; })) return;
     const now = Date.now();
-    panel.querySelectorAll(".tt-clock[data-timer]").forEach(function (el) {
+    panel.querySelectorAll(".tmr-clock[data-timer]").forEach(function (el) {
       const t = timers.find(function (x) { return x.id === el.getAttribute("data-timer"); });
       if (t) el.textContent = formatClock(elapsedMs(t, now));
     });
-    const total = panel.querySelector(".tt-total");
+    const total = panel.querySelector(".tmr-total");
     if (total) total.textContent = formatClock(timers.reduce(function (sum, t) { return sum + elapsedMs(t, now); }, 0));
   }, 1000);
 
