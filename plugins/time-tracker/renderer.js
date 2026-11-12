@@ -471,7 +471,7 @@
     label: "Time",
     icon: "⏱",
     title: "Time Tracker: time the ticket you're working on and log it",
-    order: 30,
+    order: 40,
   });
   const panel = sidePanelTab.element;
   panel.classList.add("tt-panel");

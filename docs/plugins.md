@@ -295,10 +295,14 @@ Renderer scripts can also call the bundled plugins, so a plugin can use the app'
 |---|---|---|
 | `invoke("ai-features", "complete", { prompt })` | `{ result }` or `{ error }` | Runs `prompt` (up to 60,000 characters) with the provider and model chosen in Settings → AI Features. |
 | `invoke("freshservice", "get-ticket", { ticketId, host })` | `{ text }` or `{ error, skipped? }` | Plain-text ticket, description and conversation. |
+| `invoke("freshservice", "get-ticket-fields", { ticketId, host })` | `{ subject, requester, requesterFirstName }` or `{ error, skipped? }` | A ticket's subject and requester name, for reply placeholders. |
 | `invoke("freshservice", "search-solutions", { term })` | `{ articles }` or `{ error }` | Up to 10 Solutions articles: `{ id, title, status, updatedAt, url, text }`, with `text` cut to a short snippet. |
 | `invoke("freshservice", "get-solution-article", { id })` | `{ article }` or `{ error }` | One article with its text (up to 6,000 characters) and a `truncated` flag. |
 | `invoke("freshservice", "add-time-entry", { kind, id, minutes, note?, billable?, host? })` | `{ ok, id, timeSpent }` or `{ error, skipped? }` | Adds a time entry (`minutes` 1 to 1,440) to a ticket, change, problem or release (`kind`) for the agent the API key belongs to. Prefer the site's `timeEntry` adapter. |
 | `invoke("freshservice", "count-tickets", { query, vars? })` | `{ count, query }` or `{ error, skipped? }` | Number of tickets matching a [ticket filter query](https://api.freshservice.com/) (no double quotes, 512 characters at most). `{name}` placeholders are filled from `vars`, which may only hold `YYYY-MM-DD` dates. |
+| `invoke("freshservice", "filter-tickets", { query, vars?, maxPages? })` | `{ tickets, total, query }` or `{ error, skipped? }` | The tickets matching a filter query (same rules as `count-tickets`), 30 a page, up to `maxPages` pages (1 to 10, default 1). Each is `{ id, subject, status, priority, responderId, requesterId, createdAt, updatedAt }`. |
+| `invoke("freshservice", "get-conversations", { ticketId })` | `{ ticketId, conversations }` or `{ error, skipped? }` | A ticket's replies and notes, oldest first: `{ id, userId, incoming, private, fromEmail, createdAt, snippet }`, with `snippet` cut to 300 characters. |
+| `invoke("freshservice", "find-agent", { email })` | `{ agent }` or `{ error, skipped? }` | The agent with that email: `{ id, name, email }`. The API has no way to ask who owns the key, so this is how a plugin learns which tickets are "mine". |
 
 See `plugins/solutions-chat/renderer.js` for a plugin built on `pluginAPI.sites` and the AI Features handler.
 
@@ -312,7 +316,7 @@ Adds a tab to the side panel on the right of the window and returns a handle for
 | `label` | Text on the tab. |
 | `icon` | Optional emoji or short text shown before the label. |
 | `title` | Optional tooltip. |
-| `order` | Optional number; lower comes first. Notes uses `10`, Solutions Chat `20`, Time Tracker `30`, the default is `100`. |
+| `order` | Optional number; lower comes first. Notes uses `10`, Solutions Chat `20`, Canned Responses `30`, Time Tracker `40`, the default is `100`. |
 
 The handle:
 
@@ -432,10 +436,14 @@ Interacts with the app's tab system and the active webview.
 | `browser.navigate(url)` | — | Loads `url` (http or https) in the active tab, or in a new tab if none is open |
 | `browser.newWindow(url)` | `Promise<boolean>` | Opens `url` (http or https) in a plain child window with no tabs, side panel or plugins, like the tab menu's **Open in New Window** |
 | `browser.executeInActiveTab(script)` | `Promise<any>` | Runs a JavaScript string in the active webview and returns its result. Rejects if no tab is open. |
-| `browser.getActiveTab()` | `{ tabId, webview } \| null` | The active browser tab and its `<webview>` element |
-| `browser.getTabs()` | `Array<{ tabId, webview }>` | Every open browser tab, in tab-bar order |
+| `browser.getActiveTab()` | `TabInfo \| null` | The active browser tab (see below) |
+| `browser.getTabs()` | `Array<TabInfo>` | Every open browser tab, in tab-bar order |
+| `browser.activateTab(tabId)` | `boolean` | Switches to the tab. `false` if no tab has that id |
+| `browser.closeTab(tabId)` | `boolean` | Closes the tab like its × button. `false` if no tab has that id or it is pinned (pinned tabs can't be closed) |
 
-Browser tabs also raise `tab:created`, `tab:activated` and `tab:closed` events (see [Events reference](#events-reference)). Tabs restored at startup are created before your script runs, so call `getTabs()` once as well as listening for `tab:created`. You can add your own listeners to a tab's `webview` (for example `did-navigate` or `console-message`); remove them on `tab:closed`.
+A `TabInfo` is `{ tabId, webview, title, url, pinned, active }`: the tab's id, its `<webview>` element, the title shown on the tab, its address (the address it is loading if the page hasn't started yet), whether it is pinned and whether it is the active tab.
+
+Browser tabs also raise `tab:created`, `tab:activated`, `tab:updated` and `tab:closed` events (see [Events reference](#events-reference)). The Tree Style Tabs plugin (`plugins/tree-tabs`) is built on these. Tabs restored at startup are created before your script runs, so call `getTabs()` once as well as listening for `tab:created`. You can add your own listeners to a tab's `webview` (for example `did-navigate` or `console-message`); remove them on `tab:closed`.
 
 ```js
 window.pluginAPI.browser.newTab("https://my-dashboard.example.com");
@@ -543,8 +551,9 @@ These are emitted on the renderer bus (`events.on()`) only, because their payloa
 
 | Event | Payload | When |
 |---|---|---|
-| `tab:created` | `{ tabId, webview }` | A browser tab was opened |
-| `tab:activated` | `{ tabId, webview }` | A browser tab became the active one |
+| `tab:created` | `TabInfo` plus `openerTabId` | A browser tab was opened. `openerTabId` is the tab whose page opened it (a link with `target="_blank"`, `window.open()` or **Open Link in New Tab**), otherwise `null` |
+| `tab:activated` | `TabInfo` | A browser tab became the active one |
+| `tab:updated` | `TabInfo` | A tab's title or address changed, or it was pinned or unpinned |
 | `tab:closed` | `{ tabId, webview }` | A browser tab was closed |
 | `site:registered` | `{ siteId }` | A site plugin registered its adapter with `pluginAPI.sites.register()` |
 
@@ -623,8 +632,11 @@ pluginAPI.browser.newTab(url: string, options?: { activate?: boolean }): void
 pluginAPI.browser.navigate(url: string): void
 pluginAPI.browser.newWindow(url: string): Promise<boolean>
 pluginAPI.browser.executeInActiveTab(script: string): Promise<any>
-pluginAPI.browser.getActiveTab(): { tabId: string, webview: HTMLElement } | null
-pluginAPI.browser.getTabs(): Array<{ tabId: string, webview: HTMLElement }>
+pluginAPI.browser.getActiveTab(): TabInfo | null
+pluginAPI.browser.getTabs(): TabInfo[]
+pluginAPI.browser.activateTab(tabId: string): boolean
+pluginAPI.browser.closeTab(tabId: string): boolean
+// TabInfo = { tabId: string, webview: HTMLElement, title: string, url: string, pinned: boolean, active: boolean }
 
 pluginAPI.getSettings(): AppSettings
 ```

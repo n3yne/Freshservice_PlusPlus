@@ -145,3 +145,25 @@ describe("connectwise time entry", () => {
     expect((await cw.fillTimeEntry({ webview, url: "https://na.myconnectwise.net/", minutes: 90 })).error).toBe("No hours field");
   });
 });
+
+describe("ticketUrl (address bar quick-open)", () => {
+  const CW_TAB = "https://na.myconnectwise.net/v4_6_release/ConnectWise.aspx?locale=en_US#companyName=acme";
+  const LINK = "https://na.myconnectwise.net/v4_6_release/services/system_io/Service/fv_sr100_request.rails?service_recid=";
+
+  test("opens CW-prefixed tickets on the open instance", () => {
+    const ctx = { tabUrls: ["https://acme.freshservice.com/a/", CW_TAB] };
+    expect(cw.ticketUrl("CW-12345", ctx)).toBe(LINK + "12345&companyName=acme");
+    expect(cw.ticketUrl("cw123", ctx)).toBe(LINK + "123&companyName=acme");
+  });
+
+  test("takes a bare number only when a CW tab is active", () => {
+    expect(cw.ticketUrl("12345", { tabUrls: [CW_TAB] })).toBeNull();
+    expect(cw.ticketUrl("#12345", { active: true, tabUrls: [CW_TAB] })).toBe(LINK + "12345&companyName=acme");
+  });
+
+  test("needs an open CW tab and a ticket query", () => {
+    expect(cw.ticketUrl("CW-1", { tabUrls: ["https://acme.freshservice.com/"] })).toBeNull();
+    expect(cw.ticketUrl("CW-1", {})).toBeNull();
+    expect(cw.ticketUrl("INC-1", { active: true, tabUrls: [CW_TAB] })).toBeNull();
+  });
+});
