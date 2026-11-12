@@ -49,6 +49,7 @@
       "updater.js",
       "webauthn.js",
       "permissions.js",
+      "settings-transfer.js",
       "plugin-manager.js",
       "index.html",
       "child-window.html",

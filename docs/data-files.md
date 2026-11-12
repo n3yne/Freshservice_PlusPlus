@@ -87,6 +87,7 @@ Electron (Chromium) keeps the browsing data for the tabs here. This is where you
 
 - **Downloads** and **Save Image As** go wherever you pick in the Save dialog. The download list in the app is kept in memory only and is cleared on restart.
 - **Import Plugin** reads the folder you pick.
+- **Export Settings** (Settings → General) writes a `.json` file where you pick, with the contents of `settings.json` and `plugins-config.json` minus API keys and anything tied to them. **Import Settings** reads the file you pick and replaces `settings.json` (keeping the API keys saved on this PC) and the plugin on/off choices in `plugins-config.json`.
 
 ## Logs
 
