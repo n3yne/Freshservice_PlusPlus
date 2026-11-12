@@ -7,6 +7,7 @@ const fsp = fs.promises;
 const { DEFAULT_SETTINGS, validateSettings, migrateCoreSettings, findLegacyUserDataDir, tabsToRestore } = require("./utils");
 const { tabShortcutForKey } = require("./tab-shortcuts");
 const pluginManager = require("./plugin-manager");
+const PluginDirectory = require("./plugin-directory");
 const { installPasskeyAccountChooser } = require("./webauthn");
 const { createUpdater } = require("./updater");
 const { zoomActionForKey } = require("./page-zoom");
@@ -29,6 +30,7 @@ try {
 
 let mainWindow;
 let updater = null;
+let pluginDirectory = null;
 let permissionPolicy = null;
 // App data folder. Still named "note-backups" from when note backup was built in:
 // it holds settings.json, open tabs and window state, and the Note Backup plugin
@@ -867,7 +869,7 @@ function saveMainWindowState(bounds, maximized) {
 // or { plugin: "<plugin id>" } for that plugin's tab. From the command palette.
 function settingsTarget(target) {
   if (!target || typeof target !== "object") return null;
-  if (target.panel === "general" || target.panel === "plugins") return { panel: target.panel };
+  if (["general", "plugins", "browse"].includes(target.panel)) return { panel: target.panel };
   if (typeof target.plugin === "string" && /^[a-z0-9][a-z0-9_-]{0,62}$/.test(target.plugin)) return { plugin: target.plugin };
   return null;
 }
@@ -915,6 +917,56 @@ function createSettingsWindow(target) {
   });
   settingsWindow.loadFile("settings.html", show ? { query: show } : undefined);
   settingsWindow.on("closed", () => { settingsWindow = null; });
+}
+
+function fromSettingsWindow(event) {
+  return !!(settingsWindow && !settingsWindow.isDestroyed() && event && event.sender === settingsWindow.webContents);
+}
+
+function broadcastPluginDirectory(state) {
+  for (const win of [mainWindow, settingsWindow]) {
+    if (win && !win.isDestroyed()) win.webContents.send("plugin-directory-status", state);
+  }
+}
+
+// Fetches the plugin directory and tells the windows what's new. With
+// "Install plugin updates automatically" on, a scheduled check also stages the
+// updates (they apply at the next start).
+async function checkPluginDirectory({ scheduled = false } = {}) {
+  let state = await pluginDirectory.refresh();
+  if (scheduled && state.updates.length) {
+    const settings = await loadSettings().catch(() => ({}));
+    if (settings && settings.pluginAutoUpdate === true) {
+      const result = await pluginDirectory.updateAll();
+      if (!result.success) console.warn("[PluginDirectory] Automatic update failed:", result.error);
+      state = pluginDirectory.getState();
+    }
+  }
+  broadcastPluginDirectory(state);
+  return state;
+}
+
+const PLUGIN_CHECK_DELAY_MS = 30 * 1000;
+const PLUGIN_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+function startPluginDirectory() {
+  // A different index for development and testing only, never in a release build.
+  const override = !electron.app.isPackaged && process.env.MSP_PLUGIN_DIRECTORY_URL;
+  pluginDirectory = PluginDirectory.createPluginDirectory({
+    userData: electron.app.getPath("userData"),
+    appVersion: electron.app.getVersion(),
+    getInstalled: () => pluginManager.getPluginInfo(),
+    indexUrl: override || PluginDirectory.DEFAULT_INDEX_URL,
+    // net.fetch goes through the system proxy settings, like the tabs do.
+    fetchImpl: electron.net && typeof electron.net.fetch === "function"
+      ? (url, opts) => electron.net.fetch(url, opts)
+      : (url, opts) => fetch(url, opts),
+  });
+  const run = () => checkPluginDirectory({ scheduled: true }).catch((err) => {
+    console.error("[PluginDirectory] Check failed:", err);
+  });
+  setTimeout(run, PLUGIN_CHECK_DELAY_MS).unref?.();
+  setInterval(run, PLUGIN_CHECK_INTERVAL_MS).unref?.();
 }
 
 function registerIpcHandlers() {
@@ -1191,17 +1243,81 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
-  // Plugin system: open a folder picker and import the selected directory as a plugin
-  electron.ipcMain.handle("plugin-import", async () => {
-    const result = await electron.dialog.showOpenDialog({
-      title: "Select Plugin Folder",
-      properties: ["openDirectory"],
-      buttonLabel: "Import Plugin",
-    });
+  // Plugin system: import a plugin from a .mspplugin file (kind "file") or a plugin
+  // folder (kind "folder"). Like directory installs, it's staged and goes live at
+  // the next start (plugin-directory.js).
+  electron.ipcMain.handle("plugin-import", async (event, kind) => {
+    if (!fromSettingsWindow(event) || !pluginDirectory) return { success: false, error: "Not available" };
+    const folder = kind === "folder";
+    const result = await electron.dialog.showOpenDialog(settingsWindow, folder
+      ? { title: "Select Plugin Folder", properties: ["openDirectory"], buttonLabel: "Import Plugin" }
+      : {
+        title: "Select Plugin File",
+        properties: ["openFile"],
+        buttonLabel: "Import Plugin",
+        filters: [{ name: "MSP++ plugins", extensions: ["mspplugin", "zip"] }],
+      });
     if (result.canceled || !result.filePaths.length) {
       return { cancelled: true };
     }
-    return pluginManager.importPlugin(result.filePaths[0]);
+    try {
+      const chosen = result.filePaths[0];
+      if (!folder) {
+        const stat = await fsp.stat(chosen);
+        if (stat.size > 5 * 1024 * 1024) return { success: false, error: "That file is too large to be a plugin" };
+      }
+      const imported = folder
+        ? pluginDirectory.importPackage({ folder: chosen })
+        : pluginDirectory.importPackage({ buffer: await fsp.readFile(chosen) });
+      return Object.assign({ success: true }, imported);
+    } catch (err) {
+      return { success: false, error: err.message || String(err) };
+    }
+  });
+
+  // Plugin directory (Settings > Plugins > Browse). Only the Settings window can
+  // change what's installed.
+  electron.ipcMain.handle("plugin-directory-state", () => (pluginDirectory ? pluginDirectory.getState() : null));
+  electron.ipcMain.handle("plugin-directory-check", async (event) => {
+    if (!fromSettingsWindow(event) || !pluginDirectory) return null;
+    return checkPluginDirectory();
+  });
+  electron.ipcMain.handle("plugin-directory-install", async (event, ids) => {
+    if (!fromSettingsWindow(event) || !pluginDirectory) return { success: false, error: "Not available" };
+    const result = await pluginDirectory.install(Array.isArray(ids) ? ids.slice(0, 50) : []);
+    broadcastPluginDirectory(pluginDirectory.getState());
+    return result;
+  });
+  electron.ipcMain.handle("plugin-directory-update-all", async (event) => {
+    if (!fromSettingsWindow(event) || !pluginDirectory) return { success: false, error: "Not available" };
+    const result = await pluginDirectory.updateAll();
+    broadcastPluginDirectory(pluginDirectory.getState());
+    return result;
+  });
+  electron.ipcMain.handle("plugin-remove", async (event, payload) => {
+    if (!fromSettingsWindow(event) || !pluginDirectory) return { success: false, error: "Not available" };
+    const { id, deleteData } = payload || {};
+    if (typeof id !== "string") return { success: false, error: "Invalid arguments" };
+    try {
+      const result = pluginDirectory.remove(id, { deleteData: deleteData === true });
+      broadcastPluginDirectory(pluginDirectory.getState());
+      return result;
+    } catch (err) {
+      return { success: false, error: err.message || String(err) };
+    }
+  });
+  electron.ipcMain.handle("plugin-cancel-pending", async (event, id) => {
+    if (!fromSettingsWindow(event) || !pluginDirectory || typeof id !== "string") return { success: false };
+    pluginDirectory.cancel(id);
+    broadcastPluginDirectory(pluginDirectory.getState());
+    return { success: true };
+  });
+  // "Restart now" on the plugin restart notice.
+  electron.ipcMain.handle("restart-app", (event) => {
+    if (!fromSettingsWindow(event)) return false;
+    electron.app.relaunch();
+    electron.app.quit();
+    return true;
   });
 
   // The tabs to open at startup: { tabs: [{ url, pinned }], openHome, homeUrl }. With
@@ -1459,6 +1575,7 @@ electron.app.whenReady().then(async () => {
   registerIpcHandlers();
   createWindow();
   updater.start();
+  startPluginDirectory();
 
   electron.app.on("activate", () => {
     if (electron.BrowserWindow.getAllWindows().length === 0) createWindow();

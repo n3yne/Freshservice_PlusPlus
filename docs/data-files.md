@@ -61,7 +61,18 @@ Plugins get their own folder through `api.getDataPath()`. It is created the firs
 | `ticket-notifications\state.json` | R W | Which tickets and updates have already been seen. |
 | `ai-features\m365-token.dat` | R W D | The encrypted Microsoft 365 sign-in. Deleted when you sign out. |
 
-`DATA\plugins\` is also where user-installed plugins go. The app reads every plugin folder in it at startup, and **Settings → Plugins → Import Plugin** copies the folder you pick into it.
+Plugins imported before 0.8 were copied into `DATA\plugins\<plugin-id>\` itself (a folder with a `manifest.json`). The app still loads those.
+
+## Installed plugins: `DATA\installed-plugins\`
+
+Plugins installed from **Settings → Plugins → Browse** (the plugin directory) or imported from a file or folder. Their data stays in `DATA\plugins\<plugin-id>\` above.
+
+| File | Access | What it holds |
+|---|---|---|
+| `<plugin-id>\` | R W D | The plugin's code, unpacked from its package. Replaced on update, deleted on remove. |
+| `registry.json` | R W | Where each installed plugin came from (`directory` or `imported`), its version and when it was installed. |
+| `pending.json` | R W | Installs, updates and removals waiting for the next start. |
+| `.pending\<plugin-id>\` | R W D | A downloaded install or update, checked against the directory's SHA-256, waiting for the next start. Moved to `<plugin-id>\` then. |
 
 ## Browser profile: `DATA\`
 

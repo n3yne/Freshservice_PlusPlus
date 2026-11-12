@@ -162,4 +162,73 @@ describe("plugin-manager", () => {
     const parsed = pluginManager.parseSiteManifest("x", { hosts: "a.com", defaultUrl: "javascript:alert(1)", color: "red; background: url(x)" });
     expect(parsed).toEqual({ pluginId: "x", name: "x", shortName: "x", hosts: [], defaultUrl: "", chromeUserAgent: false, color: "" });
   });
+
+  describe("installed plugins (plugin directory)", () => {
+    const bundledVersion = require("../plugins/bookmarks-bar/manifest.json").version;
+
+    function installCopy(userData, version, source) {
+      const dir = path.join(userData, "installed-plugins", "bookmarks-bar");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({
+        id: "bookmarks-bar", name: "Bookmarks Bar", version, renderer: "renderer.js",
+      }));
+      fs.writeFileSync(path.join(dir, "renderer.js"), "");
+      if (source) {
+        fs.writeFileSync(path.join(userData, "installed-plugins", "registry.json"),
+          JSON.stringify({ "bookmarks-bar": { source, version } }));
+      }
+      return dir;
+    }
+
+    test("a newer installed copy replaces the bundled one", async () => {
+      const { userData } = makeUserData();
+      const dir = installCopy(userData, "99.0.0", "directory");
+      await pluginManager.initPlugins(userData, {}, ipcMain);
+      const copies = pluginManager.getPluginInfo().filter((p) => p.id === "bookmarks-bar");
+      expect(copies).toHaveLength(1);
+      expect(copies[0]).toMatchObject({ source: "directory", version: "99.0.0", replacesBundled: bundledVersion });
+      expect(pluginManager.getRendererScripts().some((u) => fileURLToPath(u) === path.join(dir, "renderer.js"))).toBe(true);
+    });
+
+    test("the bundled copy wins a tie or against an older installed copy", async () => {
+      const { userData } = makeUserData();
+      installCopy(userData, bundledVersion, "imported");
+      await pluginManager.initPlugins(userData, {}, ipcMain);
+      const copies = pluginManager.getPluginInfo().filter((p) => p.id === "bookmarks-bar");
+      expect(copies).toHaveLength(1);
+      expect(copies[0].source).toBe("bundled");
+    });
+
+    test("installed plugins report their source, and data folders aren't treated as plugins", async () => {
+      const { userData } = makeUserData();
+      const dir = path.join(userData, "installed-plugins", "extra-plugin");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ id: "extra-plugin", version: "1.0.0" }));
+      fs.writeFileSync(path.join(userData, "installed-plugins", "registry.json"),
+        JSON.stringify({ "extra-plugin": { source: "imported", version: "1.0.0" } }));
+      fs.mkdirSync(path.join(userData, "plugins", "time-tracker"), { recursive: true }); // a data folder
+      await pluginManager.initPlugins(userData, {}, ipcMain);
+      const info = pluginManager.getPluginInfo();
+      expect(info.find((p) => p.id === "extra-plugin").source).toBe("imported");
+      expect(info.find((p) => p.id === "menu-test").source).toBe("user");
+      expect(info.filter((p) => p.id === "time-tracker")).toHaveLength(1);
+    });
+
+    test("changes staged in Settings are applied before plugins load", async () => {
+      const { userData } = makeUserData();
+      const staged = path.join(userData, "installed-plugins", ".pending", "staged-plugin");
+      fs.mkdirSync(staged, { recursive: true });
+      fs.writeFileSync(path.join(staged, "manifest.json"), JSON.stringify({ id: "staged-plugin", version: "2.0.0" }));
+      fs.writeFileSync(path.join(userData, "installed-plugins", "pending.json"), JSON.stringify({
+        install: { "staged-plugin": { version: "2.0.0", source: "directory" } },
+        remove: { "menu-test": {} },
+      }));
+      await pluginManager.initPlugins(userData, {}, ipcMain);
+      const ids = pluginManager.getPluginInfo().map((p) => p.id);
+      expect(ids).toContain("staged-plugin");
+      // menu-test was imported before 0.8 (its folder is its data folder), so it's gone.
+      expect(ids).not.toContain("menu-test");
+      expect(fs.existsSync(path.join(userData, "plugins", "menu-test"))).toBe(false);
+    });
+  });
 });

@@ -8,6 +8,7 @@ const { pathToFileURL } = require("url");
 
 const { version: APP_VERSION } = require("./package.json");
 const SiteColors = require("./site-colors");
+const PluginDirectory = require("./plugin-directory");
 const PluginCategories = require("./plugin-categories");
 
 const pluginBus = new EventEmitter();
@@ -306,7 +307,7 @@ async function loadPlugin(pluginDir, source, ipcMain) {
     version: manifest.version || "",
     description: manifest.description || "",
     category: PluginCategories.normalizeCategory(manifest.category),
-    source,         // "bundled" | "user"
+    source,         // "bundled" | "directory" | "imported" | "user" (imported before 0.8)
     dir: pluginDir,
     enabled,
     loaded: false,
@@ -314,6 +315,7 @@ async function loadPlugin(pluginDir, source, ipcMain) {
     credentials: [],
     hasSettings: typeof manifest.settings === "string" && manifest.settings.length > 0,
     site: null,
+    replacesBundled: "",
   };
   _discoveredPlugins.push(record);
 
@@ -432,6 +434,73 @@ async function loadPlugin(pluginDir, source, ipcMain) {
 
 // ===================== Public API =====================
 
+// Every plugin folder to load, one per plugin id. Plugins come from three places:
+//   <app>/plugins/<id>                 bundled with the app
+//   <data>/installed-plugins/<id>      installed from the plugin directory or a file
+//   <data>/plugins/<id>                imported before 0.8 (shares the plugin's data folder)
+// When the same id is in more than one place, the newest version wins, and a
+// tie goes to the bundled copy. So a fixed bundled plugin can be shipped through
+// the directory before the next app release.
+async function findPluginFolders(userData) {
+  const registry = PluginDirectory.readRegistry(userData);
+  const searchDirs = [
+    { dir: path.join(__dirname, "plugins"), source: () => "bundled" },
+    {
+      dir: path.join(userData, PluginDirectory.INSTALLED_DIR),
+      source: (id) => (registry[id] && registry[id].source === "imported" ? "imported" : "directory"),
+    },
+    { dir: path.join(userData, "plugins"), source: () => "user" },
+  ];
+
+  const candidates = [];
+  for (const { dir, source } of searchDirs) {
+    let entries;
+    try {
+      entries = await fsp.readdir(dir, { withFileTypes: true });
+    } catch {
+      continue; // Directory doesn't exist — skip silently
+    }
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+      const pluginDir = path.join(dir, entry.name);
+      let manifest = null;
+      try {
+        manifest = JSON.parse(await fsp.readFile(path.join(pluginDir, "manifest.json"), "utf-8"));
+      } catch { /* no manifest: a plugin's data folder, or broken — loadPlugin logs it */ }
+      // Plugin data folders (<data>/plugins/<id> without a manifest) aren't plugins.
+      if (!manifest && dir === path.join(userData, "plugins")) continue;
+      candidates.push({
+        pluginDir,
+        id: manifest && typeof manifest.id === "string" ? manifest.id : null,
+        version: manifest && typeof manifest.version === "string" ? manifest.version : "",
+        source: source(manifest && manifest.id),
+      });
+    }
+  }
+
+  const winners = new Map();
+  const order = [];
+  for (const c of candidates) {
+    if (!c.id) { order.push(c); continue; }
+    const current = winners.get(c.id);
+    if (!current) {
+      winners.set(c.id, c);
+      order.push(c);
+      continue;
+    }
+    if (PluginDirectory.compareVersions(c.version, current.version) > 0) {
+      console.warn(`[PluginManager] Plugin "${c.id}" ${c.version} (${c.source}) replaces ${current.version} (${current.source})`);
+      if (current.source === "bundled") c.replacesBundled = current.version || "?";
+      order[order.indexOf(current)] = c;
+      winners.set(c.id, c);
+    } else {
+      console.warn(`[PluginManager] Skipped plugin "${c.id}" ${c.version} (${c.source}): ${current.version} (${current.source}) is loaded instead`);
+    }
+  }
+  return order;
+}
+
 async function initPlugins(userData, initialSettings, ipcMain, rebuildMenuFn) {
   _userData = userData;
   _currentSettings = Object.assign({}, initialSettings);
@@ -447,23 +516,19 @@ async function initPlugins(userData, initialSettings, ipcMain, rebuildMenuFn) {
 
   await loadPluginsConfig();
 
-  const searchDirs = [
-    { dir: path.join(__dirname, "plugins"), source: "bundled" },
-    { dir: path.join(userData, "plugins"), source: "user" },
-  ];
+  // Installs, updates and removals from Settings > Plugins wait for a restart;
+  // apply them before anything loads.
+  try {
+    PluginDirectory.applyPending(userData);
+  } catch (err) {
+    console.error("[PluginManager] Applying plugin changes failed:", err);
+  }
 
-  for (const { dir, source } of searchDirs) {
-    let entries;
-    try {
-      entries = await fsp.readdir(dir, { withFileTypes: true });
-    } catch {
-      continue; // Directory doesn't exist — skip silently
-    }
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const pluginDir = path.join(dir, entry.name);
-      await loadPlugin(pluginDir, source, ipcMain);
+  for (const { pluginDir, source, replacesBundled } of await findPluginFolders(userData)) {
+    await loadPlugin(pluginDir, source, ipcMain);
+    if (replacesBundled) {
+      const record = _discoveredPlugins[_discoveredPlugins.length - 1];
+      if (record && record.dir === pluginDir) record.replacesBundled = replacesBundled;
     }
   }
 
@@ -507,6 +572,7 @@ function getPluginInfo() {
     credentials: p.credentials.slice(),
     hasSettings: p.hasSettings,
     site: p.site ? Object.assign({}, p.site, { hosts: p.site.hosts.slice() }) : null,
+    replacesBundled: p.replacesBundled || "",
   }));
 }
 
@@ -534,55 +600,6 @@ async function setPluginEnabled(id, enabled) {
   // Update in-memory record
   const plugin = _discoveredPlugins.find(p => p.id === id);
   if (plugin) plugin.enabled = enabled;
-}
-
-async function importPlugin(sourcePath) {
-  // Basic path validation — must not escape out of the provided path
-  if (!sourcePath || typeof sourcePath !== "string") {
-    return { success: false, error: "No path provided" };
-  }
-
-  // Read and validate manifest from source
-  let manifest;
-  try {
-    const raw = await fsp.readFile(path.join(sourcePath, "manifest.json"), "utf-8");
-    manifest = JSON.parse(raw);
-  } catch {
-    return { success: false, error: "Could not read manifest.json from the selected directory" };
-  }
-
-  if (!manifest.id || !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(manifest.id)) {
-    return { success: false, error: "Plugin manifest has an invalid or missing id" };
-  }
-
-  if (!_userData) {
-    return { success: false, error: "Plugin manager not initialised" };
-  }
-
-  const destDir = path.join(_userData, "plugins");
-  const destPlugin = path.join(destDir, manifest.id);
-
-  // Refuse to silently overwrite an already-installed plugin.
-  try {
-    await fsp.access(destPlugin);
-    return {
-      success: false,
-      error: `Plugin "${manifest.id}" is already installed. Remove it from the Plugins list first, then re-import to update.`,
-    };
-  } catch { /* does not exist — safe to proceed */ }
-
-  try {
-    await fsp.mkdir(destDir, { recursive: true });
-    fs.cpSync(sourcePath, destPlugin, { recursive: true, force: true });
-  } catch (err) {
-    return { success: false, error: "Failed to copy plugin: " + (err.message || err) };
-  }
-
-  return {
-    success: true,
-    id: manifest.id,
-    name: manifest.name || manifest.id,
-  };
 }
 
 function fireEvent(name, data) {
@@ -647,7 +664,7 @@ module.exports = {
   getPluginStylesheets,
   getPluginInfo,
   setPluginEnabled,
-  importPlugin,
+  findPluginFolders,
   fireEvent,
   updateSettings,
   runMigrations,

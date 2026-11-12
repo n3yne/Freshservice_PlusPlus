@@ -1609,7 +1609,144 @@ body[data-theme="light"] .downloads-panel {
 }
 
 .plugin-restart-notice.visible {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plugin-restart-notice .btn {
+  flex-shrink: 0;
+}
+
+/* Settings > Plugins: Installed / Browse */
+.plugin-view-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.plugin-view-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  margin-bottom: -1px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.plugin-view-tab:hover {
+  color: var(--text);
+}
+
+.plugin-view-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.plugin-view[hidden] {
+  display: none;
+}
+
+.plugin-update-count {
+  display: inline-block;
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.plugin-update-count[hidden] {
+  display: none;
+}
+
+.plugin-directory-trust {
+  font-size: 12px;
+  color: var(--text-muted);
+  border-left: 3px solid var(--saving-color);
+  padding: 4px 10px;
+  margin: 0 0 14px;
+}
+
+.plugin-directory-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.plugin-browse-item .plugin-item-desc {
+  white-space: normal;
+}
+
+.plugin-item-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.plugin-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.plugin-item-state {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.plugin-badge-directory {
+  background: rgba(155, 89, 182, 0.2);
+  color: #9b59b6;
+}
+
+.plugin-badge-pending {
+  background: rgba(243, 156, 18, 0.2);
+  color: #f39c12;
+}
+
+.plugin-remove-confirm {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text);
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
+.plugin-list-item.confirming {
+  flex-wrap: wrap;
+}
+
+.btn-link-danger {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  text-decoration: underline;
+}
+
+.btn-link-danger:hover {
+  color: var(--warning);
 }
 
 .plugin-list {
@@ -1960,4 +2097,10 @@ body[data-theme="light"] .downloads-panel {
 
 .tp-error {
   color: var(--warning);
+}
+
+.plugin-remove-confirm .btn-warning {
+  background: var(--warning);
+  border-color: var(--warning);
+  color: #fff;
 }
