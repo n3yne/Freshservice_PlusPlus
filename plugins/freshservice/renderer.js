@@ -629,6 +629,31 @@
     return { tickets: tickets, note: note, warnings: res.warnings || [] };
   }
 
+  // Quick actions (the Quick Actions plugin's side panel tab): read and change
+  // a ticket's status, priority, group and agent through the REST API, without
+  // the ticket form. Tickets only; changes, problems and releases say so.
+  function actionTicketId(ctx) {
+    const record = ctx && ctx.record;
+    if (!record || record.kind !== "ticket" || !/^\d{1,12}$/.test(String(record.id || ""))) return null;
+    return String(record.id);
+  }
+
+  function hostOf(url) {
+    try { return new URL(url).hostname; } catch { return ""; }
+  }
+
+  async function actionGet(ctx) {
+    const id = actionTicketId(ctx);
+    if (!id) return { error: "Quick actions work on Freshservice tickets only.", unsupported: true };
+    return api.invoke(PLUGIN_ID, "get-ticket-state", { ticketId: id, host: hostOf(ctx.url) });
+  }
+
+  async function actionUpdate(ctx, changes) {
+    const id = actionTicketId(ctx);
+    if (!id) return { error: "Quick actions work on Freshservice tickets only." };
+    return api.invoke(PLUGIN_ID, "update-ticket", { ticketId: id, host: hostOf(ctx.url), changes: changes });
+  }
+
   // ==================== Register ====================
 
   api.sites.register({
@@ -664,6 +689,11 @@
     ticketSearch: {
       placeholder: "Ticket #, subject, or requester name/email",
       search: searchTickets,
+    },
+    ticketActions: {
+      options: function (opts) { return api.invoke(PLUGIN_ID, "get-ticket-options", { force: !!(opts && opts.force) }); },
+      get: actionGet,
+      update: actionUpdate,
     },
     knowledge: {
       name: "Solutions",

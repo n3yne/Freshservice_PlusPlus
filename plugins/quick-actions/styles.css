@@ -1,0 +1,136 @@
+/* ===== Quick Actions: its side panel tab ===== */
+.qa-panel {
+  background: var(--panel-content-bg);
+}
+
+.qa-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.qa-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.qa-num {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.qa-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qa-icon-btn {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  font-size: 13px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.qa-icon-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+
+.qa-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  overflow-y: auto;
+}
+
+.qa-body[hidden],
+.qa-empty[hidden] {
+  display: none;
+}
+
+.qa-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+
+.qa-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.qa-select {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+}
+
+.qa-select:focus {
+  border-color: var(--primary);
+  outline: none;
+}
+
+.qa-actions {
+  display: flex;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.qa-empty {
+  padding: 16px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.qa-empty p {
+  margin: 0 0 8px;
+}
+
+.qa-note {
+  padding: 0 12px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.qa-note:empty {
+  display: none;
+}
+
+.qa-note-ok {
+  color: var(--success);
+}
+
+.qa-note-error {
+  color: var(--warning);
+}
+
+.qa-reload {
+  margin-left: 6px;
+}
+
+.qa-panel button:disabled,
+.qa-panel select:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

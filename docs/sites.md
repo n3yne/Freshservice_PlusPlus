@@ -69,6 +69,7 @@ window.pluginAPI.sites.register({
   notes: { … },                // optional: note editor sync
   reply: { … },                // optional: insert text into the reply box
   ticketSearch: { … },         // optional: searching tickets
+  ticketActions: { … },        // optional: changing status, priority, group, agent
   knowledge: { … },            // optional: knowledge base
   timeEntry: { … },            // optional: logging time on a record
 });
@@ -202,6 +203,24 @@ ticketSearch: {
 `note` is shown under the results (Freshservice says how many tickets the subject match covered) and `warnings` lists parts of the search that failed while others worked. Return `{ error, skipped: true }` when the site isn't set up (no API key, say), so the user is offered Settings. Freshservice searches through its REST API and builds each `url` with its `ticketUrl`.
 
 To open the Search tab with a term already typed, emit `ticket-search:open`: `pluginAPI.events.emit("ticket-search:open", { term: "printer" })`.
+
+### `ticketActions` (status, priority, group and agent)
+
+Lets the Quick Actions plugin change the open ticket without its edit form.
+
+```js
+ticketActions: {
+  options: async ({ force }) => ({ statuses, priorities, agents, groups, me, warnings? }), // or { error, skipped? }
+  get: async (ctx) => ({ ticket }),                  // or { error, skipped? }
+  update: async (ctx, changes) => ({ ok: true, ticket }), // or { error }
+}
+```
+
+- **`options({ force })`** returns the choices: `statuses` and `priorities` as `[{ value, label }]` (custom statuses included), `agents` as `[{ id, name, email }]`, `groups` as `[{ id, name }]`, and `me`, the agent id of the signed-in user (or `null`). Cache them; `force` asks for a fresh copy. `warnings` lists parts that failed while the rest worked.
+- **`get(ctx)`** reads the ticket. `ctx` is `{ site, record, url, tabId, webview }` for the active tab, `record` being your `recordScript` result. `ticket` is `{ id, subject, status, priority, groupId, agentId, updatedAt }`, with `groupId` / `agentId` `null` when unset.
+- **`update(ctx, changes)`** saves `changes`, any of `{ status, priority, groupId, agentId }`. `groupId` / `agentId` `null` clears them, and `agentId: "me"` means the signed-in agent. Return the ticket as saved.
+
+Return `{ error, skipped: true }` when the site isn't set up (no API key, say), so the user is offered Settings. Freshservice reads the choices from `/ticket_form_fields`, `/agents`, `/groups` and `/agents/me`, and saves with `PUT /tickets/{id}`; changes, problems and releases aren't supported.
 
 ### `knowledge` (knowledge base)
 

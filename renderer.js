@@ -720,6 +720,12 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!ts || typeof ts !== "object" || typeof ts.search !== "function") return "ticketSearch needs search(term, options)";
       if (ts.placeholder !== undefined && typeof ts.placeholder !== "string") return "ticketSearch.placeholder must be a string";
     }
+    if (a.ticketActions !== undefined) {
+      const ta = a.ticketActions;
+      if (!ta || typeof ta !== "object" || ["options", "get", "update"].some(function (k) { return typeof ta[k] !== "function"; })) {
+        return "ticketActions needs options(), get(ctx) and update(ctx, changes)";
+      }
+    }
     if (a.timeEntry !== undefined) {
       const te = a.timeEntry;
       if (!te || typeof te !== "object" || typeof te.log !== "function") return "timeEntry needs log(ctx)";
@@ -743,6 +749,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (a.ticketSearch) {
       out.ticketSearch = Object.freeze(Object.assign({ placeholder: "Search " + (a.shortName || a.name) + " tickets" }, a.ticketSearch));
     }
+    if (a.ticketActions) out.ticketActions = Object.freeze(Object.assign({}, a.ticketActions));
     if (a.timeEntry) {
       out.timeEntry = Object.freeze(Object.assign({}, a.timeEntry, {
         label: a.timeEntry.label || "Log in " + (a.shortName || a.name),

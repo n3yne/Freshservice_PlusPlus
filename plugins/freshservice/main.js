@@ -37,6 +37,12 @@ const MAX_MATCHED_REQUESTERS = 5;
 const MAX_TICKET_SEARCH_RESULTS = 50;
 const MAX_REQUESTER_LOOKUPS = 15;
 
+// Quick actions: how long the status/agent/group choices are kept, and how
+// many pages of 100 agents and groups are listed.
+const ACTION_OPTIONS_CACHE_MS = 10 * 60 * 1000;
+const MAX_AGENT_PAGES = 10;
+const MAX_GROUP_PAGES = 5;
+
 const STATUS_LABELS = { 2: "Open", 3: "Pending", 4: "Resolved", 5: "Closed" };
 const PRIORITY_LABELS = { 1: "Low", 2: "Medium", 3: "High", 4: "Urgent" };
 
@@ -142,7 +148,7 @@ module.exports = {
       }
       if (!resp.ok) {
         let detail = "";
-        if (resp.status === 400 && opts.method === "POST") {
+        if (resp.status === 400 && (opts.method === "POST" || opts.method === "PUT")) {
           try { detail = describeValidationErrors(await resp.json()); } catch { /* no JSON body */ }
         }
         const httpErr = new Error(describeHttpError(resp, conn.what) + (detail ? " " + detail : ""));
@@ -517,6 +523,102 @@ module.exports = {
       };
     });
 
+    // ===== Quick actions (status, priority, group, agent) =====
+    //
+    // Used by the Quick Actions plugin through the site adapter's ticketActions.
+    // The choices (statuses incl. custom ones, agents, groups) are cached per
+    // domain for a few minutes; data.force refreshes them.
+    const optionsCache = new Map(); // domain → { at, value }
+
+    async function listAll(conn, path, key, maxPages) {
+      const all = [];
+      for (let page = 1; page <= maxPages; page++) {
+        const sep = path.includes("?") ? "&" : "?";
+        const json = await apiGet(conn, `${path}${sep}per_page=100&page=${page}`);
+        const batch = Array.isArray(json[key]) ? json[key] : [];
+        all.push(...batch);
+        if (batch.length < 100) break;
+      }
+      return all;
+    }
+
+    function checkHost(data, conn) {
+      const host = data && typeof data.host === "string" ? data.host.toLowerCase() : "";
+      if (host && host !== conn.domain) {
+        return { skipped: true, error: `The open page (${host}) isn't the configured Freshservice domain (${conn.domain}).` };
+      }
+      return null;
+    }
+
+    api.handle("get-ticket-options", async function (data) {
+      const conn = connection();
+      if (conn.error) return conn;
+      const cached = optionsCache.get(conn.domain);
+      if (cached && !(data && data.force) && Date.now() - cached.at < ACTION_OPTIONS_CACHE_MS) return cached.value;
+      const [fields, agents, groups, me] = await Promise.allSettled([
+        apiGet(Object.assign({}, conn, { what: "Ticket fields" }), "/ticket_form_fields"),
+        listAll(Object.assign({}, conn, { what: "Agent list" }), "/agents?active=true", "agents", MAX_AGENT_PAGES),
+        listAll(Object.assign({}, conn, { what: "Group list" }), "/groups", "groups", MAX_GROUP_PAGES),
+        currentAgentId(conn),
+      ]);
+      const warnings = [];
+      if (agents.status === "rejected") warnings.push("Couldn't list agents: " + agents.reason.message);
+      if (groups.status === "rejected") warnings.push("Couldn't list groups: " + groups.reason.message);
+      warnings.forEach((w) => api.log("get-ticket-options:", w));
+      const choices = fields.status === "fulfilled" ? fieldChoices(fields.value) : {};
+      const value = {
+        statuses: choices.status && choices.status.length ? choices.status : labelsToChoices(STATUS_LABELS),
+        priorities: choices.priority && choices.priority.length ? choices.priority : labelsToChoices(PRIORITY_LABELS),
+        agents: agents.status === "fulfilled" ? agents.value.map(formatAgent).filter(Boolean).sort(byName) : [],
+        groups: groups.status === "fulfilled" ? groups.value.map(formatGroup).filter(Boolean).sort(byName) : [],
+        me: me.status === "fulfilled" ? Number(me.value) : null,
+        warnings,
+      };
+      if (!warnings.length) optionsCache.set(conn.domain, { at: Date.now(), value });
+      return value;
+    });
+
+    api.handle("get-ticket-state", async function (data) {
+      const ticketId = String((data && data.ticketId) || "");
+      if (!/^\d{1,12}$/.test(ticketId)) return { skipped: true, error: "Quick actions work on tickets only." };
+      const conn = connection();
+      if (conn.error) return conn;
+      const wrongHost = checkHost(data, conn);
+      if (wrongHost) return wrongHost;
+      try {
+        const json = await apiGet(Object.assign({}, conn, { what: "Ticket" }), "/tickets/" + ticketId);
+        const state = formatTicketState(json && json.ticket);
+        return state ? { ticket: state } : { error: "Freshservice returned no ticket." };
+      } catch (err) {
+        api.log("get-ticket-state failed:", err.message);
+        return { error: err.message || String(err) };
+      }
+    });
+
+    // data: { ticketId, host?, changes: { status?, priority?, groupId?, agentId? } }
+    // agentId may be null (unassign) or "me" (the API key's agent).
+    api.handle("update-ticket", async function (data) {
+      const ticketId = String((data && data.ticketId) || "");
+      if (!/^\d{1,12}$/.test(ticketId)) return { error: "Quick actions work on tickets only." };
+      const conn = connection();
+      if (conn.error) return conn;
+      const wrongHost = checkHost(data, conn);
+      if (wrongHost) return wrongHost;
+      try {
+        const changes = Object.assign({}, data && data.changes);
+        if (changes.agentId === "me") changes.agentId = Number(await currentAgentId(conn));
+        const built = buildTicketUpdate(changes);
+        if (built.error) return built;
+        const json = await apiRequest(Object.assign({}, conn, { what: "Ticket update" }),
+          "/tickets/" + ticketId, { method: "PUT", body: built.body });
+        const state = formatTicketState(json && json.ticket);
+        return { ok: true, ticket: state };
+      } catch (err) {
+        api.log("update-ticket failed:", err.message);
+        return { error: err.message || String(err) };
+      }
+    });
+
     api.handle("test-connection", async function () {
       const conn = connection();
       if (conn.error) return { error: conn.error };
@@ -546,6 +648,9 @@ module.exports = {
   personMatches,
   formatPerson,
   mergeTicketResults,
+  fieldChoices,
+  formatTicketState,
+  buildTicketUpdate,
 };
 
 // What the user typed in ticket search → the parts each kind of search uses:
@@ -708,11 +813,13 @@ function describeHttpError(resp, what) {
     case 400:
       if (what === "Ticket filter") return "Freshservice didn't accept the filter query (400). Check the field names and quotes.";
       if (what === "Time entry") return "Freshservice didn't accept the time entry (400).";
+      if (what === "Ticket update") return "Freshservice didn't accept the change (400). A field the form requires may be empty.";
       return "Freshservice rejected the request (400).";
     case 401: return "Freshservice rejected the API key (401). Check it in Settings → Freshservice.";
-    case 403: return what === "Time entry"
-      ? "This API key's agent isn't allowed to add time entries to that record (403)."
-      : `This API key isn't allowed to view that ${noun.toLowerCase()} (403).`;
+    case 403:
+      if (what === "Time entry") return "This API key's agent isn't allowed to add time entries to that record (403).";
+      if (what === "Ticket update") return "This API key's agent isn't allowed to change that ticket (403).";
+      return `This API key isn't allowed to view that ${noun.toLowerCase()} (403).`;
     case 404: return `${noun} not found in Freshservice (404).`;
     case 429: {
       const retry = resp.headers && typeof resp.headers.get === "function" ? resp.headers.get("retry-after") : null;
@@ -834,4 +941,87 @@ function formatTicketText(ticket, conversations) {
     parts.push(`[${conversationLabel(c)}${c.created_at ? ", " + c.created_at : ""}]\n${text}`);
   }
   return parts.join("\n\n---\n\n").substring(0, MAX_TEXT_CHARS);
+}
+
+// ===== Quick actions helpers =====
+
+function labelsToChoices(labels) {
+  return Object.keys(labels).map((k) => ({ value: Number(k), label: labels[k] }));
+}
+
+function byName(a, b) {
+  return String(a.name || a.email).localeCompare(String(b.name || b.email), undefined, { sensitivity: "base" });
+}
+
+function formatGroup(g) {
+  if (!g || typeof g !== "object" || !isId(g.id)) return null;
+  const name = typeof g.name === "string" ? g.name.replace(/\s+/g, " ").trim().substring(0, 200) : "";
+  return { id: g.id, name: name || "Group " + g.id };
+}
+
+// The status and priority choices from /ticket_form_fields, custom statuses
+// included. Freshservice lists choices as [{ id, value }] (some accounts send
+// a { "2": "Open" } or { "2": ["Open", "..."] } map instead); anything that
+// isn't a whole-number choice with a name is skipped.
+function fieldChoices(json) {
+  const fields = json && Array.isArray(json.ticket_fields) ? json.ticket_fields : [];
+  const out = {};
+  for (const name of ["status", "priority"]) {
+    const field = fields.find((f) => f && f.name === name);
+    let raw = field ? field.choices : null;
+    const list = [];
+    if (raw && !Array.isArray(raw) && typeof raw === "object") {
+      raw = Object.keys(raw).map((k) => ({ id: k, value: Array.isArray(raw[k]) ? raw[k][0] : raw[k] }));
+    }
+    for (const c of Array.isArray(raw) ? raw : []) {
+      if (!c || typeof c !== "object") continue;
+      const value = Number(c.id != null ? c.id : c.value);
+      const label = typeof c.value === "string" ? c.value : (typeof c.label === "string" ? c.label : "");
+      if (!Number.isInteger(value) || value < 1 || value > 100000 || !label.trim()) continue;
+      if (list.some((x) => x.value === value)) continue;
+      list.push({ value, label: label.replace(/\s+/g, " ").trim().substring(0, 100) });
+    }
+    out[name] = list;
+  }
+  return out;
+}
+
+// A ticket → what the quick actions show.
+function formatTicketState(t) {
+  if (!t || typeof t !== "object" || !isId(t.id)) return null;
+  return {
+    id: t.id,
+    subject: typeof t.subject === "string" ? t.subject.substring(0, 300) : "",
+    status: Number.isInteger(t.status) ? t.status : null,
+    priority: Number.isInteger(t.priority) ? t.priority : null,
+    agentId: isId(t.responder_id) ? t.responder_id : null,
+    groupId: isId(t.group_id) ? t.group_id : null,
+    updatedAt: typeof t.updated_at === "string" ? t.updated_at : "",
+  };
+}
+
+// Checks the changes the renderer asked for. Returns { body } for PUT
+// /tickets/{id}, or { error }. agentId / groupId null unassigns.
+function buildTicketUpdate(changes) {
+  const c = changes && typeof changes === "object" ? changes : {};
+  const body = {};
+  const whole = (v) => Number.isInteger(v) && v >= 1 && v <= 100000;
+  if (c.status !== undefined) {
+    if (!whole(c.status)) return { error: "That isn't a status Freshservice knows." };
+    body.status = c.status;
+  }
+  if (c.priority !== undefined) {
+    if (!whole(c.priority)) return { error: "That isn't a priority Freshservice knows." };
+    body.priority = c.priority;
+  }
+  if (c.agentId !== undefined) {
+    if (c.agentId !== null && !isId(c.agentId)) return { error: "That isn't an agent Freshservice knows." };
+    body.responder_id = c.agentId;
+  }
+  if (c.groupId !== undefined) {
+    if (c.groupId !== null && !isId(c.groupId)) return { error: "That isn't a group Freshservice knows." };
+    body.group_id = c.groupId;
+  }
+  if (!Object.keys(body).length) return { error: "Nothing to change." };
+  return { body };
 }
