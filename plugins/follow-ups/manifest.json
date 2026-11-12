@@ -1,7 +1,7 @@
 {
   "id": "follow-ups",
   "name": "Follow-up Reminders",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "Set a follow-up reminder on a ticket (in an hour, tomorrow morning, next week or a time you pick) and get a desktop alert when it's due. Reminders are listed in a Follow-ups tab in the side panel.",
   "main": "main.js",
   "renderer": "renderer.js",

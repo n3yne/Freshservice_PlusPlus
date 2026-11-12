@@ -1,7 +1,7 @@
 {
   "id": "recent-tickets",
   "name": "Recent Tickets",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "A Recent tab in the side panel listing the tickets you've viewed lately on any site (Freshservice, ConnectWise Manage), newest first. Click one to go back to it.",
   "main": "main.js",
   "renderer": "renderer.js",
