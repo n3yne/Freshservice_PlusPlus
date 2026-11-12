@@ -172,12 +172,21 @@
           <div class="settings-section">
             <h3 class="settings-section-title">Plugins</h3>
             <p class="settings-description settings-description-field settings-description-field-spaced">
-              Manage installed plugins. Each plugin also has its own tab below with its settings and the same
-              on/off switch. Turning a plugin on or off takes effect after restarting the app.
+              Manage installed plugins, grouped by what they do. Each plugin also has its own tab below with its
+              settings and the same on/off switch. Turning a plugin on or off takes effect after restarting the app.
             </p>
 
             <div id="plugin-restart-notice" class="plugin-restart-notice">
               Restart the app to apply plugin changes.
+            </div>
+
+            <div class="plugin-list-toolbar">
+              <span id="plugin-summary" class="plugin-summary"></span>
+              <div class="plugin-filter" role="group" aria-label="Show plugins">
+                <button type="button" class="plugin-filter-btn active" data-filter="all" aria-pressed="true">All</button>
+                <button type="button" class="plugin-filter-btn" data-filter="on" aria-pressed="false">On</button>
+                <button type="button" class="plugin-filter-btn" data-filter="off" aria-pressed="false">Off</button>
+              </div>
             </div>
 
             <div id="plugin-list" class="plugin-list"></div>
@@ -197,6 +206,7 @@
 
     <script src="safe-html.js"></script>
     <script src="site-colors.js"></script>
+    <script src="plugin-categories.js"></script>
     <script src="settings_renderer.js"></script>
   </body>
 </html>

@@ -8,6 +8,7 @@ const { pathToFileURL } = require("url");
 
 const { version: APP_VERSION } = require("./package.json");
 const SiteColors = require("./site-colors");
+const PluginCategories = require("./plugin-categories");
 
 const pluginBus = new EventEmitter();
 pluginBus.setMaxListeners(100);
@@ -304,6 +305,7 @@ async function loadPlugin(pluginDir, source, ipcMain) {
     name: manifest.name || id,
     version: manifest.version || "",
     description: manifest.description || "",
+    category: PluginCategories.normalizeCategory(manifest.category),
     source,         // "bundled" | "user"
     dir: pluginDir,
     enabled,
@@ -497,6 +499,7 @@ function getPluginInfo() {
     name: p.name,
     version: p.version,
     description: p.description,
+    category: p.category,
     source: p.source,
     enabled: p.enabled,
     loaded: p.loaded,
