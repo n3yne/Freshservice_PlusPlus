@@ -67,6 +67,7 @@ document.addEventListener("DOMContentLoaded", function () {
     dismissedReleaseVersion: "",
     autoUpdate: true,
     restoreTabs: true,
+    unreadTabBadges: true,
   };
 
   // ==================== Element References ====================
@@ -74,6 +75,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const settingTabScroll      = document.getElementById("setting-side-panel-tab-scroll");
   const settingDefaultUrl     = document.getElementById("setting-default-url");
   const settingRestoreTabs    = document.getElementById("setting-restore-tabs");
+  const settingUnreadBadges   = document.getElementById("setting-unread-tab-badges");
   const settingTheme          = document.getElementById("setting-theme");
   const settingAutoUpdate     = document.getElementById("setting-auto-update");
   const updateModeNote        = document.getElementById("update-mode-note");
@@ -107,6 +109,7 @@ document.addEventListener("DOMContentLoaded", function () {
     settingTheme.checked = theme === "light";
     settingAutoUpdate.checked = settings.autoUpdate !== false;
     settingRestoreTabs.checked = settings.restoreTabs !== false;
+    settingUnreadBadges.checked = settings.unreadTabBadges !== false;
 
     if (document.activeElement !== settingDefaultUrl) {
       settingDefaultUrl.value = settings.defaultUrl && settings.defaultUrl !== "about:blank" ? settings.defaultUrl : "";
@@ -128,6 +131,11 @@ document.addEventListener("DOMContentLoaded", function () {
   settingRestoreTabs.addEventListener("change", function () {
     appSettings.restoreTabs = settingRestoreTabs.checked;
     saveSettings({ restoreTabs: appSettings.restoreTabs });
+  });
+
+  settingUnreadBadges.addEventListener("change", function () {
+    appSettings.unreadTabBadges = settingUnreadBadges.checked;
+    saveSettings({ unreadTabBadges: appSettings.unreadTabBadges });
   });
 
   settingTheme.addEventListener("change", function () {
@@ -214,6 +222,54 @@ document.addEventListener("DOMContentLoaded", function () {
   // A site may have been answered while this window was in the background.
   window.addEventListener("focus", refreshSitePermissions);
   refreshSitePermissions();
+
+  // ==================== Settings Export / Import ====================
+
+  const btnExportSettings = document.getElementById("btn-export-settings");
+  const btnImportSettings = document.getElementById("btn-import-settings");
+  const settingsTransferStatus = document.getElementById("settings-transfer-status");
+
+  function runSettingsTransfer(action, done) {
+    btnExportSettings.disabled = true;
+    btnImportSettings.disabled = true;
+    settingsTransferStatus.textContent = "";
+    action()
+      .then(function (result) {
+        if (!result || result.cancelled) return;
+        if (!result.success) {
+          settingsTransferStatus.textContent = result.error || "Something went wrong.";
+          return;
+        }
+        done(result);
+      })
+      .catch(function () { settingsTransferStatus.textContent = "Something went wrong."; })
+      .finally(function () {
+        btnExportSettings.disabled = false;
+        btnImportSettings.disabled = false;
+      });
+  }
+
+  btnExportSettings.addEventListener("click", function () {
+    runSettingsTransfer(window.backupAPI.exportSettings, function () {
+      settingsTransferStatus.textContent = "Exported. API keys weren't included.";
+    });
+  });
+
+  btnImportSettings.addEventListener("click", function () {
+    runSettingsTransfer(window.backupAPI.importSettings, function (result) {
+      settingsTransferStatus.textContent = result.restartNeeded
+        ? "Imported. Restart the app to apply the plugin changes."
+        : "Imported.";
+      // Plugin on/off switches may have changed; the settings themselves arrive
+      // through settings-changed like any other save.
+      loadPluginInfo().then(function () {
+        plugins.forEach(function (p) {
+          (pluginToggles.get(p.id) || []).forEach(function (cb) { cb.checked = p.enabled; });
+        });
+        if (result.restartNeeded) showRestartNotice();
+      });
+    });
+  });
 
   const defaultUrlSave = debounce(function () {
     const val = settingDefaultUrl.value.trim();

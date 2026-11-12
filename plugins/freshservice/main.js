@@ -23,6 +23,19 @@ const FILTER_PAGE_SIZE = 30;
 const MAX_FILTER_PAGES = 10;
 const MAX_CONVERSATION_SNIPPET_CHARS = 300;
 const EMAIL_PATTERN = /^[^\s@"<>]{1,64}@[^\s@"<>]{1,253}$/;
+// Ticket search. The API has no full-text ticket search, so subjects are
+// matched against a scan of recently updated tickets (cached for a couple of
+// minutes so typing doesn't re-fetch), and requesters through the requester
+// filter, then the ticket filter on their ids.
+const MAX_TICKET_SEARCH_CHARS = 100;
+const TICKET_SEARCH_DAY_CHOICES = [7, 30, 90, 180, 365];
+const DEFAULT_TICKET_SEARCH_DAYS = 30;
+const SCAN_PER_PAGE = 100;
+const MAX_SCAN_PAGES = 3;
+const SCAN_CACHE_MS = 2 * 60 * 1000;
+const MAX_MATCHED_REQUESTERS = 5;
+const MAX_TICKET_SEARCH_RESULTS = 50;
+const MAX_REQUESTER_LOOKUPS = 15;
 
 const STATUS_LABELS = { 2: "Open", 3: "Pending", 4: "Resolved", 5: "Closed" };
 const PRIORITY_LABELS = { 1: "Low", 2: "Medium", 3: "High", 4: "Urgent" };
@@ -132,7 +145,9 @@ module.exports = {
         if (resp.status === 400 && opts.method === "POST") {
           try { detail = describeValidationErrors(await resp.json()); } catch { /* no JSON body */ }
         }
-        throw new Error(describeHttpError(resp, conn.what) + (detail ? " " + detail : ""));
+        const httpErr = new Error(describeHttpError(resp, conn.what) + (detail ? " " + detail : ""));
+        httpErr.status = resp.status;
+        throw httpErr;
       }
       return resp.json();
     }
@@ -352,6 +367,156 @@ module.exports = {
       }
     });
 
+    // ---- Ticket search ----
+
+    // Recently updated tickets, newest first, per domain and day window.
+    let scanCache = null; // { domain, days, at, tickets, full }
+    async function recentTickets(conn, days) {
+      const now = Date.now();
+      if (scanCache && scanCache.domain === conn.domain && scanCache.days === days && now - scanCache.at < SCAN_CACHE_MS) {
+        return scanCache;
+      }
+      const since = new Date(now - days * 24 * 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+      const what = Object.assign({}, conn, { what: "Ticket list" });
+      const tickets = [];
+      let full = false;
+      for (let page = 1; page <= MAX_SCAN_PAGES; page++) {
+        const json = await apiGet(what, "/tickets?updated_since=" + encodeURIComponent(since) +
+          "&per_page=" + SCAN_PER_PAGE + "&page=" + page);
+        const batch = Array.isArray(json.tickets) ? json.tickets : [];
+        tickets.push(...batch.map(formatTicketSummary).filter(Boolean));
+        if (batch.length < SCAN_PER_PAGE) break;
+        if (page === MAX_SCAN_PAGES) full = true;
+      }
+      scanCache = { domain: conn.domain, days, at: now, tickets, full };
+      return scanCache;
+    }
+
+    // Requester (and agent) names by id, so results can say who raised each ticket.
+    const peopleCache = new Map(); // "domain:id" → { name, email } | null
+    async function lookUpPerson(conn, id) {
+      const cacheKey = conn.domain + ":" + id;
+      if (peopleCache.has(cacheKey)) return peopleCache.get(cacheKey);
+      let person = null;
+      for (const [path, field] of [["/requesters/", "requester"], ["/agents/", "agent"]]) {
+        try {
+          const json = await apiGet(Object.assign({}, conn, { what: "Requester" }), path + id);
+          person = formatPerson(json && json[field]);
+          if (person) break;
+        } catch (err) {
+          // Not a requester: it may be an agent. Anything else: give up on this one.
+          if (!err || err.status !== 404) break;
+        }
+      }
+      if (peopleCache.size > 2000) peopleCache.clear();
+      peopleCache.set(cacheKey, person);
+      return person;
+    }
+
+    async function ticketById(conn, id) {
+      try {
+        const json = await apiGet(Object.assign({}, conn, { what: "Ticket" }), "/tickets/" + id + "?include=requester");
+        const t = json && json.ticket;
+        const summary = formatTicketSummary(t);
+        if (!summary) return [];
+        const person = formatPerson(t.requester);
+        if (person && summary.requesterId) peopleCache.set(conn.domain + ":" + summary.requesterId, person);
+        return [summary];
+      } catch (err) {
+        if (err && err.status === 404) return [];
+        throw err;
+      }
+    }
+
+    // People whose name or email starts with the first word, narrowed to those
+    // matching every word, then their tickets through the ticket filter.
+    async function ticketsByRequester(conn, parsed) {
+      const people = [];
+      if (parsed.requesterQuery) {
+        const json = await apiGet(Object.assign({}, conn, { what: "Requester search" }),
+          "/requesters?query=" + encodeURIComponent("\"" + parsed.requesterQuery + "\"") + "&include_agents=true");
+        const list = Array.isArray(json.requesters) ? json.requesters : [];
+        for (const r of list) {
+          const person = formatPerson(r);
+          if (person && isId(r.id) && personMatches(person, parsed.words)) {
+            peopleCache.set(conn.domain + ":" + r.id, person);
+            people.push(r.id);
+          }
+          if (people.length >= MAX_MATCHED_REQUESTERS) break;
+        }
+      }
+      const clauses = people.map((id) => "requester_id:" + id);
+      if (parsed.email) clauses.push("email:'" + parsed.email + "'");
+      if (!clauses.length) return { tickets: [], people: 0 };
+      const json = await apiGet(Object.assign({}, conn, { what: "Ticket filter" }),
+        "/tickets/filter?query=" + encodeURIComponent("\"" + clauses.join(" OR ") + "\"") + "&page=1");
+      const tickets = (Array.isArray(json.tickets) ? json.tickets : []).map(formatTicketSummary).filter(Boolean);
+      return { tickets, people: people.length };
+    }
+
+    // Searches tickets by number, subject or requester. Each part runs on its
+    // own, so one failing (say the requester filter) still returns the others.
+    api.handle("search-tickets", async function (data) {
+      const parsed = parseTicketSearch(data && data.term);
+      if (parsed.empty) return { tickets: [] };
+      if (parsed.error) return parsed;
+      const conn = connection();
+      if (conn.error) return conn;
+      const days = TICKET_SEARCH_DAY_CHOICES.includes(Number(data && data.days)) ? Number(data.days) : DEFAULT_TICKET_SEARCH_DAYS;
+
+      const [byId, byRequester, scan] = await Promise.allSettled([
+        parsed.id ? ticketById(conn, parsed.id) : Promise.resolve([]),
+        parsed.requesterQuery || parsed.email ? ticketsByRequester(conn, parsed) : Promise.resolve({ tickets: [] }),
+        parsed.words.length ? recentTickets(conn, days) : Promise.resolve(null),
+      ]);
+      // Only the parts that had something to search for count.
+      const ran = [
+        parsed.id ? byId : null,
+        parsed.requesterQuery || parsed.email ? byRequester : null,
+        parsed.words.length ? scan : null,
+      ].filter(Boolean);
+      const failures = ran.filter((r) => r.status === "rejected").map((r) => r.reason);
+      failures.forEach((err) => api.log("search-tickets part failed:", err && err.message));
+      if (failures.length && failures.length === ran.length) {
+        return { error: (failures[0] && failures[0].message) || "Ticket search failed." };
+      }
+
+      const subjectHits = scan.status === "fulfilled" && scan.value
+        ? scan.value.tickets.filter((t) => subjectMatches(t.subject, parsed.words)) : [];
+      const merged = mergeTicketResults([
+        { tickets: byId.status === "fulfilled" ? byId.value : [], match: "number" },
+        { tickets: byRequester.status === "fulfilled" ? byRequester.value.tickets : [], match: "requester" },
+        { tickets: subjectHits, match: "subject" },
+      ], MAX_TICKET_SEARCH_RESULTS);
+
+      // Fill in requester names, looking up at most a handful of unknown people.
+      const unknown = [...new Set(merged.map((t) => t.requesterId).filter((id) => id && !peopleCache.has(conn.domain + ":" + id)))]
+        .slice(0, MAX_REQUESTER_LOOKUPS);
+      await Promise.all(unknown.map((id) => lookUpPerson(conn, id).catch(() => null)));
+      const tickets = merged.map((t) => {
+        const person = t.requesterId ? peopleCache.get(conn.domain + ":" + t.requesterId) : null;
+        return Object.assign({}, t, {
+          statusLabel: STATUS_LABELS[t.status] || "",
+          priorityLabel: PRIORITY_LABELS[t.priority] || "",
+          requester: person ? person.name : "",
+          requesterEmail: person ? person.email : "",
+        });
+      });
+
+      const warnings = [];
+      if (byRequester.status === "rejected") warnings.push("Couldn't search requesters: " + byRequester.reason.message);
+      if (scan.status === "rejected") warnings.push("Couldn't search subjects: " + scan.reason.message);
+      const scanned = scan.status === "fulfilled" && scan.value ? scan.value : null;
+      return {
+        tickets,
+        domain: conn.domain,
+        days,
+        scanned: scanned ? scanned.tickets.length : 0,
+        scanFull: scanned ? scanned.full : false,
+        warnings,
+      };
+    });
+
     api.handle("test-connection", async function () {
       const conn = connection();
       if (conn.error) return { error: conn.error };
@@ -376,7 +541,71 @@ module.exports = {
   formatTicketSummary,
   formatConversation,
   ticketFields,
+  parseTicketSearch,
+  subjectMatches,
+  personMatches,
+  formatPerson,
+  mergeTicketResults,
 };
+
+// What the user typed in ticket search → the parts each kind of search uses:
+//   id             a ticket number ("123", "#123", "INC-123", "SR-123")
+//   words          lowercase words every subject (or requester) must contain
+//   email          an email address, matched exactly by the ticket filter
+//   requesterQuery a requester filter ("starts with" on name and email) for
+//                  the first word, with quotes and other syntax stripped out
+// Returns { empty: true } for nothing typed, or { error } when too long.
+function parseTicketSearch(raw) {
+  const text = String(raw || "").replace(/\s+/g, " ").trim();
+  if (!text) return { empty: true };
+  if (text.length > MAX_TICKET_SEARCH_CHARS) return { error: `Search for ${MAX_TICKET_SEARCH_CHARS} characters or fewer.` };
+  const idMatch = /^#?(?:(?:INC|SR|FS)-?)?(\d{1,12})$/i.exec(text);
+  const id = idMatch ? String(Number(idMatch[1])) : "";
+  const words = id ? [] : text.toLowerCase().split(" ").filter(Boolean);
+  const email = EMAIL_PATTERN.test(text) && !/[',\\]/.test(text) ? text.toLowerCase() : "";
+  const first = (words[0] || "").replace(/[^\p{L}\p{N}@._+-]/gu, "");
+  const requesterQuery = !id && first.length >= 2 ? "~[first_name|last_name|primary_email]:'" + first + "'" : "";
+  return { text, id, words, email, requesterQuery };
+}
+
+function subjectMatches(subject, words) {
+  const s = String(subject || "").toLowerCase();
+  return words.length > 0 && words.every((w) => s.includes(w));
+}
+
+function personMatches(person, words) {
+  const hay = (person.name + " " + person.email).toLowerCase();
+  return words.every((w) => hay.includes(w));
+}
+
+// A requester or agent → { name, email }, or null.
+function formatPerson(p) {
+  if (!p || typeof p !== "object") return null;
+  const clean = (v) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().substring(0, 200) : "");
+  const name = clean(p.name) || [clean(p.first_name), clean(p.last_name)].filter(Boolean).join(" ");
+  const email = clean(p.primary_email) || clean(p.email);
+  return name || email ? { name: name || email, email } : null;
+}
+
+// Merges lists of ticket summaries, one per kind of match, into one list
+// without repeats: number matches first, then the rest newest-updated first.
+// Each ticket says which kinds matched it (matches: ["requester", "subject"]).
+function mergeTicketResults(groups, max) {
+  const byId = new Map();
+  for (const g of groups) {
+    for (const t of g.tickets || []) {
+      const hit = byId.get(t.id);
+      if (hit) { if (!hit.matches.includes(g.match)) hit.matches.push(g.match); }
+      else byId.set(t.id, Object.assign({}, t, { matches: [g.match] }));
+    }
+  }
+  return [...byId.values()].sort((a, b) => {
+    const an = a.matches.includes("number") ? 0 : 1;
+    const bn = b.matches.includes("number") ? 0 : 1;
+    if (an !== bn) return an - bn;
+    return String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt));
+  }).slice(0, max || MAX_TICKET_SEARCH_RESULTS);
+}
 
 // The bits of a ticket that reply placeholders use.
 function ticketFields(ticket) {

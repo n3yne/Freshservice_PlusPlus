@@ -11,6 +11,7 @@ const { installPasskeyAccountChooser } = require("./webauthn");
 const { createUpdater } = require("./updater");
 const { zoomActionForKey } = require("./page-zoom");
 const { createPermissionPolicy, installPermissionHandlers } = require("./permissions");
+const settingsTransfer = require("./settings-transfer");
 
 // Keep using the Freshservice++ data folder after the rename to MSP++. This must
 // run before anything touches userData (the single-instance lock, sessions).
@@ -1052,6 +1053,104 @@ function registerIpcHandlers() {
     });
     return { success: true };
   }));
+
+  // Settings export: writes app and plugin settings to a JSON file the user picks,
+  // without API keys (see settings-transfer.js for why).
+  electron.ipcMain.handle("export-settings", async (event) => {
+    const parent = electron.BrowserWindow.fromWebContents(event.sender) || undefined;
+    const result = await electron.dialog.showSaveDialog(parent, {
+      title: "Export Settings",
+      defaultPath: path.join(electron.app.getPath("documents"), settingsTransfer.defaultExportFileName()),
+      filters: [{ name: "MSP++ settings", extensions: ["json"] }],
+      buttonLabel: "Export",
+    });
+    if (result.canceled || !result.filePath) return { cancelled: true };
+    try {
+      const data = settingsTransfer.buildSettingsExport(
+        await readSettingsFile(),
+        pluginManager.getPluginInfo(),
+        pluginManager.getCredentialFields(),
+        electron.app.getVersion(),
+      );
+      await fsp.writeFile(result.filePath, JSON.stringify(data, null, 2), "utf-8");
+      return { success: true, filePath: result.filePath };
+    } catch (err) {
+      console.error("[Settings] Export failed:", err);
+      return { success: false, error: "The settings couldn't be saved to that file." };
+    }
+  });
+
+  // Settings import: replaces this PC's settings with the ones in an export file.
+  // API keys saved on this PC are kept. Plugin on/off changes apply after a restart.
+  electron.ipcMain.handle("import-settings", async (event) => {
+    const parent = electron.BrowserWindow.fromWebContents(event.sender) || undefined;
+    const picked = await electron.dialog.showOpenDialog(parent, {
+      title: "Import Settings",
+      filters: [{ name: "MSP++ settings", extensions: ["json"] }],
+      properties: ["openFile"],
+      buttonLabel: "Import",
+    });
+    if (picked.canceled || !picked.filePaths.length) return { cancelled: true };
+
+    let text;
+    try {
+      const stat = await fsp.stat(picked.filePaths[0]);
+      if (stat.size > 5 * 1024 * 1024) return { success: false, error: "The file is too large to be an MSP++ settings export." };
+      text = await fsp.readFile(picked.filePaths[0], "utf-8");
+    } catch (err) {
+      console.error("[Settings] Import read failed:", err);
+      return { success: false, error: "The file couldn't be read." };
+    }
+    const parsed = settingsTransfer.parseSettingsExport(text, pluginManager.getCredentialFields());
+    if (!parsed.ok) return { success: false, error: parsed.error };
+    const imported = parsed.data;
+
+    const from = [
+      imported.appVersion ? "MSP++ " + imported.appVersion : "",
+      imported.exportedAt && !isNaN(Date.parse(imported.exportedAt))
+        ? "on " + new Date(imported.exportedAt).toLocaleString() : "",
+    ].filter(Boolean).join(" ");
+    const answer = await electron.dialog.showMessageBox(parent, {
+      type: "question",
+      buttons: ["Import", "Cancel"],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+      title: "Import Settings",
+      message: "Replace your settings with the ones in this file?",
+      detail: (from ? "Exported from " + from + ".\n\n" : "") +
+        "This replaces your bookmarks, canned responses, home page and plugin settings. " +
+        "API keys aren't in the file, so any keys saved on this PC are kept. " +
+        "Notes, timers and other plugin data aren't changed.",
+    });
+    if (answer.response !== 0) return { cancelled: true };
+
+    return withSettingsLock(async () => {
+      const credentialFields = pluginManager.getCredentialFields();
+      const raw = settingsTransfer.mergeImportedSettings(await readSettingsFile(), imported.settings, credentialFields);
+      // An export from an older version gets the same upgrades as an old settings.json.
+      migrateCoreSettings(raw);
+      pluginManager.runMigrations(raw);
+      const merged = applySettingsDefaults(raw);
+      if (!validateSettings(merged) || !pluginManager.validatePluginSettings(merged)) {
+        console.warn("[Settings] Rejected invalid settings import");
+        return { success: false, error: "Some settings in the file aren't valid, so nothing was imported." };
+      }
+      const toSave = pluginManager.transformSettingsForSave(merged);
+      await saveSettings(toSave);
+
+      const changes = settingsTransfer.pluginChanges(pluginManager.getPluginInfo(), imported.plugins);
+      for (const c of changes) await pluginManager.setPluginEnabled(c.id, c.enabled);
+
+      const publicSettings = toPublicSettings(toSave);
+      pluginManager.fireEvent("settings:changed", publicSettings);
+      pluginManager.updateSettings(toSave);
+      electron.BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) win.webContents.send("settings-changed", publicSettings);
+      });
+      return { success: true, restartNeeded: changes.some((c) => c.installed) };
+    });
+  });
 
   // Plugin system: return renderer script paths for injection
   electron.ipcMain.handle("plugin-get-scripts", () => {

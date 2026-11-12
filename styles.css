@@ -1038,6 +1038,26 @@ body.settings-page {
   font-size: 9px;
 }
 
+/* ===== Unread Tab Badge ===== */
+.tab-unread-dot {
+  display: none;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.25);
+}
+
+.tab-item.tab-unread .tab-unread-dot {
+  display: block;
+}
+
+.tab-item.tab-unread .tab-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
 /* ===== Confirm Dialog (in-page replacement for native confirm()) ===== */
 .confirm-overlay {
   position: fixed;

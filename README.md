@@ -13,7 +13,7 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 ## Features
 
 ### Browser
-- **Multi-tab browsing** – Open multiple ticketing pages simultaneously. The tabs you had open come back the next time the app starts; turn off **Settings → General → Restore Tabs from Last Session** to start on the Home URL instead (pinned tabs always come back)
+- **Multi-tab browsing** – Open multiple ticketing pages simultaneously. The tabs you had open come back the next time the app starts; turn off **Settings → General → Restore Tabs from Last Session** to start on the Home URL instead (pinned tabs always come back). A dot marks a background tab whose page changed on its own, such as a new reply changing the title, until you switch to it (**Settings → General → Unread Badge on Tabs**)
 - **Address bar** – A row under the tab bar shows the active tab's URL, with back, forward and reload beside it. Type an address and press `Enter` to go there (`Ctrl+L` jumps to it, `Escape` puts the page's URL back). Only `http` and `https` pages open; a bare host such as `example.com` gets `https://` added. There is no web search, so plain words are ignored. Type a ticket number to jump to it: `12345` (or `INC-12345`, `CHN-45`, `PRB-67`, `RL-89`) opens it in Freshservice, and `CW-12345` opens a ConnectWise ticket. A bare number goes to the site of the tab you're on. The instance is taken from an open tab on that site (for Freshservice, also the API domain or Home URL), so ConnectWise needs a CW tab open
 - **Refresh all tabs** – **View → Refresh All Tabs** (`Ctrl+Alt+R`) reloads every open tab at once
 - **Tab management** – Pin tabs, duplicate (the copy opens next to the original), close others, reopen closed tabs (`Ctrl+Shift+T` puts a tab back where it was), copy URL, copy a clean ticket link (on Freshservice, ConnectWise and Home URL pages; greyed out when no ticket is open), open in default browser (right-click any tab). Tab shortcuts work while you're typing in a page too. Double-click an empty part of the tab bar to open a new tab
@@ -115,8 +115,26 @@ A **⏱ Time** tab in the side panel that times the ticket you're working on.
 - **Start** – Open a ticket and press **Start** in the Time tab, or right-click its tab and choose **⏱ Start Timer for This Ticket**. Each ticket gets its own timer; starting one pauses the others (turn that off in Settings to run several at once). **Start a timer when I open a ticket** does it for you
 - **Adjust** – **−5** and **+5** fix a timer you forgot to start or stop. The list shows every timer with its time, and the header shows the total that hasn't been logged yet
 - **Log time** – Enter a note and press **Log in Freshservice** to add a time entry to the ticket through the Freshservice API, for the agent the API key belongs to (tickets, changes, problems and releases). On ConnectWise Manage, open a new time entry on the ticket and press **Fill CW time entry** to put the hours in it, then save it in ConnectWise (the note comes from the Notes tab's live sync). Anywhere else, or if logging fails, **Copy** puts the time (h:mm and decimal hours), ticket and note on the clipboard, and **Mark logged** resets the timer
+- **Logged today** – A summary of the time you logged today, per ticket, with the total for the day. Expand a ticket to see each entry with its time and note, use **‹** and **›** to look back at earlier days (the last 90 days are kept), and **📋 Copy** puts the summary on the clipboard for a timesheet or a stand-up. Both **Log** and **Mark logged** count; taking an entry out of the summary (✕) doesn't change the time entry on the site
 - **Rounding** – Settings → Plugins → Time Tracker rounds the logged time up to the next 1, 5, 6, 10, 15 or 30 minutes. The timer itself keeps the exact time
 - **Safe on close** – Running timers are paused when MSP++ closes, and saved every minute so a crash loses at most a minute
+- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+
+### Ticket Search
+A **🔎 Search** tab in the side panel that finds Freshservice tickets as you type, through the Freshservice API.
+- **What you can type** – A ticket number (`48211`, `#48211`, `INC-48211`), words from the subject (every word has to appear), or a requester's name or email. Matches are tagged **number**, **subject** or **requester**, with the requester, status, priority and when the ticket was last updated
+- **Open** – Click a result (or press `Enter` for the highlighted one, arrow keys to move) to open it in a new tab, or in the current tab if you choose that in **Settings → Plugins → Ticket Search**. `Ctrl`+click or middle-click opens it in a background tab
+- **How far back** – Freshservice's API can't search subjects, so MSP++ fetches up to the 300 most recent tickets updated in the last 30 days (7 days to a year in Settings) and matches subjects itself, keeping the list for two minutes so typing doesn't call the API again. Ticket numbers and requesters are looked up directly, however old the ticket
+- **Requirements** – the domain and API key in **Settings → Plugins → Freshservice**
+- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+
+### Recent Tickets
+A **🕘 Recent** tab in the side panel listing the tickets you've viewed lately, newest first.
+- **Every site** – A ticket is added when it shows in the active tab, on Freshservice (tickets, changes, problems, releases), ConnectWise Manage, or any site plugin that knows its tickets. Each entry shows the site, number, subject and when you last looked at it, grouped into Today, Yesterday, Earlier this week and Older
+- **One-click reopen** – Click an entry to switch to the tab already showing that ticket, or open it in a new tab if none is. Ctrl+click or middle-click always opens a new tab. Turn off **Switch to the ticket's tab** in Settings to always open a new one
+- **Filter** by number, subject or site, then press `Enter` to open the first match
+- **Pin** (☆) keeps a ticket at the top of the list, and **Copy link** and **✕** are on each row. **Clear** empties the list but keeps pinned tickets
+- **Settings → Plugins → Recent Tickets** sets how many tickets to remember (10 to 200; pinned ones don't count)
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
 
 ### AI Assistant
@@ -129,6 +147,7 @@ A **⏱ Time** tab in the side panel that times the ticket you're working on.
 - **Ticket details through the API** – With your Freshservice domain and API key entered under Settings → Plugins → Freshservice, Summarize and Suggest read the ticket's subject, status, priority, requester, description and every reply and note through the Freshservice REST API (v2) instead of scraping the page
 - **Automatic fallback** – If the API is turned off, not set up, rate-limited or returns an error, or the open record is a change, problem or release, the page is read exactly as before
 - **Time entries** – The Time Tracker's **Log in Freshservice** adds time entries through the API. The key's agent needs permission to add time entries, and the entries are added for that agent
+- **Ticket search** – The Ticket Search tab searches tickets and requesters through the API. The key's agent needs permission to view tickets and requesters
 - **Safe key storage** – The API key is encrypted with the operating system's credential storage, never sent to the main window, and only sent to the configured domain over https. The key is tied to the domain it was entered for: if you change the domain, enter the key again. **Test connection** checks it and **Remove key** deletes it
 - **Delivered as a bundled plugin** — part of the Freshservice plugin. To stop using the API but keep Freshservice support, untick **Read ticket details through the API**; turning the whole plugin off also turns off ticket detection and note sync on Freshservice pages
 
@@ -145,7 +164,7 @@ A **⏱ Time** tab in the side panel that times the ticket you're working on.
 
 Extend the app with self-contained plugin directories — no build step required.
 
-- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **Time Tracker**, **AI Features** and **Solutions Chat**
+- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **Time Tracker**, **Recent Tickets**, **Ticket Search**, **AI Features** and **Solutions Chat**
 - **User-installed plugins** – Drop a plugin folder into `%APPDATA%\MSP++\plugins\` (or `%APPDATA%\Freshservice++\plugins\` if you upgraded) for plugins that survive app updates
 - **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply. Every plugin gets a settings tab, and one with nothing to set up says so
 - **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed
@@ -167,6 +186,7 @@ A bell icon in the tab bar shows a badge when there are unread notifications. Cu
 - **Native settings window** – Settings open in a separate OS window (`Ctrl+,` or **Edit → Settings**); the main window stays fully usable while settings are open. Re-invoking the shortcut focuses the existing window rather than opening a second one
 - **Category sidebar** – Settings are organised into General and Plugins in a left-hand nav, with a tab for every installed plugin as an indented sub-item under Plugins
 - All settings are persisted to disk and applied to the main window immediately
+- **Move settings to another PC** – **Export Settings…** under **Settings → General → Move Settings to Another PC** saves your app and plugin settings, bookmarks, canned responses and which plugins are on to a `.json` file; **Import Settings…** on the other PC loads it. API keys are never in the file (they are encrypted for this PC and couldn't be read elsewhere), so enter them again on the new PC; importing keeps any keys already saved there. Notes, timers and other plugin data aren't included
 
 ---
 

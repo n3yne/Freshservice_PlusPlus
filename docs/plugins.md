@@ -303,6 +303,7 @@ Renderer scripts can also call the bundled plugins, so a plugin can use the app'
 | `invoke("freshservice", "filter-tickets", { query, vars?, maxPages? })` | `{ tickets, total, query }` or `{ error, skipped? }` | The tickets matching a filter query (same rules as `count-tickets`), 30 a page, up to `maxPages` pages (1 to 10, default 1). Each is `{ id, subject, status, priority, responderId, requesterId, createdAt, updatedAt }`. |
 | `invoke("freshservice", "get-conversations", { ticketId })` | `{ ticketId, conversations }` or `{ error, skipped? }` | A ticket's replies and notes, oldest first: `{ id, userId, incoming, private, fromEmail, createdAt, snippet }`, with `snippet` cut to 300 characters. |
 | `invoke("freshservice", "find-agent", { email })` | `{ agent }` or `{ error, skipped? }` | The agent with that email: `{ id, name, email }`. The API has no way to ask who owns the key, so this is how a plugin learns which tickets are "mine". |
+| `invoke("freshservice", "search-tickets", { term, days? })` | `{ tickets, domain, days, scanned, scanFull, warnings }` or `{ error, skipped? }` | Tickets matching a number, subject words or a requester's name or email (up to 50, number matches first, then newest updated). Each is a `filter-tickets` summary plus `statusLabel`, `priorityLabel`, `requester`, `requesterEmail` and `matches` (`"number"`, `"subject"`, `"requester"`). Subjects are matched against up to 300 tickets updated in the last `days` (7, 30, 90, 180 or 365; default 30), cached for two minutes. Prefer the site's `ticketSearch` adapter. |
 
 See `plugins/solutions-chat/renderer.js` for a plugin built on `pluginAPI.sites` and the AI Features handler.
 
@@ -316,7 +317,7 @@ Adds a tab to the side panel on the right of the window and returns a handle for
 | `label` | Text on the tab. |
 | `icon` | Optional emoji or short text shown before the label. |
 | `title` | Optional tooltip. |
-| `order` | Optional number; lower comes first. Notes uses `10`, Solutions Chat `20`, Canned Responses `30`, Time Tracker `40`, the default is `100`. |
+| `order` | Optional number; lower comes first. Notes uses `10`, Ticket Search `15`, Solutions Chat `20`, Canned Responses `30`, Time Tracker `40`, Recent Tickets `50`, the default is `100`. |
 
 The handle:
 
@@ -480,7 +481,7 @@ Interacts with the app's tab system and the active webview.
 | `browser.activateTab(tabId)` | `boolean` | Switches to the tab. `false` if no tab has that id |
 | `browser.closeTab(tabId)` | `boolean` | Closes the tab like its × button. `false` if no tab has that id or it is pinned (pinned tabs can't be closed) |
 
-A `TabInfo` is `{ tabId, webview, title, url, pinned, active }`: the tab's id, its `<webview>` element, the title shown on the tab, its address (the address it is loading if the page hasn't started yet), whether it is pinned and whether it is the active tab.
+A `TabInfo` is `{ tabId, webview, title, url, pinned, active, unread }`: the tab's id, its `<webview>` element, the title shown on the tab, its address (the address it is loading if the page hasn't started yet), whether it is pinned, whether it is the active tab, and whether it shows the unread badge (its page changed in the background since it was last viewed; `tab:updated` fires when that changes).
 
 Browser tabs also raise `tab:created`, `tab:activated`, `tab:updated` and `tab:closed` events (see [Events reference](#events-reference)). The Tree Style Tabs plugin (`plugins/tree-tabs`) is built on these. Tabs restored at startup are created before your script runs, so call `getTabs()` once as well as listening for `tab:created`. You can add your own listeners to a tab's `webview` (for example `did-navigate` or `console-message`); remove them on `tab:closed`.
 
@@ -675,7 +676,7 @@ pluginAPI.browser.getActiveTab(): TabInfo | null
 pluginAPI.browser.getTabs(): TabInfo[]
 pluginAPI.browser.activateTab(tabId: string): boolean
 pluginAPI.browser.closeTab(tabId: string): boolean
-// TabInfo = { tabId: string, webview: HTMLElement, title: string, url: string, pinned: boolean, active: boolean }
+// TabInfo = { tabId: string, webview: HTMLElement, title: string, url: string, pinned: boolean, active: boolean, unread: boolean }
 
 pluginAPI.getSettings(): AppSettings
 ```
