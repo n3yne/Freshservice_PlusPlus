@@ -607,6 +607,13 @@ document.addEventListener("DOMContentLoaded", function () {
         if (n[k] !== undefined && typeof n[k] !== "function") return "notes." + k + " must be a function";
       }
     }
+    if (a.reply !== undefined) {
+      const r = a.reply;
+      if (!r || typeof r !== "object") return "reply must be an object";
+      if (typeof r.buildInsertScript !== "function") return "reply.buildInsertScript(text) is required";
+      if (r.readContext !== undefined && typeof r.readContext !== "function") return "reply.readContext must be a function";
+      if (r.label !== undefined && typeof r.label !== "string") return "reply.label must be a string";
+    }
     if (a.knowledge !== undefined) {
       const kb = a.knowledge;
       if (!kb || typeof kb !== "object" || typeof kb.search !== "function" || typeof kb.getArticle !== "function") {
@@ -627,6 +634,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }));
     }
     if (a.knowledge) out.knowledge = Object.freeze(Object.assign({ name: "Knowledge base" }, a.knowledge));
+    if (a.reply) out.reply = Object.freeze(Object.assign({ label: "reply box" }, a.reply));
     return Object.freeze(out);
   }
 
