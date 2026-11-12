@@ -468,6 +468,79 @@
     });
   })()`;
 
+  // Fills the hours field of the time entry open on the page with `hours`
+  // (decimal hours, e.g. 1.25) for the Time Tracker plugin. ConnectWise keeps
+  // its time entry fields in several screen generations, so this looks for an
+  // input labelled or named like "Actual Hours" / "Hours" rather than one fixed
+  // selector. Returns { field } with the label it used, or { error }.
+  function buildTimeEntryFillScript(hours) {
+    const value = (Math.round(Number(hours) * 100) / 100).toFixed(2);
+    return `(function() {
+      var value = ${JSON.stringify(value)};
+      var LABEL_RE = /^\\s*(actual\\s+hours|hours\\s+worked|billable\\s+hours|hours)\\s*:?\\s*\\*?\\s*$/i;
+      var ATTR_RE = /(actual_?hours|hoursactual|hours_?worked|^hours$)/i;
+      function visible(el) { return !!(el && el.offsetParent !== null && !el.disabled && !el.readOnly); }
+      function isTextInput(el) {
+        return el && el.tagName === 'INPUT' && /^(text|number|tel|)$/i.test(el.type || '');
+      }
+      var target = null, used = '';
+      var inputs = Array.prototype.slice.call(document.querySelectorAll('input'));
+      for (var i = 0; i < inputs.length && !target; i++) {
+        var inp = inputs[i];
+        if (!isTextInput(inp) || !visible(inp)) continue;
+        var attrs = [inp.name, inp.id, inp.getAttribute('aria-label'), inp.getAttribute('placeholder'), inp.getAttribute('data-testid')];
+        for (var a = 0; a < attrs.length; a++) {
+          if (attrs[a] && (ATTR_RE.test(attrs[a]) || LABEL_RE.test(attrs[a]))) { target = inp; used = attrs[a]; break; }
+        }
+      }
+      if (!target) {
+        var labels = document.querySelectorAll('label, span, div, td');
+        for (var j = 0; j < labels.length && j < 20000 && !target; j++) {
+          var el = labels[j];
+          if (el.children.length > 2) continue;
+          var text = (el.textContent || '').trim();
+          if (text.length > 25 || !LABEL_RE.test(text)) continue;
+          var forId = el.tagName === 'LABEL' ? el.getAttribute('for') : null;
+          var cand = forId ? document.getElementById(forId) : null;
+          var box = el;
+          for (var up = 0; up < 4 && !(isTextInput(cand) && visible(cand)) && box; up++) {
+            box = box.parentElement;
+            if (!box) break;
+            var found = Array.prototype.slice.call(box.querySelectorAll('input')).filter(function(x) { return isTextInput(x) && visible(x); });
+            if (found.length === 1) cand = found[0];
+          }
+          if (isTextInput(cand) && visible(cand)) { target = cand; used = text; }
+        }
+      }
+      if (!target) return { error: 'Open a new time entry on the ticket first. No hours field was found on the page.' };
+      target.focus();
+      var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      setter.call(target, value);
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+      target.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+      target.blur();
+      return { field: used.replace(/\\s+/g, ' ').trim().substring(0, 40) };
+    })()`;
+  }
+
+  // Time Tracker: fills the open time entry's hours in the tab. The note itself
+  // is left to Note Backup's live sync, which already writes the time entry's
+  // notes field, so the two plugins don't fight over it.
+  async function fillTimeEntry(ctx) {
+    const webview = ctx && ctx.webview;
+    if (!webview || !matchesUrl(ctx.url || "")) return { error: "Switch to the ConnectWise tab with the time entry open." };
+    const minutes = Number(ctx.minutes) || 0;
+    let res;
+    try {
+      res = await webview.executeJavaScript(buildTimeEntryFillScript(minutes / 60));
+    } catch (err) {
+      return { error: "Couldn't reach the ConnectWise page: " + (err && err.message ? err.message : String(err)) };
+    }
+    if (!res || res.error) return { error: (res && res.error) || "No hours field was found on the page." };
+    return { ok: true, message: "Filled " + (minutes / 60).toFixed(2) + " hours into " + (res.field || "the hours field") + ". Check it and save the time entry in ConnectWise." };
+  }
+
   // Finds the open ticket. Returns { ticket, kind, id, label, source } or null.
   const RECORD_SCRIPT = `(function() {
     var PREFIX = ${JSON.stringify(TICKET_PREFIX)};
@@ -554,6 +627,10 @@
     ticketUrl: ticketUrl,
     recordScript: RECORD_SCRIPT,
     scrapeScript: SCRAPE_SCRIPT,
+    timeEntry: Object.freeze({
+      label: "Fill CW time entry",
+      log: fillTimeEntry,
+    }),
     notes: Object.freeze({
       readScript: NOTES_READ_SCRIPT,
       buildPushScript: buildPushScript,
@@ -574,7 +651,7 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
       adapter, matchesUrl, formatTitle, ticketKey, ticketNumberFromKey, ticketFromUrl, recordLink, ticketUrl,
-      fieldTypeLabel, pushDelay, onWatcherMessage, buildPushScript, buildReplyInsertScript,
+      fieldTypeLabel, pushDelay, onWatcherMessage, buildPushScript, buildReplyInsertScript, buildTimeEntryFillScript, fillTimeEntry,
       NOTES_READ_SCRIPT, REPLY_CONTEXT_SCRIPT, WATCHER_SCRIPT, RECORD_SCRIPT, SCRAPE_SCRIPT, WATCHER_PREFIX,
     };
     return;

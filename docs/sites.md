@@ -69,6 +69,7 @@ window.pluginAPI.sites.register({
   notes: { … },                // optional: note editor sync
   reply: { … },                // optional: insert text into the reply box
   knowledge: { … },            // optional: knowledge base
+  timeEntry: { … },            // optional: logging time on a record
 });
 ```
 
@@ -187,6 +188,31 @@ knowledge: {
 ```
 
 Search results are up to 10 `{ id, title, status, url, text }`, with `text` a short snippet and `status` `"draft"` or `"published"`. `getArticle` returns one article with its full `text` (keep it under about 6,000 characters) and a `truncated` flag. `url` must be `https://`. Solutions Chat uses the active tab's site when it has a knowledge base, else the first installed site that has one.
+
+### `timeEntry` (logging time)
+
+Lets the Time Tracker plugin put the time it measured on the record.
+
+```js
+timeEntry: {
+  label: "Log in Freshservice",   // optional: the button text (default "Log in <shortName>")
+  billable: true,                 // optional: the site takes a billable flag, so show the checkbox
+  log: async (ctx) => ({ ok: true, message }), // or { error }
+}
+```
+
+`log(ctx)` gets:
+
+| Field | What it is |
+|---|---|
+| `record` | `{ ticket, kind, id, label }` from your `recordScript` when the timer was started |
+| `minutes` | Whole minutes to log, 1 to 1,440, already rounded the way the user chose |
+| `note` | What the user typed for the entry's note (may be empty) |
+| `billable` | `true` / `false` when you set `billable: true`, else `undefined` |
+| `startedAt` | ISO time the timer was first started |
+| `webview`, `url` | The active tab if it's on your site, else another tab on your site, else `null` and the URL saved with the timer |
+
+Return `{ ok: true, message }` once the time is saved (or filled in, if the user still has to save it on the page; say so in `message`), or `{ error }`. On an error the user is offered **Copy** instead. Freshservice adds a time entry through its REST API; ConnectWise Manage fills the hours of the time entry open on the page.
 
 ---
 

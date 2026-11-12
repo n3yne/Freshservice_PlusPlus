@@ -128,6 +128,24 @@ describe("recordLink", () => {
   });
 });
 
+describe("connectwise time entry", () => {
+  test("the fill script is valid JavaScript and carries the hours", () => {
+    const script = cw.buildTimeEntryFillScript(65 / 60);
+    expect(() => new Function("return " + script)).not.toThrow();
+    expect(script).toContain('var value = "1.08";');
+  });
+
+  test("the adapter offers a time entry fill", async () => {
+    expect(cw.adapter.timeEntry.label).toBe("Fill CW time entry");
+    expect((await cw.fillTimeEntry({ webview: null, url: "https://na.myconnectwise.net/", minutes: 30 })).error).toMatch(/ConnectWise tab/);
+    const webview = { executeJavaScript: jest.fn(async () => ({ field: "Actual Hours" })) };
+    const res = await cw.fillTimeEntry({ webview, url: "https://na.myconnectwise.net/v4_6_release/x", minutes: 90 });
+    expect(res).toEqual({ ok: true, message: expect.stringContaining("Filled 1.50 hours into Actual Hours") });
+    webview.executeJavaScript = jest.fn(async () => ({ error: "No hours field" }));
+    expect((await cw.fillTimeEntry({ webview, url: "https://na.myconnectwise.net/", minutes: 90 })).error).toBe("No hours field");
+  });
+});
+
 describe("ticketUrl (address bar quick-open)", () => {
   const CW_TAB = "https://na.myconnectwise.net/v4_6_release/ConnectWise.aspx?locale=en_US#companyName=acme";
   const LINK = "https://na.myconnectwise.net/v4_6_release/services/system_io/Service/fv_sr100_request.rails?service_recid=";

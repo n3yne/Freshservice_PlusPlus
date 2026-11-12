@@ -537,6 +537,27 @@
     return m ? parsed.origin + "/" + m[1].toLowerCase() + "/" + m[2].toLowerCase() + "/" + m[3] : null;
   }
 
+  // Logs time from the Time Tracker plugin as a Freshservice time entry, through
+  // the REST API, for the agent the API key belongs to.
+  async function logTimeEntry(ctx) {
+    const record = ctx && ctx.record;
+    if (!record || !record.id) return { error: "Open a ticket to log time on." };
+    let host = "";
+    try { host = new URL(ctx.url).hostname; } catch { /* no host — the API checks nothing */ }
+    const res = await api.invoke(PLUGIN_ID, "add-time-entry", {
+      kind: record.kind || "ticket",
+      id: record.id,
+      minutes: ctx.minutes,
+      note: ctx.note,
+      billable: ctx.billable,
+      host: host,
+    });
+    if (res && res.ok) {
+      return { ok: true, message: "Added a " + res.timeSpent + " time entry to " + (record.label || "the ticket") + " in Freshservice." };
+    }
+    return { error: (res && res.error) || "Freshservice didn't save the time entry." };
+  }
+
   // Ticket quick-open (typing a number in the address bar): a link to that record
   // on the Freshservice instance in use. Accepts "12345", "#12345", "INC-12345",
   // "SR-12345", "FS-12345" for tickets and "CHN-45", "PRB-67", "RL-89" for
@@ -592,6 +613,11 @@
       fieldTypeLabel: function (type) { return type === "editor" ? "note editor" : "notes field"; },
       // Rich-text editors push after a slightly longer pause than plain textareas.
       pushDelay: function (type) { return type === "editor" ? 500 : 300; },
+    },
+    timeEntry: {
+      label: "Log in Freshservice",
+      billable: true,
+      log: logTimeEntry,
     },
     reply: {
       label: "reply or note editor",

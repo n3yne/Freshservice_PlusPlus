@@ -1,6 +1,7 @@
 /* ===== Tree Style Tabs (side panel) ===== */
+/* No display here: the side panel shows and hides its views with display, and
+   a display rule on the view itself would keep it showing under other tabs. */
 .tt-root {
-  display: flex;
   flex-direction: column;
   min-height: 0;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
