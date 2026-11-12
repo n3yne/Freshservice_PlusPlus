@@ -84,6 +84,7 @@ document.addEventListener("DOMContentLoaded", function () {
     dismissedReleaseVersion: "",
     autoUpdate: true,
     unreadTabBadges: true,
+    siteTabColors: true,
   };
 
   function applySettings(settings) {
@@ -93,6 +94,38 @@ document.addEventListener("DOMContentLoaded", function () {
     updateSidePanelVisibility();
     applySidePanelTabLayout();
     if (!unreadBadgesEnabled()) tabs.forEach(function (t) { setTabUnread(t, false); });
+    refreshTabSiteColors();
+  }
+
+  // ==================== Site Tab Colours ====================
+  // A coloured stripe on tabs whose page belongs to a site plugin (see site-colors.js).
+  // The plugin suggests a colour (manifest "site.color"); Settings can change it.
+
+  const siteDefaultColors = new Map(); // site plugin id → manifest colour
+  window.backupAPI.getPluginInfo().then(function (info) {
+    (info || []).forEach(function (p) {
+      if (p && p.site && p.site.color) siteDefaultColors.set(p.id, p.site.color);
+    });
+    refreshTabSiteColors();
+  }).catch(function (e) { console.warn("[SiteColors] Plugin info unavailable:", e); });
+
+  function applyTabSiteColor(tab) {
+    const site = siteForWebview(tab.webview);
+    const color = site ? window.SiteColors.colorForSite(site.id, siteDefaultColors.get(site.id), appSettings) : "";
+    if ((tab.tabEl.dataset.siteColor || "") === color) return;
+    if (color) {
+      tab.tabEl.dataset.siteColor = color;
+      tab.tabEl.style.setProperty("--site-color", color);
+      tab.tabEl.classList.add("tab-site-colored");
+    } else {
+      delete tab.tabEl.dataset.siteColor;
+      tab.tabEl.style.removeProperty("--site-color");
+      tab.tabEl.classList.remove("tab-site-colored");
+    }
+  }
+
+  function refreshTabSiteColors() {
+    tabs.forEach(applyTabSiteColor);
   }
 
   // ==================== Unread Tab Badges ====================
@@ -827,6 +860,7 @@ document.addEventListener("DOMContentLoaded", function () {
         try { fn(site); } catch (e) { console.error("[Sites]", e); }
       });
       _busEmit("site:registered", { siteId: site.id });
+      refreshTabSiteColors();
       return site;
     },
     list: function () { return siteAdapters.slice(); },
@@ -1299,6 +1333,7 @@ document.addEventListener("DOMContentLoaded", function () {
       } catch {
         // webview may have been removed
       }
+      applyTabSiteColor(tabData);
       emitTabUpdated();
     }
 

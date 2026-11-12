@@ -68,6 +68,7 @@ document.addEventListener("DOMContentLoaded", function () {
     autoUpdate: true,
     restoreTabs: true,
     unreadTabBadges: true,
+    siteTabColors: true,
   };
 
   // ==================== Element References ====================
@@ -76,6 +77,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const settingDefaultUrl     = document.getElementById("setting-default-url");
   const settingRestoreTabs    = document.getElementById("setting-restore-tabs");
   const settingUnreadBadges   = document.getElementById("setting-unread-tab-badges");
+  const settingSiteColors     = document.getElementById("setting-site-tab-colors");
+  const siteColorList         = document.getElementById("site-tab-color-list");
   const settingTheme          = document.getElementById("setting-theme");
   const settingAutoUpdate     = document.getElementById("setting-auto-update");
   const updateModeNote        = document.getElementById("update-mode-note");
@@ -110,6 +113,8 @@ document.addEventListener("DOMContentLoaded", function () {
     settingAutoUpdate.checked = settings.autoUpdate !== false;
     settingRestoreTabs.checked = settings.restoreTabs !== false;
     settingUnreadBadges.checked = settings.unreadTabBadges !== false;
+    settingSiteColors.checked = settings.siteTabColors !== false;
+    renderSiteColorList();
 
     if (document.activeElement !== settingDefaultUrl) {
       settingDefaultUrl.value = settings.defaultUrl && settings.defaultUrl !== "about:blank" ? settings.defaultUrl : "";
@@ -137,6 +142,84 @@ document.addEventListener("DOMContentLoaded", function () {
     appSettings.unreadTabBadges = settingUnreadBadges.checked;
     saveSettings({ unreadTabBadges: appSettings.unreadTabBadges });
   });
+
+  settingSiteColors.addEventListener("change", function () {
+    appSettings.siteTabColors = settingSiteColors.checked;
+    saveSettings({ siteTabColors: appSettings.siteTabColors });
+    renderSiteColorList();
+  });
+
+  // ==================== Site Tab Colours ====================
+  // One row per loaded site plugin: a colour picker, "No colour" and "Default"
+  // (the plugin's own colour). Saved as siteTabColorOverrides; see site-colors.js.
+
+  const FALLBACK_SITE_COLOR = "#7c8a9e"; // picker value for a site with no colour
+
+  function saveSiteColor(siteId, color, reset) {
+    const next = window.SiteColors.withOverride(appSettings.siteTabColorOverrides, siteId, color, reset);
+    appSettings.siteTabColorOverrides = next;
+    saveSettings({ siteTabColorOverrides: next });
+    renderSiteColorList();
+  }
+
+  function renderSiteColorList() {
+    if (!siteColorList) return;
+    // Don't rebuild under an open colour picker; its own change handler re-renders.
+    if (siteColorList.contains(document.activeElement) && document.activeElement.type === "color") return;
+    siteColorList.innerHTML = "";
+    const sites = plugins.filter(function (p) { return p.site; });
+    siteColorList.hidden = sites.length === 0;
+    const enabled = appSettings.siteTabColors !== false;
+    siteColorList.classList.toggle("site-color-list-disabled", !enabled);
+    const overrides = appSettings.siteTabColorOverrides || {};
+
+    sites.forEach(function (p) {
+      const defaultColor = window.SiteColors.normalizeColor(p.site.color);
+      const color = window.SiteColors.colorForSite(p.id, defaultColor, { siteTabColorOverrides: overrides });
+      const changed = Object.prototype.hasOwnProperty.call(overrides, p.id);
+
+      const row = document.createElement("div");
+      row.className = "site-color-row";
+
+      const picker = document.createElement("input");
+      picker.type = "color";
+      picker.className = "site-color-picker";
+      picker.value = color || defaultColor || FALLBACK_SITE_COLOR;
+      picker.disabled = !enabled;
+      picker.title = "Choose the colour for " + p.site.name + " tabs";
+      picker.setAttribute("aria-label", p.site.name + " tab colour");
+      picker.classList.toggle("site-color-none", !color);
+      picker.addEventListener("change", function () {
+        picker.blur();
+        saveSiteColor(p.id, picker.value, false);
+      });
+
+      const name = document.createElement("span");
+      name.className = "site-color-name";
+      name.textContent = p.site.name + (color ? "" : " (no colour)");
+
+      const off = document.createElement("button");
+      off.type = "button";
+      off.className = "btn btn-small btn-secondary";
+      off.textContent = "No colour";
+      off.disabled = !enabled || !color;
+      off.addEventListener("click", function () { saveSiteColor(p.id, "", false); });
+
+      const reset = document.createElement("button");
+      reset.type = "button";
+      reset.className = "btn btn-small btn-secondary";
+      reset.textContent = "Default";
+      reset.title = defaultColor ? "Use the colour " + p.site.name + " comes with" : "This site has no colour of its own";
+      reset.disabled = !enabled || !changed;
+      reset.addEventListener("click", function () { saveSiteColor(p.id, "", true); });
+
+      row.appendChild(picker);
+      row.appendChild(name);
+      row.appendChild(off);
+      row.appendChild(reset);
+      siteColorList.appendChild(row);
+    });
+  }
 
   settingTheme.addEventListener("change", function () {
     appSettings.theme = settingTheme.checked ? "light" : "dark";
@@ -544,6 +627,7 @@ document.addEventListener("DOMContentLoaded", function () {
     return window.backupAPI.getPluginInfo().then(function (info) {
       plugins = Array.isArray(info) ? info : [];
       renderPluginList();
+      renderSiteColorList();
       if (pluginRestartPending && pluginRestartNotice) pluginRestartNotice.classList.add("visible");
       return plugins;
     }).catch(function (err) {

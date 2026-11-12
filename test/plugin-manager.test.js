@@ -117,6 +117,7 @@ describe("plugin-manager", () => {
         hosts: ["Example-Helpdesk.net", "*.bad.com", "https://nope.com", "example-helpdesk.net"],
         defaultUrl: "https://na.example-helpdesk.net/start",
         chromeUserAgent: true,
+        color: "#ABC",
       },
     }));
     await pluginManager.initPlugins(userData, {}, ipcMain);
@@ -129,6 +130,7 @@ describe("plugin-manager", () => {
       hosts: ["example-helpdesk.net"],
       defaultUrl: "https://na.example-helpdesk.net/start",
       chromeUserAgent: true,
+      color: "#aabbcc",
     });
     expect(pluginManager.findSiteForUrl("https://na.example-helpdesk.net/v4/ticket").pluginId).toBe("site-test");
     expect(pluginManager.findSiteForUrl("https://example-helpdesk.net/").pluginId).toBe("site-test");
@@ -139,6 +141,7 @@ describe("plugin-manager", () => {
     // so its start page is the default.
     const fsSite = pluginManager.getSites().find((si) => si.pluginId === "freshservice");
     expect(fsSite.hosts).toEqual(["freshservice.com", "freshworks.com", "myfreshworks.com"]);
+    expect(fsSite.color).toMatch(/^#[0-9a-f]{6}$/);
     expect(pluginManager.findSiteForUrl("https://acme.freshservice.com/a/tickets/1").pluginId).toBe("freshservice");
     expect(pluginManager.getPluginDefaultSettings().defaultUrl).toBe("https://freshservice.com/login");
   });
@@ -156,7 +159,7 @@ describe("plugin-manager", () => {
   test("parseSiteManifest rejects unusable blocks", () => {
     expect(pluginManager.parseSiteManifest("x", undefined)).toBeNull();
     expect(pluginManager.parseSiteManifest("x", [])).toBeNull();
-    const parsed = pluginManager.parseSiteManifest("x", { hosts: "a.com", defaultUrl: "javascript:alert(1)" });
-    expect(parsed).toEqual({ pluginId: "x", name: "x", shortName: "x", hosts: [], defaultUrl: "", chromeUserAgent: false });
+    const parsed = pluginManager.parseSiteManifest("x", { hosts: "a.com", defaultUrl: "javascript:alert(1)", color: "red; background: url(x)" });
+    expect(parsed).toEqual({ pluginId: "x", name: "x", shortName: "x", hosts: [], defaultUrl: "", chromeUserAgent: false, color: "" });
   });
 });
