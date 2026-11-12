@@ -7,7 +7,11 @@
 // Freshservice adds a time entry through its REST API, ConnectWise Manage fills
 // the hours of the time entry open on the page. Copy works everywhere.
 //
-// Timers are saved by main.js (timers.json). A running timer stores when it was
+// "Logged today" sums up, per ticket, the time logged on a day (each Log or
+// Mark logged adds an entry to the log), with arrows to look at earlier days
+// and a button to copy it, for a timesheet or a stand-up.
+//
+// Timers and the log are saved by main.js (timers.json). A running timer stores when it was
 // started (runningSince), so the clock is always computed from Date.now() and
 // never drifts; running timers are paused when the window closes.
 //
@@ -145,10 +149,83 @@
     return "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
+  // ---- The daily summary ----
+  // Each time a timer is logged (sent to the site or marked logged), an entry
+  // goes in the log. The summary groups one day's entries by ticket.
+
+  // A local calendar day as "YYYY-MM-DD".
+  function dayKey(when) {
+    const d = when instanceof Date ? when : new Date(when);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+
+  // "2026-11-12" moved by n days, in local time.
+  function shiftDay(key, n) {
+    const p = String(key).split("-").map(Number);
+    return dayKey(new Date(p[0], p[1] - 1, p[2] + n));
+  }
+
+  function makeLogEntry(timer, minutes, how, note, now) {
+    return {
+      id: "l" + now.toString(36) + Math.random().toString(36).slice(2, 8),
+      at: new Date(now).toISOString(),
+      siteId: timer.siteId || "",
+      siteName: timer.siteName || "",
+      key: timer.key,
+      label: timer.label || "",
+      title: timer.title || "",
+      url: timer.url || "",
+      minutes: minutes,
+      how: how === "site" ? "site" : "marked",
+      note: String(note || "").trim().substring(0, 500),
+    };
+  }
+
+  // One day's log entries, grouped by ticket in the order they were first
+  // logged that day: { day, totalMinutes, tickets: [{ siteId, key, siteName,
+  // label, title, url, minutes, entries }] }.
+  function summarizeDay(log, key) {
+    const byTicket = new Map();
+    let total = 0;
+    (log || []).forEach(function (e) {
+      if (!e || dayKey(e.at) !== key) return;
+      const k = (e.siteId || "") + "|" + e.key;
+      let t = byTicket.get(k);
+      if (!t) {
+        t = { siteId: e.siteId, key: e.key, siteName: e.siteName, label: e.label, title: e.title, url: e.url, minutes: 0, entries: [] };
+        byTicket.set(k, t);
+      }
+      // The newest entry has the freshest title and link.
+      if (e.title) t.title = e.title;
+      if (e.url) t.url = e.url;
+      t.minutes += e.minutes;
+      t.entries.push(e);
+      total += e.minutes;
+    });
+    const tickets = Array.from(byTicket.values());
+    tickets.forEach(function (t) { t.entries.sort(function (a, b) { return Date.parse(a.at) - Date.parse(b.at); }); });
+    tickets.sort(function (a, b) { return Date.parse(a.entries[0].at) - Date.parse(b.entries[0].at); });
+    return { day: key, totalMinutes: total, tickets: tickets };
+  }
+
+  // The text "Copy summary" puts on the clipboard.
+  function buildSummaryText(summary, dayLabel) {
+    const lines = ["Time logged " + dayLabel + ": " + formatHM(summary.totalMinutes) + " (" + decimalHours(summary.totalMinutes) + " h)"];
+    summary.tickets.forEach(function (t) {
+      lines.push("");
+      lines.push(formatHM(t.minutes) + " (" + decimalHours(t.minutes) + " h) — " + timerName(t) + (t.title ? ": " + t.title : ""));
+      t.entries.forEach(function (e) {
+        if (e.note) lines.push("  • " + e.note.replace(/\s*\n\s*/g, " "));
+      });
+    });
+    return lines.join("\n");
+  }
+
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
       elapsedMs, roundMinutes, formatClock, formatHM, decimalHours, parseDuration,
       buildCopyText, timerName, sameRecord, pauseTimer, startTimer, adjustTimer, pruneTimers, resumeAfterCrash,
+      dayKey, shiftDay, makeLogEntry, summarizeDay, buildSummaryText,
     };
     return;
   }
@@ -161,6 +238,10 @@
 
   let settings = api.getSettings();
   let timers = [];          // most recently started first
+  let log = [];             // logged time, oldest first (the daily summary)
+  let summaryDay = null;    // the day the summary shows, or null for today
+  let summaryOpen = true;
+  const expandedTickets = new Set(); // summary tickets showing their entries
   let loaded = false;
   let current = null;       // the record open in the active tab, or null
   let openLogId = null;     // the timer whose Log form is open
@@ -181,7 +262,7 @@
   function scheduleSave() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
-      api.invoke(PLUGIN_ID, "save", { timers: timers, savedAt: Date.now() }).catch(function (err) {
+      api.invoke(PLUGIN_ID, "save", { timers: timers, log: log, savedAt: Date.now() }).catch(function (err) {
         console.error("[Time Tracker] save:", err);
       });
     }, 400);
@@ -192,7 +273,7 @@
     const now = Date.now();
     timers.forEach(function (t) { pauseTimer(t, now); });
     clearTimeout(saveTimer);
-    try { api.send(PLUGIN_ID, "save-sync", { timers: timers, savedAt: now }); } catch { /* closing anyway */ }
+    try { api.send(PLUGIN_ID, "save-sync", { timers: timers, log: log, savedAt: now }); } catch { /* closing anyway */ }
   });
 
   // ===================== Finding the open ticket =====================
@@ -381,8 +462,10 @@
     render();
   }
 
-  function markLogged(t, minutes) {
-    pauseTimer(t, Date.now());
+  function markLogged(t, minutes, how, note) {
+    const now = Date.now();
+    log.push(makeLogEntry(t, minutes, how, note, now));
+    pauseTimer(t, now);
     t.accumulatedMs = 0;
     t.loggedMinutes = (t.loggedMinutes || 0) + minutes;
     t.loggedAt = new Date().toISOString();
@@ -433,7 +516,7 @@
     }
     logBusy = false;
     if (res && res.ok) {
-      markLogged(t, minutes);
+      markLogged(t, minutes, "site", logDraft.note);
       openLogId = null;
       logDraft = null;
       flash(res.message || ("Logged " + formatHM(minutes) + " on " + timerName(t) + "."), "ok");
@@ -457,7 +540,7 @@
   function markLoggedFromForm(t) {
     const minutes = draftMinutes();
     if (minutes == null) return;
-    markLogged(t, minutes);
+    markLogged(t, minutes, "marked", logDraft.note);
     openLogId = null;
     logDraft = null;
     flash("Marked " + formatHM(minutes) + " as logged on " + timerName(t) + ".", "ok");
@@ -605,6 +688,115 @@
     return form;
   }
 
+  // ---- The daily summary ----
+
+  function dayLabel(key) {
+    const today = dayKey(new Date());
+    if (key === today) return "today";
+    if (key === shiftDay(today, -1)) return "yesterday";
+    const p = key.split("-").map(Number);
+    return "on " + new Date(p[0], p[1] - 1, p[2]).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  }
+
+  function moveSummaryDay(n) {
+    const today = dayKey(new Date());
+    const next = shiftDay(summaryDay || today, n);
+    summaryDay = next >= today ? null : next;
+    expandedTickets.clear();
+    render();
+  }
+
+  async function copySummary(summary, label) {
+    try {
+      await navigator.clipboard.writeText(buildSummaryText(summary, label));
+      flash("Copied the summary of time logged " + label + ".", "ok");
+    } catch {
+      flash("Couldn't copy to the clipboard.", "error");
+    }
+    render();
+  }
+
+  async function removeLogEntry(e) {
+    const ok = await api.ui.confirm("Take " + formatHM(e.minutes) + " on " + timerName(e) + " out of the summary? " +
+      "This only changes MSP++'s summary, not the time entry on the site.");
+    if (!ok) return;
+    log = log.filter(function (x) { return x !== e; });
+    scheduleSave();
+    render();
+  }
+
+  function renderSummary() {
+    const today = dayKey(new Date());
+    const key = summaryDay || today;
+    const label = dayLabel(key);
+    const summary = summarizeDay(log, key);
+    const box = h("div", { className: "tmr-summary" });
+
+    const toggle = h("button", {
+      type: "button", className: "tmr-summary-toggle", "aria-expanded": summaryOpen ? "true" : "false",
+      title: summaryOpen ? "Hide the summary" : "Show the summary",
+      onclick: function () { summaryOpen = !summaryOpen; render(); },
+    }, [h("span", { className: "tmr-caret" }, [summaryOpen ? "▾" : "▸"]), " Logged " + label]);
+    box.appendChild(h("div", { className: "tmr-summary-header" }, [
+      toggle,
+      h("span", { className: "tmr-summary-total tmr-clock", title: decimalHours(summary.totalMinutes) + " h" }, [formatHM(summary.totalMinutes)]),
+    ]));
+    if (!summaryOpen) return box;
+
+    box.appendChild(h("div", { className: "tmr-summary-nav" }, [
+      button("‹", "btn-secondary", "The day before", function () { moveSummaryDay(-1); }),
+      h("span", { className: "tmr-muted tmr-summary-day" }, [
+        new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, Number(key.slice(8, 10)))
+          .toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }),
+      ]),
+      button("›", "btn-secondary", "The day after", function () { moveSummaryDay(1); }, key >= today),
+      key !== today ? button("Today", "btn-secondary", "Back to today", function () { summaryDay = null; expandedTickets.clear(); render(); }) : null,
+      h("span", { className: "tmr-spacer" }),
+      button("📋 Copy", "btn-secondary", "Copy the summary: the time per ticket, with the notes", function () { copySummary(summary, label); }, !summary.tickets.length),
+    ]));
+
+    if (!summary.tickets.length) {
+      box.appendChild(h("div", { className: "tmr-muted tmr-summary-empty" }, [
+        key === today ? "Nothing logged yet today. Time shows up here when you log it or mark it logged." : "Nothing was logged that day.",
+      ]));
+      return box;
+    }
+
+    summary.tickets.forEach(function (t) {
+      const id = (t.siteId || "") + "|" + t.key;
+      const open = expandedTickets.has(id);
+      const name = t.url
+        ? h("a", { href: "#", className: "tmr-row-label", title: "Open " + timerName(t), onclick: function (ev) { ev.preventDefault(); api.browser.newTab(t.url); } }, [timerName(t)])
+        : h("span", { className: "tmr-row-label" }, [timerName(t)]);
+      const row = h("div", { className: "tmr-summary-row" });
+      row.appendChild(h("div", { className: "tmr-row-main" }, [
+        h("button", {
+          type: "button", className: "tmr-summary-expand", "aria-expanded": open ? "true" : "false",
+          title: open ? "Hide the entries" : "Show the entries",
+          onclick: function () { if (open) expandedTickets.delete(id); else expandedTickets.add(id); render(); },
+        }, [open ? "▾" : "▸"]),
+        h("div", { className: "tmr-row-text" }, [
+          name,
+          t.title ? h("div", { className: "tmr-row-title", title: t.title }, [t.title]) : null,
+        ]),
+        h("span", { className: "tmr-clock", title: decimalHours(t.minutes) + " h" + (t.entries.length > 1 ? " in " + t.entries.length + " entries" : "") }, [formatHM(t.minutes)]),
+      ]));
+      if (open) {
+        t.entries.forEach(function (e) {
+          const time = new Date(e.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+          row.appendChild(h("div", { className: "tmr-summary-entry" }, [
+            h("span", { className: "tmr-muted tmr-summary-entry-time", title: e.how === "site" ? "Sent to the site" : "Marked logged" }, [time]),
+            h("span", { className: "tmr-summary-entry-note" + (e.note ? "" : " tmr-muted"), title: e.note || null }, [e.note || (e.how === "site" ? "Sent to the site" : "Marked logged")]),
+            h("span", { className: "tmr-clock tmr-muted" }, [formatHM(e.minutes)]),
+            h("button", { type: "button", className: "tmr-summary-remove", title: "Take this out of the summary", "aria-label": "Take this out of the summary", onclick: function () { removeLogEntry(e); } }, ["✕"]),
+          ]));
+        });
+      }
+      box.appendChild(row);
+    });
+    return box;
+  }
+
   function renderRow(t) {
     const running = !!t.runningSince;
     const ms = elapsedMs(t, Date.now());
@@ -650,6 +842,7 @@
     ]));
     if (flashMsg) panel.appendChild(h("div", { className: "tmr-flash tmr-" + flashMsg.kind, "aria-live": "polite" }, [flashMsg.text]));
     panel.appendChild(renderCurrent());
+    panel.appendChild(renderSummary());
 
     const list = h("div", { className: "tmr-list" });
     const hasLogged = timers.some(function (t) { return t.loggedAt && !t.runningSince && !t.accumulatedMs; });
@@ -722,6 +915,7 @@
 
   api.invoke(PLUGIN_ID, "load").then(function (store) {
     timers = store && Array.isArray(store.timers) ? store.timers : [];
+    log = store && Array.isArray(store.log) ? store.log : [];
     resumeAfterCrash(timers, store && store.savedAt, Date.now());
   }).catch(function (err) {
     console.error("[Time Tracker] load:", err);
