@@ -1,7 +1,7 @@
 {
   "id": "ticket-notifications",
   "name": "Ticket Notifications",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "Desktop notifications when a Freshservice ticket assigned to you gets a new reply, checked through the Freshservice API.",
   "main": "main.js",
   "renderer": "renderer.js",
