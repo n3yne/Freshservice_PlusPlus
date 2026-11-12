@@ -1,0 +1,119 @@
+name: Plugin directory
+
+# Publishes the plugin directory that Settings > Plugins > Browse reads: one
+# .mspplugin package per plugin whose manifest says "distribution": "directory",
+# plus index.json with each package's SHA-256 and size. Everything goes on the
+# "plugin-directory" release, which is a pre-release so the app updater (which
+# follows the latest release) never treats it as an app version.
+#
+# Runs when plugins change on main, or by hand from the Actions tab. Packages
+# are rebuilt from scratch each time; an unchanged plugin gives the same bytes,
+# so re-uploading it changes nothing. Older packages stay on the release, so a
+# bad version can be rolled back by pointing index.json at the old file.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "plugins/**"
+      - "plugin-package.js"
+      - "plugin-categories.js"
+      - "scripts/build-plugin-directory.js"
+      - ".github/workflows/plugins.yml"
+  workflow_dispatch:
+
+# One publish at a time, and never cancel one halfway through an upload.
+concurrency:
+  group: plugin-directory
+  cancel-in-progress: false
+
+# Actions are pinned to a commit, the same ones test.yml and build.yml use.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Test and build packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test -- --ci
+
+      - name: Build plugin packages and index.json
+        run: node scripts/build-plugin-directory.js dist-plugins
+
+      - name: Keep the packages for the publish job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: plugin-directory
+          path: dist-plugins/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to the plugin-directory release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Only this job can write: it creates the release (and its tag) the first
+    # time, then uploads the packages and index.json.
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download the packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: plugin-directory
+          path: dist-plugins
+
+      - name: Create the release if it isn't there yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! gh release view plugin-directory > /dev/null 2>&1; then
+            gh release create plugin-directory \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --latest=false \
+              --title "MSP++ plugin directory" \
+              --notes "Plugins you can install from inside MSP++ (Settings > Plugins > Browse). This release is updated automatically by the Plugin directory workflow; it is not an app version."
+          fi
+
+      # Packages first, index.json last, so the index never names a file that
+      # isn't uploaded yet.
+      - name: Upload packages and index.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          shopt -s nullglob
+          packages=(dist-plugins/*.mspplugin)
+          if [ ${#packages[@]} -gt 0 ]; then
+            gh release upload plugin-directory "${packages[@]}" --clobber
+          fi
+          gh release upload plugin-directory dist-plugins/index.json --clobber
+          echo "Published ${#packages[@]} package(s):"
+          cat dist-plugins/index.json
