@@ -68,6 +68,7 @@ window.pluginAPI.sites.register({
   ticketUrl(query, ctx) { … }, // optional
   notes: { … },                // optional: note editor sync
   reply: { … },                // optional: insert text into the reply box
+  ticketSearch: { … },         // optional: searching tickets
   knowledge: { … },            // optional: knowledge base
   timeEntry: { … },            // optional: logging time on a record
 });
@@ -174,6 +175,33 @@ reply: {
 - **`readContext({ webview, url, record })`** returns `{ requester, requesterFirstName, subject }` (any may be missing) for the open record, for placeholders such as `{{requester_first}}`. `record` is the `recordScript` result. It's only called when a reply uses one of those placeholders.
 
 Freshservice inserts into the Froala reply/note editor (or a note textarea) and reads the requester and subject through its API, falling back to the page. ConnectWise Manage pastes into the Draft.js notes editor (or the stopwatch notes when that popup is open) and reads the Contact and Summary fields from the page.
+
+### `ticketSearch` (searching tickets)
+
+Lets the Ticket Search plugin (and anything else, such as a command palette) find tickets on the site.
+
+```js
+ticketSearch: {
+  placeholder: "Ticket #, subject, or requester name/email", // optional: the search box's hint
+  search: async (term, options) => ({ tickets, note?, warnings? }), // or { error, skipped? }
+}
+```
+
+`options.days` is how far back the user wants subjects matched (for sites, like Freshservice, whose API can't search subjects and scan recent tickets instead); ignore it if you search the site directly. Each ticket is:
+
+| Field | What it is |
+|---|---|
+| `id`, `label` | The record's number and how to show it (`"48211"`, `"#48211"`) |
+| `subject` | The subject or summary |
+| `requester`, `requesterEmail` | Who raised it (either may be empty) |
+| `status`, `priority` | Display text (may be empty) |
+| `updatedAt` | ISO time it was last updated |
+| `matches` | What matched, e.g. `["requester", "subject"]` |
+| `url` | `https://` link that opens it |
+
+`note` is shown under the results (Freshservice says how many tickets the subject match covered) and `warnings` lists parts of the search that failed while others worked. Return `{ error, skipped: true }` when the site isn't set up (no API key, say), so the user is offered Settings. Freshservice searches through its REST API and builds each `url` with its `ticketUrl`.
+
+To open the Search tab with a term already typed, emit `ticket-search:open`: `pluginAPI.events.emit("ticket-search:open", { term: "printer" })`.
 
 ### `knowledge` (knowledge base)
 

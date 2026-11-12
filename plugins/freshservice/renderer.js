@@ -592,6 +592,43 @@
     return base.origin + "/" + portal + "/" + kind + "/" + Number(m[2]);
   }
 
+  // Ticket search (the Ticket Search plugin's side panel tab, and anything else
+  // that wants it, such as a command palette): by number, subject or requester,
+  // through the REST API. Each result gets a link built the same way as ticket
+  // quick-open, so it opens on the instance in use.
+  async function searchTickets(term, options) {
+    const opts = options || {};
+    const res = await api.invoke(PLUGIN_ID, "search-tickets", { term: term, days: opts.days });
+    if (!res || res.error) return { error: (res && res.error) || "Freshservice didn't answer the search.", skipped: !!(res && res.skipped) };
+    let tabUrls = [];
+    try {
+      const list = api.browser.getTabs();
+      list.sort(function (a, b) { return (b.active ? 1 : 0) - (a.active ? 1 : 0); });
+      tabUrls = list.map(function (t) { return t.url; });
+    } catch { /* no tabs yet */ }
+    const ctx = { active: true, tabUrls: tabUrls, homeUrl: settings.defaultUrl || "" };
+    const tickets = (res.tickets || []).map(function (t) {
+      return {
+        id: String(t.id),
+        label: "#" + t.id,
+        subject: t.subject || "",
+        requester: t.requester || "",
+        requesterEmail: t.requesterEmail || "",
+        status: t.statusLabel || "",
+        priority: t.priorityLabel || "",
+        updatedAt: t.updatedAt || "",
+        matches: t.matches || [],
+        url: ticketUrl(String(t.id), ctx) || ("https://" + res.domain + "/a/tickets/" + t.id),
+      };
+    });
+    let note = "";
+    if (res.scanned) {
+      note = "Subjects are matched against the " + (res.scanFull ? res.scanned + " most recent tickets" : res.scanned + " tickets") +
+        " updated in the last " + res.days + " days.";
+    }
+    return { tickets: tickets, note: note, warnings: res.warnings || [] };
+  }
+
   // ==================== Register ====================
 
   api.sites.register({
@@ -623,6 +660,10 @@
       label: "reply or note editor",
       buildInsertScript: buildReplyInsertScript,
       readContext: readReplyContext,
+    },
+    ticketSearch: {
+      placeholder: "Ticket #, subject, or requester name/email",
+      search: searchTickets,
     },
     knowledge: {
       name: "Solutions",

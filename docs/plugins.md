@@ -303,6 +303,7 @@ Renderer scripts can also call the bundled plugins, so a plugin can use the app'
 | `invoke("freshservice", "filter-tickets", { query, vars?, maxPages? })` | `{ tickets, total, query }` or `{ error, skipped? }` | The tickets matching a filter query (same rules as `count-tickets`), 30 a page, up to `maxPages` pages (1 to 10, default 1). Each is `{ id, subject, status, priority, responderId, requesterId, createdAt, updatedAt }`. |
 | `invoke("freshservice", "get-conversations", { ticketId })` | `{ ticketId, conversations }` or `{ error, skipped? }` | A ticket's replies and notes, oldest first: `{ id, userId, incoming, private, fromEmail, createdAt, snippet }`, with `snippet` cut to 300 characters. |
 | `invoke("freshservice", "find-agent", { email })` | `{ agent }` or `{ error, skipped? }` | The agent with that email: `{ id, name, email }`. The API has no way to ask who owns the key, so this is how a plugin learns which tickets are "mine". |
+| `invoke("freshservice", "search-tickets", { term, days? })` | `{ tickets, domain, days, scanned, scanFull, warnings }` or `{ error, skipped? }` | Tickets matching a number, subject words or a requester's name or email (up to 50, number matches first, then newest updated). Each is a `filter-tickets` summary plus `statusLabel`, `priorityLabel`, `requester`, `requesterEmail` and `matches` (`"number"`, `"subject"`, `"requester"`). Subjects are matched against up to 300 tickets updated in the last `days` (7, 30, 90, 180 or 365; default 30), cached for two minutes. Prefer the site's `ticketSearch` adapter. |
 
 See `plugins/solutions-chat/renderer.js` for a plugin built on `pluginAPI.sites` and the AI Features handler.
 
@@ -316,7 +317,7 @@ Adds a tab to the side panel on the right of the window and returns a handle for
 | `label` | Text on the tab. |
 | `icon` | Optional emoji or short text shown before the label. |
 | `title` | Optional tooltip. |
-| `order` | Optional number; lower comes first. Notes uses `10`, Solutions Chat `20`, Canned Responses `30`, Time Tracker `40`, Recent Tickets `50`, the default is `100`. |
+| `order` | Optional number; lower comes first. Notes uses `10`, Ticket Search `15`, Solutions Chat `20`, Canned Responses `30`, Time Tracker `40`, Recent Tickets `50`, the default is `100`. |
 
 The handle:
 
