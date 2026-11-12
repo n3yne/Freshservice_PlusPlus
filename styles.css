@@ -2104,3 +2104,7 @@ body[data-theme="light"] .downloads-panel {
   border-color: var(--warning);
   color: #fff;
 }
+
+.plugin-directory-actions .btn[hidden] {
+  display: none;
+}
