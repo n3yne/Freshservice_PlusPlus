@@ -22,6 +22,9 @@ const DEFAULT_SETTINGS = {
   // Reopen the tabs that were open when the app last closed. Off: start on the
   // Home URL. Pinned tabs come back either way.
   restoreTabs: true,
+  // Mark a background tab with a dot when its page changes on its own (a new
+  // reply changes the title or favicon), until the tab is viewed.
+  unreadTabBadges: true,
 };
 
 function validateSettings(s) {
@@ -40,6 +43,7 @@ function validateSettings(s) {
   if (s.sidePanelTabScroll !== undefined && typeof s.sidePanelTabScroll !== "boolean") return false;
   if (s.autoUpdate !== undefined && typeof s.autoUpdate !== "boolean") return false;
   if (s.restoreTabs !== undefined && typeof s.restoreTabs !== "boolean") return false;
+  if (s.unreadTabBadges !== undefined && typeof s.unreadTabBadges !== "boolean") return false;
   if (s.dismissedReleaseVersion !== undefined && (typeof s.dismissedReleaseVersion !== "string" || s.dismissedReleaseVersion.length > 20)) return false;
   return true;
 }

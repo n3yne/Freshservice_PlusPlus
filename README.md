@@ -13,7 +13,7 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 ## Features
 
 ### Browser
-- **Multi-tab browsing** – Open multiple ticketing pages simultaneously. The tabs you had open come back the next time the app starts; turn off **Settings → General → Restore Tabs from Last Session** to start on the Home URL instead (pinned tabs always come back)
+- **Multi-tab browsing** – Open multiple ticketing pages simultaneously. The tabs you had open come back the next time the app starts; turn off **Settings → General → Restore Tabs from Last Session** to start on the Home URL instead (pinned tabs always come back). A dot marks a background tab whose page changed on its own, such as a new reply changing the title, until you switch to it (**Settings → General → Unread Badge on Tabs**)
 - **Address bar** – A row under the tab bar shows the active tab's URL, with back, forward and reload beside it. Type an address and press `Enter` to go there (`Ctrl+L` jumps to it, `Escape` puts the page's URL back). Only `http` and `https` pages open; a bare host such as `example.com` gets `https://` added. There is no web search, so plain words are ignored. Type a ticket number to jump to it: `12345` (or `INC-12345`, `CHN-45`, `PRB-67`, `RL-89`) opens it in Freshservice, and `CW-12345` opens a ConnectWise ticket. A bare number goes to the site of the tab you're on. The instance is taken from an open tab on that site (for Freshservice, also the API domain or Home URL), so ConnectWise needs a CW tab open
 - **Refresh all tabs** – **View → Refresh All Tabs** (`Ctrl+Alt+R`) reloads every open tab at once
 - **Tab management** – Pin tabs, duplicate (the copy opens next to the original), close others, reopen closed tabs (`Ctrl+Shift+T` puts a tab back where it was), copy URL, copy a clean ticket link (on Freshservice, ConnectWise and Home URL pages; greyed out when no ticket is open), open in default browser (right-click any tab). Tab shortcuts work while you're typing in a page too. Double-click an empty part of the tab bar to open a new tab
@@ -119,6 +119,15 @@ A **⏱ Time** tab in the side panel that times the ticket you're working on.
 - **Safe on close** – Running timers are paused when MSP++ closes, and saved every minute so a crash loses at most a minute
 - **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
 
+### Recent Tickets
+A **🕘 Recent** tab in the side panel listing the tickets you've viewed lately, newest first.
+- **Every site** – A ticket is added when it shows in the active tab, on Freshservice (tickets, changes, problems, releases), ConnectWise Manage, or any site plugin that knows its tickets. Each entry shows the site, number, subject and when you last looked at it, grouped into Today, Yesterday, Earlier this week and Older
+- **One-click reopen** – Click an entry to switch to the tab already showing that ticket, or open it in a new tab if none is. Ctrl+click or middle-click always opens a new tab. Turn off **Switch to the ticket's tab** in Settings to always open a new one
+- **Filter** by number, subject or site, then press `Enter` to open the first match
+- **Pin** (☆) keeps a ticket at the top of the list, and **Copy link** and **✕** are on each row. **Clear** empties the list but keeps pinned tickets
+- **Settings → Plugins → Recent Tickets** sets how many tickets to remember (10 to 200; pinned ones don't count)
+- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+
 ### AI Assistant
 - **✨ Suggest** – Sends your current notes to the configured AI model and presents an improved version in a review overlay; apply or dismiss before anything changes. After a suggestion is returned, a **Refine** textarea appears — type follow-up instructions (e.g. "make it shorter", "keep this as a client-facing message") and click **↺ Refine** to generate a revised version without losing the Apply option
 - **📋 Summarize** – Reads the ticket description, replies and notes from the open ticket (on Freshservice through the Freshservice API when it's set up, otherwise from the page; on ConnectWise Manage from the page) and asks the AI to produce a concise bullet-point summary
@@ -145,7 +154,7 @@ A **⏱ Time** tab in the side panel that times the ticket you're working on.
 
 Extend the app with self-contained plugin directories — no build step required.
 
-- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **Time Tracker**, **AI Features** and **Solutions Chat**
+- **Bundled plugins** – Ship with the app and are always available: the **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **Bookmarks Bar**, **Canned Responses**, **Ticket Notifications**, **Tree Style Tabs**, **Time Tracker**, **Recent Tickets**, **AI Features** and **Solutions Chat**
 - **User-installed plugins** – Drop a plugin folder into `%APPDATA%\MSP++\plugins\` (or `%APPDATA%\Freshservice++\plugins\` if you upgraded) for plugins that survive app updates
 - **Plugin management** – Enable or disable individual plugins from Settings → Plugins, or with the **Enabled** switch at the top of each plugin's own settings tab; restart to apply. Every plugin gets a settings tab, and one with nothing to set up says so
 - **Import plugin** – Click **Import Plugin** in Settings → Plugins to install a plugin from a folder on disk via a file dialog (no manual copy-paste required); an error is shown if a plugin with the same ID is already installed
