@@ -185,5 +185,7 @@ jobs:
           name: MSP++ ${{ github.ref_name }}
           body_path: release_notes.md
           draft: false
-          prerelease: false
+          # A tag like v0.7.6-beta.1 stays a pre-release, so installed copies
+          # (which only look at the latest full release) don't update to it.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: artifacts/*
