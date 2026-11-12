@@ -4,7 +4,7 @@
 
 An Electron-based wrapper for MSP and ticketing web apps (Freshservice and ConnectWise Manage today) that adds a persistent note editor, automatic backups, live two-way sync, AI assistance, a live metrics bar, and quality-of-life browser improvements on top of the standard web interface.
 
-**Current version:** 0.7.4
+**Current version:** 0.7.5
 
 > MSP++ was called **Freshservice++** before 0.6.0. Your settings, notes and sign-ins carry over: the app keeps using the existing Freshservice++ data folder.
 
@@ -28,7 +28,8 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 
 ### Side Panel
 - **One panel, a tab per plugin** – The panel on the right holds a tab for each plugin that adds one: **📋 Notes** (Note Backup) and **📚 Solutions** (Solutions Chat) out of the box. Your own plugins can add tabs too (see [`docs/plugins.md`](docs/plugins.md)). The last tab you used is reopened on launch
-- **Turn it on or off** under **Settings → General → Side Panel**; collapse it with `Ctrl+Shift+B` or the ◀ button
+- **Turn it on or off** under **Settings → General → Side Panel**; hide it with `Ctrl+Shift+B` or the ✕ button
+- **Lots of tabs** – Tabs wrap onto more rows by default. Turn on **Settings → General → Scroll Side Panel Tabs** to keep them on one row and scroll with the ‹ › buttons or the mouse wheel
 
 ### Note Editor (Note Backup plugin)
 - **Rich text Notes tab** – Draft and edit notes with a full formatting toolbar (bold, italic, underline, lists, clear formatting)

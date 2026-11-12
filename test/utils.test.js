@@ -24,6 +24,12 @@ describe("validateSettings", () => {
     expect(validateSettings([])).toBe(false);
   });
 
+  test("accepts a boolean sidePanelTabScroll and rejects anything else", () => {
+    expect(validateSettings({ ...DEFAULT_SETTINGS, sidePanelTabScroll: true })).toBe(true);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, sidePanelTabScroll: "true" })).toBe(false);
+    expect(DEFAULT_SETTINGS.sidePanelTabScroll).toBe(false);
+  });
+
   // sidePanelEnabled
   test("rejects non-boolean sidePanelEnabled", () => {
     expect(validateSettings({ ...DEFAULT_SETTINGS, sidePanelEnabled: 1 })).toBe(false);

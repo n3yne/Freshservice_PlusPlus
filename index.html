@@ -48,11 +48,14 @@
 
       <!-- Side Panel: a tabbed panel that plugins add tabs to (pluginAPI.ui.addSidePanelTab) -->
       <div id="side-panel">
-        <!-- Panel Header: one tab per plugin view, plus the collapse button -->
+        <!-- Panel Header: one tab per plugin view, plus the hide button. The tabs wrap onto
+             more rows, or scroll sideways with the Scroll Side Panel Tabs setting. -->
         <div id="panel-header">
+          <button type="button" id="side-panel-scroll-left" class="side-panel-scroll" title="Scroll tabs left" aria-hidden="true" tabindex="-1">&#8249;</button>
           <div id="side-panel-tabs" role="tablist" aria-label="Side panel"></div>
+          <button type="button" id="side-panel-scroll-right" class="side-panel-scroll" title="Scroll tabs right" aria-hidden="true" tabindex="-1">&#8250;</button>
           <div id="panel-header-buttons">
-            <button type="button" id="btn-toggle-panel" title="Collapse panel (Ctrl+Shift+B)">◀</button>
+            <button type="button" id="btn-toggle-panel" title="Hide side panel (Ctrl+Shift+B)" aria-label="Hide side panel">&#10005;</button>
           </div>
         </div>
 

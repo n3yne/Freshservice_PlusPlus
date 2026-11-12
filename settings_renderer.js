@@ -37,6 +37,7 @@ document.addEventListener("DOMContentLoaded", function () {
     sidePanelEnabled: true,
     panelCollapsed: false,
     sidePanelTab: "",
+    sidePanelTabScroll: false,
     defaultUrl: "about:blank",
     theme: "dark",
     dismissedReleaseVersion: "",
@@ -46,6 +47,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ==================== Element References ====================
   const settingSidePanel      = document.getElementById("setting-side-panel");
+  const settingTabScroll      = document.getElementById("setting-side-panel-tab-scroll");
   const settingDefaultUrl     = document.getElementById("setting-default-url");
   const settingRestoreTabs    = document.getElementById("setting-restore-tabs");
   const settingTheme          = document.getElementById("setting-theme");
@@ -74,6 +76,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function applySettingsForm(settings) {
     appSettings = settings;
     settingSidePanel.checked = settings.sidePanelEnabled !== false;
+    settingTabScroll.checked = settings.sidePanelTabScroll === true;
 
     const theme = settings.theme || "dark";
     document.body.setAttribute("data-theme", theme);
@@ -91,6 +94,11 @@ document.addEventListener("DOMContentLoaded", function () {
   settingSidePanel.addEventListener("change", function () {
     appSettings.sidePanelEnabled = settingSidePanel.checked;
     saveSettings({ sidePanelEnabled: appSettings.sidePanelEnabled });
+  });
+
+  settingTabScroll.addEventListener("change", function () {
+    appSettings.sidePanelTabScroll = settingTabScroll.checked;
+    saveSettings({ sidePanelTabScroll: appSettings.sidePanelTabScroll });
   });
 
   settingRestoreTabs.addEventListener("change", function () {
