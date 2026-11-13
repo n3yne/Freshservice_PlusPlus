@@ -1685,10 +1685,6 @@ body[data-theme="light"] .downloads-panel {
   gap: 6px;
 }
 
-.plugin-browse-item .plugin-item-desc {
-  white-space: normal;
-}
-
 .plugin-item-meta {
   font-size: 11px;
   color: var(--text-muted);
@@ -1804,10 +1800,50 @@ body[data-theme="light"] .downloads-panel {
 
 .plugin-category-header {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 2px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 2px;
+  padding: 3px 4px 3px 2px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.plugin-category-header:hover {
+  background: var(--surface-hover);
+}
+
+.plugin-category-header:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.plugin-category-header .plugin-category-title {
+  flex: 1;
+}
+
+.plugin-category-chevron {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--text-muted);
+  transition: transform 0.12s;
+  flex-shrink: 0;
+}
+
+.plugin-category.collapsed .plugin-category-chevron {
+  transform: rotate(-90deg);
+}
+
+.plugin-category.collapsed .plugin-category-desc,
+.plugin-category.collapsed .plugin-category-items {
+  display: none;
 }
 
 .plugin-category-title {
@@ -1933,10 +1969,10 @@ body[data-theme="light"] .downloads-panel {
 
 .plugin-item-desc {
   font-size: 11px;
+  line-height: 1.4;
   color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .plugin-import-row {
