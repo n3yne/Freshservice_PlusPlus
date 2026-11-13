@@ -327,8 +327,10 @@ The handle:
 |---|---|
 | `element` | The tab's content `<div>` (a flex column filling the panel). Put your UI in it. |
 | `activate()` | Switches to this tab, expanding the panel if it was collapsed. |
-| `isActive()` | Whether this tab is the one showing. |
-| `onShow(fn)` / `onHide(fn)` | Called when the user switches to or away from this tab. |
+| `isActive()` | Whether this tab is the one showing in its half of the panel. |
+| `onShow(fn)` / `onHide(fn)` | Called when this tab's view starts or stops showing: the user switches to or away from it, or moves it to the other half. |
+
+The user can right-click a tab and choose **Move Tab to Bottom** to split the panel into a top and a bottom half, each showing one tab, with a draggable bar between them. So two tabs can be showing at once, and the view can be only part of the panel's height: let the content scroll rather than squeezing it (give fixed-size parts `flex-shrink: 0` or a `min-height`).
 
 ```js
 const tab = window.pluginAPI.ui.addSidePanelTab({ id: "my-plugin", label: "My Plugin", icon: "🧩", order: 50 });

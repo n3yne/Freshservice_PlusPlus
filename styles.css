@@ -376,7 +376,7 @@ body {
 }
 
 /* ===== Panel Header (side panel tab strip) ===== */
-#panel-header {
+.side-panel-header {
   display: flex;
   align-items: flex-end;
   gap: 4px;
@@ -386,7 +386,7 @@ body {
   flex-shrink: 0;
 }
 
-#side-panel-tabs {
+.side-panel-tabs {
   flex: 1;
   display: flex;
   align-items: flex-end;
@@ -396,22 +396,22 @@ body {
 
 /* Default: tabs wrap onto more rows. Each row is a run of folder tabs; only the
    last row touches the panel body, so the earlier rows get a bottom border. */
-#panel-header.tabs-wrap #side-panel-tabs {
+.side-panel-header.tabs-wrap .side-panel-tabs {
   flex-wrap: wrap;
   row-gap: 4px;
 }
 
-#panel-header.tabs-wrap .side-panel-tab {
+.side-panel-header.tabs-wrap .side-panel-tab {
   border-radius: 6px;
   border-bottom: 1px solid transparent;
   margin-bottom: 4px;
 }
 
-#panel-header.tabs-wrap .side-panel-tab.active {
+.side-panel-header.tabs-wrap .side-panel-tab.active {
   border-bottom-color: var(--border);
 }
 
-#panel-header.tabs-wrap {
+.side-panel-header.tabs-wrap {
   align-items: flex-start;
 }
 
@@ -420,7 +420,7 @@ body {
 }
 
 /* Scroll setting: one row that scrolls sideways, with arrow buttons at the ends. */
-#panel-header.tabs-scroll #side-panel-tabs {
+.side-panel-header.tabs-scroll .side-panel-tabs {
   flex-wrap: nowrap;
   overflow-x: auto;
   scrollbar-width: none;
@@ -457,7 +457,7 @@ body {
   cursor: default;
 }
 
-#side-panel-tabs::-webkit-scrollbar {
+.side-panel-tabs::-webkit-scrollbar {
   display: none;
 }
 
@@ -523,7 +523,7 @@ body {
 }
 
 /* ===== Side Panel Body: one view per tab, only the active one shown ===== */
-#side-panel-body {
+.side-panel-body {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -540,6 +540,59 @@ body {
 
 .side-panel-view.active {
   display: flex;
+}
+
+/* ===== Split view: a top and a bottom half, each with its own tab strip ===== */
+.side-panel-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 0;
+}
+
+#side-panel-bottom {
+  display: none;
+}
+
+#side-panel.split #side-panel-top {
+  flex: var(--side-panel-split, 0.5) 1 0;
+}
+
+#side-panel.split #side-panel-bottom {
+  display: flex;
+  flex: calc(1 - var(--side-panel-split, 0.5)) 1 0;
+}
+
+/* The bottom half's tab strip sits under the divider, with no hide button. */
+#panel-header-bottom.tabs-wrap,
+#panel-header-bottom.tabs-scroll {
+  padding-top: 5px;
+}
+
+#side-panel-split-handle {
+  display: none;
+  height: 5px;
+  flex-shrink: 0;
+  cursor: row-resize;
+  background: var(--border);
+  transition: background 0.2s;
+}
+
+#side-panel.split #side-panel-split-handle {
+  display: block;
+}
+
+#side-panel-split-handle:hover,
+#side-panel-split-handle.dragging,
+#side-panel-split-handle:focus-visible {
+  background: var(--primary);
+  outline: none;
+}
+
+body.side-panel-split-dragging,
+body.side-panel-split-dragging * {
+  cursor: row-resize !important;
+  user-select: none;
 }
 
 /* ===== Buttons ===== */

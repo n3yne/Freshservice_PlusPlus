@@ -50,9 +50,12 @@
   align-items: center;
 }
 
+/* The editor grows to fill the tab but never shrinks below its toolbar plus
+   the editor's minimum height; in a short half of a split side panel the
+   whole tab scrolls instead of the parts overlapping. */
 .note-group {
   flex: 1;
-  min-height: 0;
+  min-height: min-content;
 }
 
 #note-content {

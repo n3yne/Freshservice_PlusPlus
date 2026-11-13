@@ -46,21 +46,35 @@
       <!-- Resize Handle -->
       <div id="resize-handle" title="Drag to resize"></div>
 
-      <!-- Side Panel: a tabbed panel that plugins add tabs to (pluginAPI.ui.addSidePanelTab) -->
+      <!-- Side Panel: a tabbed panel that plugins add tabs to (pluginAPI.ui.addSidePanelTab).
+           Right-click a tab to move it to the bottom half; the bar between the halves drags. -->
       <div id="side-panel">
-        <!-- Panel Header: one tab per plugin view, plus the hide button. The tabs wrap onto
-             more rows, or scroll sideways with the Scroll Side Panel Tabs setting. -->
-        <div id="panel-header">
-          <button type="button" id="side-panel-scroll-left" class="side-panel-scroll" title="Scroll tabs left" aria-hidden="true" tabindex="-1">&#8249;</button>
-          <div id="side-panel-tabs" role="tablist" aria-label="Side panel"></div>
-          <button type="button" id="side-panel-scroll-right" class="side-panel-scroll" title="Scroll tabs right" aria-hidden="true" tabindex="-1">&#8250;</button>
-          <div id="panel-header-buttons">
-            <button type="button" id="btn-toggle-panel" title="Hide side panel (Ctrl+Shift+B)" aria-label="Hide side panel">&#10005;</button>
+        <div id="side-panel-top" class="side-panel-pane">
+          <!-- Panel Header: one tab per plugin view, plus the hide button. The tabs wrap onto
+               more rows, or scroll sideways with the Scroll Side Panel Tabs setting. -->
+          <div id="panel-header" class="side-panel-header">
+            <button type="button" id="side-panel-scroll-left" class="side-panel-scroll" title="Scroll tabs left" aria-hidden="true" tabindex="-1">&#8249;</button>
+            <div id="side-panel-tabs" class="side-panel-tabs" role="tablist" aria-label="Side panel"></div>
+            <button type="button" id="side-panel-scroll-right" class="side-panel-scroll" title="Scroll tabs right" aria-hidden="true" tabindex="-1">&#8250;</button>
+            <div id="panel-header-buttons">
+              <button type="button" id="btn-toggle-panel" title="Hide side panel (Ctrl+Shift+B)" aria-label="Hide side panel">&#10005;</button>
+            </div>
           </div>
+
+          <!-- Each top tab's view is added here -->
+          <div id="side-panel-body" class="side-panel-body"></div>
         </div>
 
-        <!-- Each plugin tab's view is added here -->
-        <div id="side-panel-body"></div>
+        <!-- Split view: shown while at least one tab is in the bottom half -->
+        <div id="side-panel-split-handle" role="separator" aria-orientation="horizontal" aria-label="Resize side panel halves" tabindex="0" title="Drag to resize (double-click to even out)"></div>
+        <div id="side-panel-bottom" class="side-panel-pane">
+          <div id="panel-header-bottom" class="side-panel-header">
+            <button type="button" id="side-panel-bottom-scroll-left" class="side-panel-scroll" title="Scroll tabs left" aria-hidden="true" tabindex="-1">&#8249;</button>
+            <div id="side-panel-tabs-bottom" class="side-panel-tabs" role="tablist" aria-label="Side panel bottom half"></div>
+            <button type="button" id="side-panel-bottom-scroll-right" class="side-panel-scroll" title="Scroll tabs right" aria-hidden="true" tabindex="-1">&#8250;</button>
+          </div>
+          <div id="side-panel-body-bottom" class="side-panel-body"></div>
+        </div>
       </div>
     </div>
 
@@ -138,6 +152,12 @@
     </div>
 
     <!-- Tab Context Menu -->
+    <!-- Side panel tab menu (right-click a side panel tab) -->
+    <div id="side-panel-tab-menu" class="context-menu" role="menu">
+      <div class="context-menu-item" data-action="move-bottom" role="menuitem">&#11015; Move Tab to Bottom</div>
+      <div class="context-menu-item" data-action="move-top" role="menuitem">&#11014; Move Tab to Top</div>
+    </div>
+
     <div id="tab-context-menu" class="context-menu">
       <div class="context-menu-item" data-action="refresh">&#8635; Refresh Tab</div>
       <div class="context-menu-item" data-action="reopen-closed">&#8630; Reopen Closed Tab</div>
@@ -180,6 +200,7 @@
 
     <script src="address-bar.js"></script>
     <script src="page-zoom.js"></script>
+    <script src="side-panel-split.js"></script>
     <script src="tab-shortcuts.js"></script>
     <script src="command-palette.js"></script>
     <script src="unread-tabs.js"></script>
