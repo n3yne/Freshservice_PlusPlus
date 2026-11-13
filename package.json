@@ -40,6 +40,7 @@
       "renderer.js",
       "address-bar.js",
       "page-zoom.js",
+      "side-panel-split.js",
       "tab-shortcuts.js",
       "command-palette.js",
       "unread-tabs.js",

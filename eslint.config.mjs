@@ -40,7 +40,7 @@ export default [
 
   // Shared by the window (script tag) and the tests (require)
   {
-    files: ["address-bar.js", "command-palette.js", "page-zoom.js", "safe-html.js", "tab-shortcuts.js", "unread-tabs.js", "site-colors.js", "plugin-categories.js", "ticket-preview.js", "plugins/tree-tabs/renderer.js"],
+    files: ["address-bar.js", "command-palette.js", "page-zoom.js", "side-panel-split.js", "safe-html.js", "tab-shortcuts.js", "unread-tabs.js", "site-colors.js", "plugin-categories.js", "ticket-preview.js", "plugins/tree-tabs/renderer.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script",

@@ -540,10 +540,45 @@ document.addEventListener("DOMContentLoaded", function () {
   //
   // The side panel holds one tab per plugin view (pluginAPI.ui.addSidePanelTab).
   // It is shown when the "Side Panel" setting is on and at least one tab exists.
+  //
+  // Split view: right-clicking a tab offers "Move Tab to Bottom" (or "to Top").
+  // While any tab is in the bottom half, the panel shows two halves, each with
+  // its own tab strip and selected tab, and a bar between them that drags to
+  // share out the height. Placement, each half's selected tab and the split are
+  // saved (sidePanelBottomTabs, sidePanelTab, sidePanelBottomTab, sidePanelSplit;
+  // see side-panel-split.js).
 
-  const sidePanelTabs = []; // { id, order, button, view, onShow: Set, onHide: Set }
-  let activeSidePanelTab = null;
+  const SidePanelSplit = window.SidePanelSplit;
+  const sidePanelTabs = []; // { id, order, button, view, pane, onShow: Set, onHide: Set }, in display order
   const SIDE_PANEL_TAB_ID = /^[a-z0-9][a-z0-9_-]{0,62}$/;
+  const panelHeader = document.getElementById("panel-header");
+  const sidePanelSplitHandle = document.getElementById("side-panel-split-handle");
+  const sidePanelTop = document.getElementById("side-panel-top");
+  const sidePanelBottom = document.getElementById("side-panel-bottom");
+  const sidePanes = {
+    top: {
+      name: "top",
+      header: panelHeader,
+      tabsEl: sidePanelTabsEl,
+      body: sidePanelBody,
+      scrollLeft: sidePanelScrollLeft,
+      scrollRight: sidePanelScrollRight,
+      settingKey: "sidePanelTab",
+      active: null,
+    },
+    bottom: {
+      name: "bottom",
+      header: document.getElementById("panel-header-bottom"),
+      tabsEl: document.getElementById("side-panel-tabs-bottom"),
+      body: document.getElementById("side-panel-body-bottom"),
+      scrollLeft: document.getElementById("side-panel-bottom-scroll-left"),
+      scrollRight: document.getElementById("side-panel-bottom-scroll-right"),
+      settingKey: "sidePanelBottomTab",
+      active: null,
+    },
+  };
+  const SIDE_PANE_LIST = [sidePanes.top, sidePanes.bottom];
+  let visibleSidePanelTabs = new Set(); // tabs whose view is showing in either half
 
   function updateSidePanelVisibility() {
     const show = appSettings.sidePanelEnabled !== false && sidePanelTabs.length > 0;
@@ -559,32 +594,86 @@ document.addEventListener("DOMContentLoaded", function () {
     btnExpand.classList.toggle("visible", panelCollapsed);
   }
 
-  function activateSidePanelTab(id, remember) {
-    const tab = sidePanelTabs.find(function (t) { return t.id === id; });
-    if (!tab) return;
-    const previous = activeSidePanelTab;
-    activeSidePanelTab = tab;
-    sidePanelTabs.forEach(function (t) {
-      const on = t === tab;
-      t.button.classList.toggle("active", on);
-      t.button.setAttribute("aria-selected", on ? "true" : "false");
-      t.button.tabIndex = on ? 0 : -1;
-      t.view.classList.toggle("active", on);
+  function findSidePanelTab(id) {
+    return sidePanelTabs.find(function (t) { return t.id === id; }) || null;
+  }
+
+  // Puts nodes into parent in this order, moving only the ones out of place
+  // (moving a node resets its scroll position, so untouched views keep theirs).
+  function placeChildrenInOrder(parent, nodes) {
+    nodes.forEach(function (node, i) {
+      const at = parent.children[i];
+      if (at !== node) parent.insertBefore(node, at || null);
     });
-    if (previous && previous !== tab) previous.onHide.forEach(function (fn) { try { fn(); } catch (e) { console.error("[SidePanel]", e); } });
-    if (previous !== tab) tab.onShow.forEach(function (fn) { try { fn(); } catch (e) { console.error("[SidePanel]", e); } });
-    revealSidePanelTab(tab);
-    if (remember && appSettings.sidePanelTab !== id) {
-      appSettings.sidePanelTab = id;
-      window.backupAPI.saveSettings({ sidePanelTab: id });
+  }
+
+  function fireSidePanelTabCallbacks(tab, which) {
+    tab[which].forEach(function (fn) { try { fn(); } catch (e) { console.error("[SidePanel]", e); } });
+  }
+
+  // Lays the tabs out in the two halves from the saved settings, picks each
+  // half's selected tab, and tells plugins whose views appeared or went away.
+  function layoutSidePanel() {
+    const placed = SidePanelSplit.placeTabs(sidePanelTabs.map(function (t) { return t.id; }), appSettings.sidePanelBottomTabs);
+    const nowVisible = new Set();
+    SIDE_PANE_LIST.forEach(function (pane) {
+      const list = placed[pane.name].map(findSidePanelTab);
+      list.forEach(function (t) { t.pane = pane; });
+      placeChildrenInOrder(pane.tabsEl, list.map(function (t) { return t.button; }));
+      placeChildrenInOrder(pane.body, list.map(function (t) { return t.view; }));
+      pane.active = findSidePanelTab(SidePanelSplit.chooseActive(placed[pane.name], appSettings[pane.settingKey]));
+      list.forEach(function (t) {
+        const on = t === pane.active;
+        t.button.classList.toggle("active", on);
+        t.button.setAttribute("aria-selected", on ? "true" : "false");
+        t.button.tabIndex = on ? 0 : -1;
+        t.view.classList.toggle("active", on);
+      });
+      if (pane.active) nowVisible.add(pane.active);
+    });
+    sidePanel.classList.toggle("split", placed.bottom.length > 0);
+    sidePanel.style.setProperty("--side-panel-split", String(SidePanelSplit.clampSplit(appSettings.sidePanelSplit)));
+    sidePanelSplitHandle.setAttribute("aria-valuenow", String(Math.round(SidePanelSplit.clampSplit(appSettings.sidePanelSplit) * 100)));
+
+    const before = visibleSidePanelTabs;
+    visibleSidePanelTabs = nowVisible;
+    before.forEach(function (t) { if (!nowVisible.has(t) && sidePanelTabs.indexOf(t) !== -1) fireSidePanelTabCallbacks(t, "onHide"); });
+    nowVisible.forEach(function (t) { if (!before.has(t)) fireSidePanelTabCallbacks(t, "onShow"); });
+
+    SIDE_PANE_LIST.forEach(function (pane) {
+      if (pane.active) revealSidePanelTab(pane.active);
+      updateSidePanelScrollButtons(pane);
+    });
+  }
+
+  // Selects a tab in whichever half it is in, and remembers it for that half.
+  function activateSidePanelTab(id) {
+    const tab = findSidePanelTab(id);
+    if (!tab) return;
+    const key = (tab.pane || sidePanes.top).settingKey;
+    if (appSettings[key] !== id) {
+      appSettings[key] = id;
+      window.backupAPI.saveSettings({ [key]: id });
     }
+    layoutSidePanel();
+  }
+
+  // Moves a tab to the "top" or "bottom" half and selects it there.
+  function moveSidePanelTab(id, where) {
+    if (!findSidePanelTab(id)) return;
+    const list = SidePanelSplit.moveTab(appSettings.sidePanelBottomTabs, id, where);
+    const key = where === "bottom" ? "sidePanelBottomTab" : "sidePanelTab";
+    appSettings.sidePanelBottomTabs = list;
+    appSettings[key] = id;
+    window.backupAPI.saveSettings({ sidePanelBottomTabs: list, [key]: id });
+    layoutSidePanel();
   }
 
   // opts: { id, label, icon?, title?, order? } → handle { id, element, activate, isActive, onShow, onHide }
   function addSidePanelTab(opts) {
     const id = opts && String(opts.id || "");
     if (!SIDE_PANEL_TAB_ID.test(id)) throw new Error("addSidePanelTab: invalid id");
-    if (sidePanelTabs.some(function (t) { return t.id === id; })) throw new Error("addSidePanelTab: duplicate id \"" + id + "\"");
+    if (findSidePanelTab(id)) throw new Error("addSidePanelTab: duplicate id \"" + id + "\"");
 
     const button = document.createElement("button");
     button.type = "button";
@@ -615,6 +704,7 @@ document.addEventListener("DOMContentLoaded", function () {
       order: typeof opts.order === "number" ? opts.order : 100,
       button,
       view,
+      pane: null,
       onShow: new Set(),
       onHide: new Set(),
     };
@@ -622,44 +712,156 @@ document.addEventListener("DOMContentLoaded", function () {
     // Keep tabs sorted by order, then by the order they were added.
     let index = sidePanelTabs.findIndex(function (t) { return t.order > tab.order; });
     if (index === -1) index = sidePanelTabs.length;
-    const before = sidePanelTabs[index];
     sidePanelTabs.splice(index, 0, tab);
-    sidePanelTabsEl.insertBefore(button, before ? before.button : null);
-    sidePanelBody.insertBefore(view, before ? before.view : null);
 
-    button.addEventListener("click", function () { activateSidePanelTab(id, true); });
+    button.addEventListener("click", function () { activateSidePanelTab(id); });
 
-    if (!activeSidePanelTab || appSettings.sidePanelTab === id ||
-        (activeSidePanelTab.id !== appSettings.sidePanelTab && tab.order < activeSidePanelTab.order)) {
-      activateSidePanelTab(id, false);
-    } else {
-      button.setAttribute("aria-selected", "false");
-      button.tabIndex = -1;
-    }
+    layoutSidePanel();
     updateSidePanelVisibility();
-    updateSidePanelScrollButtons();
 
     return Object.freeze({
       id,
       element: view,
       activate: function () {
-        activateSidePanelTab(id, true);
+        activateSidePanelTab(id);
         if (panelCollapsed) togglePanel();
       },
-      isActive: function () { return activeSidePanelTab === tab; },
+      isActive: function () { return !!tab.pane && tab.pane.active === tab; },
       onShow: function (fn) { if (typeof fn === "function") tab.onShow.add(fn); },
       onHide: function (fn) { if (typeof fn === "function") tab.onHide.add(fn); },
     });
   }
 
-  // Arrow keys move between side panel tabs.
-  sidePanelTabsEl.addEventListener("keydown", function (e) {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    const idx = sidePanelTabs.indexOf(activeSidePanelTab);
-    if (idx === -1) return;
-    const next = sidePanelTabs[(idx + (e.key === "ArrowRight" ? 1 : sidePanelTabs.length - 1)) % sidePanelTabs.length];
-    activateSidePanelTab(next.id, true);
-    next.button.focus();
+  // Arrow keys move between the tabs of the same half.
+  SIDE_PANE_LIST.forEach(function (pane) {
+    pane.tabsEl.addEventListener("keydown", function (e) {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const list = sidePanelTabs.filter(function (t) { return t.pane === pane; });
+      const idx = list.indexOf(pane.active);
+      if (idx === -1) return;
+      const next = list[(idx + (e.key === "ArrowRight" ? 1 : list.length - 1)) % list.length];
+      activateSidePanelTab(next.id);
+      next.button.focus();
+      e.preventDefault();
+    });
+  });
+
+  // ==================== Side Panel Tab Menu ====================
+  //
+  // Right-click a side panel tab: "Move Tab to Bottom" in the top half, "Move
+  // Tab to Top" in the bottom half. The last tab in the top half can't move down.
+
+  const sidePanelTabMenu = document.getElementById("side-panel-tab-menu");
+  const sidePanelMenuMoveBottom = sidePanelTabMenu.querySelector('[data-action="move-bottom"]');
+  const sidePanelMenuMoveTop = sidePanelTabMenu.querySelector('[data-action="move-top"]');
+  let sidePanelMenuTabId = null;
+
+  function hideSidePanelTabMenu() {
+    sidePanelTabMenu.classList.remove("visible");
+    sidePanelMenuTabId = null;
+  }
+
+  function showSidePanelTabMenu(e, tab) {
+    e.preventDefault();
+    e.stopPropagation();
+    hideTabContextMenu();
+    sidePanelMenuTabId = tab.id;
+    const inBottom = tab.pane === sidePanes.bottom;
+    const topCount = sidePanelTabs.filter(function (t) { return t.pane === sidePanes.top; }).length;
+    sidePanelMenuMoveBottom.style.display = inBottom ? "none" : "";
+    sidePanelMenuMoveTop.style.display = inBottom ? "" : "none";
+    const lastTop = !inBottom && topCount <= 1;
+    sidePanelMenuMoveBottom.classList.toggle("disabled", lastTop);
+    sidePanelMenuMoveBottom.title = lastTop ? "The top half needs at least one tab" : "";
+
+    sidePanelTabMenu.style.left = e.clientX + "px";
+    sidePanelTabMenu.style.top = e.clientY + "px";
+    sidePanelTabMenu.classList.add("visible");
+    const rect = sidePanelTabMenu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) sidePanelTabMenu.style.left = window.innerWidth - rect.width - MENU_EDGE_PADDING + "px";
+    if (rect.bottom > window.innerHeight) sidePanelTabMenu.style.top = window.innerHeight - rect.height - MENU_EDGE_PADDING + "px";
+  }
+
+  SIDE_PANE_LIST.forEach(function (pane) {
+    pane.tabsEl.addEventListener("contextmenu", function (e) {
+      const button = e.target.closest(".side-panel-tab");
+      const tab = button && sidePanelTabs.find(function (t) { return t.button === button; });
+      if (tab) showSidePanelTabMenu(e, tab);
+    });
+  });
+
+  sidePanelTabMenu.addEventListener("click", function (e) {
+    const item = e.target.closest(".context-menu-item");
+    if (!item || !sidePanelMenuTabId || item.classList.contains("disabled")) return;
+    const id = sidePanelMenuTabId;
+    hideSidePanelTabMenu();
+    moveSidePanelTab(id, item.dataset.action === "move-bottom" ? "bottom" : "top");
+  });
+
+  document.addEventListener("mousedown", function (e) {
+    if (!e.target.closest("#side-panel-tab-menu")) hideSidePanelTabMenu();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") hideSidePanelTabMenu();
+  });
+  window.addEventListener("blur", hideSidePanelTabMenu);
+
+  // ==================== Side Panel Split Divider ====================
+  //
+  // Drag the bar between the halves to share out the height (each half keeps
+  // room for its tab strip). Double-click evens them out; arrow keys nudge it.
+
+  const SPLIT_MIN_PANE_PX = 90;
+  let splitDragging = false;
+
+  function setSidePanelSplit(value, save) {
+    const split = SidePanelSplit.clampSplit(value);
+    appSettings.sidePanelSplit = split;
+    sidePanel.style.setProperty("--side-panel-split", String(split));
+    sidePanelSplitHandle.setAttribute("aria-valuenow", String(Math.round(split * 100)));
+    if (save) window.backupAPI.saveSettings({ sidePanelSplit: Math.round(split * 1000) / 1000 });
+  }
+
+  function splitFromEvent(e) {
+    const top = sidePanelTop.getBoundingClientRect();
+    const bottom = sidePanelBottom.getBoundingClientRect();
+    const handleHeight = sidePanelSplitHandle.offsetHeight;
+    return SidePanelSplit.splitFromPointer(e.clientY - handleHeight / 2, top.top, top.height + bottom.height, SPLIT_MIN_PANE_PX);
+  }
+
+  sidePanelSplitHandle.setAttribute("aria-valuemin", String(Math.round(SidePanelSplit.MIN_SPLIT * 100)));
+  sidePanelSplitHandle.setAttribute("aria-valuemax", String(Math.round(SidePanelSplit.MAX_SPLIT * 100)));
+
+  sidePanelSplitHandle.addEventListener("mousedown", function (e) {
+    if (e.button !== 0) return;
+    splitDragging = true;
+    sidePanelSplitHandle.classList.add("dragging");
+    document.body.classList.add("side-panel-split-dragging");
+    tabs.forEach(function (t) { t.webview.style.pointerEvents = "none"; });
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", function (e) {
+    if (splitDragging) setSidePanelSplit(splitFromEvent(e), false);
+  });
+
+  document.addEventListener("mouseup", function () {
+    if (!splitDragging) return;
+    splitDragging = false;
+    sidePanelSplitHandle.classList.remove("dragging");
+    document.body.classList.remove("side-panel-split-dragging");
+    tabs.forEach(function (t) { t.webview.style.pointerEvents = ""; });
+    setSidePanelSplit(appSettings.sidePanelSplit, true);
+  });
+
+  sidePanelSplitHandle.addEventListener("dblclick", function () {
+    setSidePanelSplit(SidePanelSplit.DEFAULT_SPLIT, true);
+  });
+
+  sidePanelSplitHandle.addEventListener("keydown", function (e) {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    const current = SidePanelSplit.clampSplit(appSettings.sidePanelSplit);
+    setSidePanelSplit(current + (e.key === "ArrowUp" ? -0.05 : 0.05), true);
     e.preventDefault();
   });
 
@@ -668,62 +870,64 @@ document.addEventListener("DOMContentLoaded", function () {
   // By default the tabs wrap onto more rows so every tab is visible. With the
   // "Scroll Side Panel Tabs" setting they stay on one row that scrolls sideways:
   // arrow buttons appear at either end while tabs are cut off, the mouse wheel
-  // scrolls the row, and the active tab is scrolled into view.
-
-  const panelHeader = document.getElementById("panel-header");
+  // scrolls the row, and the active tab is scrolled into view. Each half of a
+  // split panel has its own strip and behaves the same way.
 
   function isSidePanelTabScroll() {
     return appSettings.sidePanelTabScroll === true;
   }
 
   function applySidePanelTabLayout() {
-    panelHeader.classList.toggle("tabs-scroll", isSidePanelTabScroll());
-    panelHeader.classList.toggle("tabs-wrap", !isSidePanelTabScroll());
-    if (activeSidePanelTab) revealSidePanelTab(activeSidePanelTab);
-    updateSidePanelScrollButtons();
+    layoutSidePanel();
+    SIDE_PANE_LIST.forEach(function (pane) {
+      pane.header.classList.toggle("tabs-scroll", isSidePanelTabScroll());
+      pane.header.classList.toggle("tabs-wrap", !isSidePanelTabScroll());
+      if (pane.active) revealSidePanelTab(pane.active);
+      updateSidePanelScrollButtons(pane);
+    });
   }
 
-  function updateSidePanelScrollButtons() {
-    const el = sidePanelTabsEl;
+  function updateSidePanelScrollButtons(pane) {
+    const el = pane.tabsEl;
     const overflow = isSidePanelTabScroll() && el.scrollWidth - el.clientWidth > 1;
-    sidePanelScrollLeft.classList.toggle("visible", overflow);
-    sidePanelScrollRight.classList.toggle("visible", overflow);
-    sidePanelScrollLeft.disabled = !overflow || el.scrollLeft <= 0;
-    sidePanelScrollRight.disabled = !overflow || el.scrollLeft >= el.scrollWidth - el.clientWidth - 1;
+    pane.scrollLeft.classList.toggle("visible", overflow);
+    pane.scrollRight.classList.toggle("visible", overflow);
+    pane.scrollLeft.disabled = !overflow || el.scrollLeft <= 0;
+    pane.scrollRight.disabled = !overflow || el.scrollLeft >= el.scrollWidth - el.clientWidth - 1;
   }
 
   function revealSidePanelTab(tab) {
-    if (!isSidePanelTabScroll() || !tab) return;
-    const el = sidePanelTabsEl;
+    if (!isSidePanelTabScroll() || !tab || !tab.pane) return;
+    const el = tab.pane.tabsEl;
     const left = tab.button.offsetLeft - el.offsetLeft;
     const right = left + tab.button.offsetWidth;
     if (left < el.scrollLeft) el.scrollLeft = left;
     else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth;
   }
 
-  function scrollSidePanelTabs(direction) {
-    const el = sidePanelTabsEl;
-    el.scrollBy({ left: direction * Math.max(60, el.clientWidth * 0.7), behavior: "smooth" });
-  }
+  SIDE_PANE_LIST.forEach(function (pane) {
+    const el = pane.tabsEl;
+    const update = function () { updateSidePanelScrollButtons(pane); };
+    const scrollBy = function (direction) {
+      el.scrollBy({ left: direction * Math.max(60, el.clientWidth * 0.7), behavior: "smooth" });
+    };
+    pane.scrollLeft.addEventListener("click", function () { scrollBy(-1); });
+    pane.scrollRight.addEventListener("click", function () { scrollBy(1); });
+    el.addEventListener("scroll", update, { passive: true });
 
-  sidePanelScrollLeft.addEventListener("click", function () { scrollSidePanelTabs(-1); });
-  sidePanelScrollRight.addEventListener("click", function () { scrollSidePanelTabs(1); });
-  sidePanelTabsEl.addEventListener("scroll", updateSidePanelScrollButtons, { passive: true });
+    // The mouse wheel (or a touchpad's vertical swipe) scrolls the row sideways.
+    el.addEventListener("wheel", function (e) {
+      if (!isSidePanelTabScroll()) return;
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (!delta) return;
+      el.scrollLeft += e.deltaMode === 1 ? delta * 20 : delta;
+      e.preventDefault();
+    }, { passive: false });
 
-  // The mouse wheel (or a touchpad's vertical swipe) scrolls the row sideways.
-  sidePanelTabsEl.addEventListener("wheel", function (e) {
-    if (!isSidePanelTabScroll()) return;
-    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-    if (!delta) return;
-    sidePanelTabsEl.scrollLeft += e.deltaMode === 1 ? delta * 20 : delta;
-    e.preventDefault();
-  }, { passive: false });
-
-  // The panel can be resized and tabs change, so recheck whether the row overflows.
-  if (typeof ResizeObserver === "function") {
-    new ResizeObserver(updateSidePanelScrollButtons).observe(sidePanelTabsEl);
-  }
-  new MutationObserver(updateSidePanelScrollButtons).observe(sidePanelTabsEl, { childList: true, subtree: true, characterData: true });
+    // The panel can be resized and tabs change, so recheck whether the row overflows.
+    if (typeof ResizeObserver === "function") new ResizeObserver(update).observe(el);
+    new MutationObserver(update).observe(el, { childList: true, subtree: true, characterData: true });
+  });
   applySidePanelTabLayout();
 
   // ==================== Notes Facade ====================
@@ -2482,7 +2686,7 @@ document.addEventListener("DOMContentLoaded", function () {
         title: "Show " + name,
         keywords: [name, "side panel " + name],
         run: function () {
-          activateSidePanelTab(t.id, true);
+          activateSidePanelTab(t.id);
           if (panelCollapsed) togglePanel();
         },
       };

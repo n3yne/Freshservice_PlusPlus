@@ -30,6 +30,7 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 ### Side Panel
 - **One panel, a tab per plugin** – The panel on the right holds a tab for each plugin that adds one: **📋 Notes** (Note Backup) and **🕘 Recent** (Recent Tickets) out of the box, plus tabs from plugins you install, such as **📚 Solutions** (Solutions Chat). Your own plugins can add tabs too (see [`docs/plugins.md`](docs/plugins.md)). The last tab you used is reopened on launch
 - **Turn it on or off** under **Settings → General → Side Panel**; hide it with `Ctrl+Shift+B` or the ✕ button
+- **Split view** – Right-click a side panel tab and choose **Move Tab to Bottom** to show it in a bottom half under the other tabs, for example Notes on top and Solutions below. Each half has its own tabs; drag the bar between them to change how much room each gets (double-click it to even them out). **Move Tab to Top** puts a tab back, and the split closes when the bottom half is empty. The layout and split position are kept between restarts
 - **Lots of tabs** – Tabs wrap onto more rows by default. Turn on **Settings → General → Scroll Side Panel Tabs** to keep them on one row and scroll with the ‹ › buttons or the mouse wheel
 
 ### Note Editor (Note Backup plugin)

@@ -5,6 +5,7 @@
 // live in each plugin's main.js (defaultSettings + validateSettings exports).
 
 const SiteColors = require("./site-colors");
+const SidePanelSplit = require("./side-panel-split");
 
 const DEFAULT_SETTINGS = {
   sidePanelEnabled: true,
@@ -13,6 +14,11 @@ const DEFAULT_SETTINGS = {
   // Side panel tab strip: false wraps the tabs onto more rows, true keeps one
   // row that scrolls sideways (arrow buttons and the mouse wheel).
   sidePanelTabScroll: false,
+  // Side panel split view: tabs moved to the bottom half (right-click a tab),
+  // the bottom half's selected tab, and the top half's share of the height.
+  sidePanelBottomTabs: [],
+  sidePanelBottomTab: "",
+  sidePanelSplit: SidePanelSplit.DEFAULT_SPLIT,
   // The first site plugin's start page replaces this (manifest "site.defaultUrl");
   // with no site plugin loaded, new tabs open blank.
   defaultUrl: "about:blank",
@@ -50,6 +56,9 @@ function validateSettings(s) {
   }
   if (!["dark", "light"].includes(s.theme)) return false;
   if (s.sidePanelTabScroll !== undefined && typeof s.sidePanelTabScroll !== "boolean") return false;
+  if (s.sidePanelBottomTabs !== undefined && !SidePanelSplit.validBottomTabs(s.sidePanelBottomTabs)) return false;
+  if (s.sidePanelBottomTab !== undefined && (typeof s.sidePanelBottomTab !== "string" || s.sidePanelBottomTab.length > 64)) return false;
+  if (s.sidePanelSplit !== undefined && !SidePanelSplit.validSplit(s.sidePanelSplit)) return false;
   if (s.autoUpdate !== undefined && typeof s.autoUpdate !== "boolean") return false;
   if (s.restoreTabs !== undefined && typeof s.restoreTabs !== "boolean") return false;
   if (s.unreadTabBadges !== undefined && typeof s.unreadTabBadges !== "boolean") return false;
