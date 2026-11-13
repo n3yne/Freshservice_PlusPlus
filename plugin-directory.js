@@ -183,11 +183,11 @@ function moveDirSync(from, to, { delays = RENAME_RETRY_DELAYS_MS, sleep = sleepS
   try {
     fsImpl.rmSync(to, { recursive: true, force: true, maxRetries: 3 });
     fsImpl.cpSync(from, to, { recursive: true, errorOnExist: false, force: true });
-  } catch (copyErr) {
-    try { fsImpl.rmSync(to, { recursive: true, force: true, maxRetries: 3 }); } catch (_) { /* best effort */ }
+  } catch {
+    try { fsImpl.rmSync(to, { recursive: true, force: true, maxRetries: 3 }); } catch { /* best effort */ }
     throw lastErr;
   }
-  try { fsImpl.rmSync(from, { recursive: true, force: true, maxRetries: 3 }); } catch (_) { /* swept up later */ }
+  try { fsImpl.rmSync(from, { recursive: true, force: true, maxRetries: 3 }); } catch { /* swept up later */ }
 }
 
 // Deletes "<id>.tmp-xxxxxxxx" folders in .pending left by a download that was
@@ -195,7 +195,7 @@ function moveDirSync(from, to, { delays = RENAME_RETRY_DELAYS_MS, sleep = sleepS
 function cleanupStaleTemp(userData, logger = console) {
   const pendingRoot = path.join(installedRoot(userData), PENDING_DIR);
   let names;
-  try { names = fs.readdirSync(pendingRoot); } catch (_) { return; }
+  try { names = fs.readdirSync(pendingRoot); } catch { return; }
   for (const name of names) {
     if (!/\.tmp-[0-9a-f]{8}$/.test(name)) continue;
     try { rmrf(path.join(pendingRoot, name)); } catch (err) {
