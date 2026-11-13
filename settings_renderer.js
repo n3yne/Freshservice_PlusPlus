@@ -563,7 +563,6 @@ document.addEventListener("DOMContentLoaded", function () {
       const desc = document.createElement("div");
       desc.className = "plugin-item-desc";
       desc.textContent = plugin.description;
-      desc.title = plugin.description;
       info.appendChild(desc);
     }
 
