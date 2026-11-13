@@ -275,11 +275,13 @@ function cancelPending(userData, id) {
 
 // ===================== Plugins that moved out of the app =====================
 
-// Plugins bundled up to 0.7 moved to the directory in 0.8 (moved-plugins.json).
-// The first start without them offers to reinstall them. A plugin is pre-ticked
-// when there are signs it was in use: a setting changed from its default, a
-// saved API key, a data file, one of its site's hosts in the open tabs or the
-// settings, or (alsoIf) another moved plugin that was in use.
+// Plugins bundled up to 0.7 moved to the directory in 0.8, and the rest after
+// 0.8.0 (moved-plugins.json). The first start without them offers to reinstall
+// them. A plugin is pre-ticked when there are signs it was in use: a setting
+// changed from its default, a saved API key, a data file, one of its site's
+// hosts in the open tabs or the settings, (alsoIf) another moved plugin that
+// was in use, or (onByDefault) it was on for everyone and wasn't turned off.
+// A new install has nothing to reinstall, so it gets nothing back.
 //
 //   moved          moved-plugins.json "plugins"
 //   settings       the raw settings.json object
@@ -287,8 +289,10 @@ function cancelPending(userData, id) {
 //   installedIds   ids loaded now (bundled or installed)
 //   handled        ids already offered (moved-handled.json)
 //   tabsText       open-tabs.json as text, for hosts
+//   existingInstall  false on the very first start (no settings.json yet)
 // Returns [{ id, name, used }] for the plugins still to offer.
-function findMovedPlugins({ userData, moved, settings = {}, pluginsConfig = {}, installedIds = [], handled = [], tabsText = "" }) {
+function findMovedPlugins({ userData, moved, settings = {}, pluginsConfig = {}, installedIds = [], handled = [], tabsText = "", existingInstall = true }) {
+  if (!existingInstall) return [];
   const list = Array.isArray(moved) ? moved : [];
   const settingsText = JSON.stringify(settings || {});
   const usedById = new Map();
@@ -312,7 +316,7 @@ function findMovedPlugins({ userData, moved, settings = {}, pluginsConfig = {}, 
   for (const entry of list) {
     if (!entry || !ID_PATTERN.test(entry.id)) continue;
     usedById.set(entry.id, pluginsConfig[entry.id] !== false &&
-      (changedSetting(entry) || savedCredential(entry) || hasDataFile(entry) || visitedHost(entry)));
+      (entry.onByDefault === true || changedSetting(entry) || savedCredential(entry) || hasDataFile(entry) || visitedHost(entry)));
   }
   for (const entry of list) {
     if (entry && entry.alsoIf && usedById.get(entry.alsoIf) && pluginsConfig[entry.id] !== false) usedById.set(entry.id, true);
@@ -329,6 +333,29 @@ function readMovedHandled(userData) {
 
 function writeMovedHandled(userData, ids) {
   writeJson(path.join(installedRoot(userData), "moved-handled.json"), { ids: Array.from(new Set(ids)) });
+}
+
+// ===================== First-start plugin picker =====================
+
+// With no site plugin installed (a new install, or an update from a version
+// that bundled Freshservice), the main window asks which plugins to install.
+// "Don't ask again" is kept in installed-plugins/setup.json.
+
+function readSetupState(userData) {
+  const s = readJson(path.join(installedRoot(userData), "setup.json"), {});
+  return { dontAsk: s.dontAsk === true };
+}
+
+function writeSetupState(userData, state) {
+  writeJson(path.join(installedRoot(userData), "setup.json"), { dontAsk: state && state.dontAsk === true });
+}
+
+// True when the picker should open: no site plugin is installed (on or off)
+// and the user hasn't said not to ask.
+//   installed  pluginManager.getPluginInfo()
+function needsPluginSetup({ installed = [], dontAsk = false }) {
+  if (dontAsk) return false;
+  return !installed.some(p => p && (p.site || p.category === "Sites"));
 }
 
 // ===================== The service =====================
@@ -351,6 +378,7 @@ function createPluginDirectory(opts) {
     indexUrl = DEFAULT_INDEX_URL,
     fetchImpl = (...args) => fetch(...args),
     logger = console,
+    indexTimeoutMs = 20000,
   } = opts;
   const userAgent = "MSP-PP/" + appVersion;
 
@@ -364,7 +392,18 @@ function createPluginDirectory(opts) {
   async function fetchIndex() {
     const headers = { "User-Agent": userAgent, Accept: "application/json" };
     if (etag && index.plugins.length) headers["If-None-Match"] = etag;
-    const resp = await fetchImpl(indexUrl, { headers });
+    // Offline or behind a proxy that never answers, a fetch can hang for
+    // minutes; the first-start picker waits on this, so give up sooner.
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("The plugin directory didn't answer. Check the internet connection and try again.")), indexTimeoutMs);
+    });
+    let resp;
+    try {
+      resp = await Promise.race([fetchImpl(indexUrl, { headers }), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
     if (resp.status === 304) return;
     if (resp.status === 404) throw new Error("The plugin directory hasn't been published yet");
     if (!resp.ok) throw new Error(`The plugin directory answered with error ${resp.status}`);
@@ -596,5 +635,8 @@ module.exports = {
   cancelPending,
   findMovedPlugins,
   readMovedHandled,
+  readSetupState,
+  writeSetupState,
+  needsPluginSetup,
   createPluginDirectory,
 };

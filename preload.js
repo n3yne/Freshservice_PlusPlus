@@ -80,4 +80,10 @@ contextBridge.exposeInMainWorld("backupAPI", {
   onPluginDirectoryStatus: (callback) =>
     onIpc("plugin-directory-status", (event, state) => callback(state)),
   restartApp: () => ipcRenderer.invoke("restart-app"),
+  // First-start plugin picker (setup-picker.js, main window only).
+  getPluginSetup: () => ipcRenderer.invoke("plugin-setup-status"),
+  refreshPluginSetup: () => ipcRenderer.invoke("plugin-setup-refresh"),
+  installPluginSetup: (ids) => ipcRenderer.invoke("plugin-setup-install", ids),
+  skipPluginSetup: (dontAsk) => ipcRenderer.invoke("plugin-setup-skip", { dontAsk: dontAsk === true }),
+  restartAfterPluginSetup: () => ipcRenderer.invoke("plugin-setup-restart"),
 });

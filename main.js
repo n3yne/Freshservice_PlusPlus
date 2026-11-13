@@ -31,6 +31,13 @@ try {
 let mainWindow;
 let updater = null;
 let pluginDirectory = null;
+// The first-start plugin picker (setup-picker.js): open while no site plugin is
+// installed. movedOffer holds the moved plugins it pre-ticks; the "moved
+// plugins" notification waits until the picker is answered.
+const pluginSetup = { active: false, movedOffer: [], ready: Promise.resolve() };
+// False on the very first start: nothing was set up before, so there are no
+// plugins in use to reinstall.
+let settingsExistedAtStart = true;
 let permissionPolicy = null;
 // App data folder. Still named "note-backups" from when note backup was built in:
 // it holds settings.json, open tabs and window state, and the Note Backup plugin
@@ -919,6 +926,10 @@ function createSettingsWindow(target) {
   settingsWindow.on("closed", () => { settingsWindow = null; });
 }
 
+function fromMainWindow(event) {
+  return !!(mainWindow && !mainWindow.isDestroyed() && event && event.sender === mainWindow.webContents);
+}
+
 function fromSettingsWindow(event) {
   return !!(settingsWindow && !settingsWindow.isDestroyed() && event && event.sender === settingsWindow.webContents);
 }
@@ -961,6 +972,7 @@ async function findMovedPlugins() {
     installedIds: pluginManager.getPluginInfo().map((p) => p.id),
     handled: PluginDirectory.readMovedHandled(userData),
     tabsText: await readText(TABS_FILE),
+    existingInstall: settingsExistedAtStart,
   });
 }
 
@@ -980,7 +992,15 @@ function startPluginDirectory() {
       ? (url, opts) => electron.net.fetch(url, opts)
       : (url, opts) => fetch(url, opts),
   });
-  findMovedPlugins().then((moved) => pluginDirectory.setMoved(moved)).catch((err) => {
+  const userData = electron.app.getPath("userData");
+  pluginSetup.active = PluginDirectory.needsPluginSetup({
+    installed: pluginManager.getPluginInfo(),
+    dontAsk: PluginDirectory.readSetupState(userData).dontAsk,
+  });
+  pluginSetup.ready = findMovedPlugins().then((moved) => {
+    if (pluginSetup.active) pluginSetup.movedOffer = moved;
+    else pluginDirectory.setMoved(moved);
+  }).catch((err) => {
     console.error("[PluginDirectory] Couldn't check for moved plugins:", err);
   });
   const run = () => checkPluginDirectory({ scheduled: true }).catch((err) => {
@@ -1268,9 +1288,10 @@ function registerIpcHandlers() {
   // folder (kind "folder"). Like directory installs, it's staged and goes live at
   // the next start (plugin-directory.js).
   electron.ipcMain.handle("plugin-import", async (event, kind) => {
-    if (!fromSettingsWindow(event) || !pluginDirectory) return { success: false, error: "Not available" };
+    const fromSetup = pluginSetup.active && fromMainWindow(event);
+    if (!(fromSettingsWindow(event) || fromSetup) || !pluginDirectory) return { success: false, error: "Not available" };
     const folder = kind === "folder";
-    const result = await electron.dialog.showOpenDialog(settingsWindow, folder
+    const result = await electron.dialog.showOpenDialog(fromSetup ? mainWindow : settingsWindow, folder
       ? { title: "Select Plugin Folder", properties: ["openDirectory"], buttonLabel: "Import Plugin" }
       : {
         title: "Select Plugin File",
@@ -1339,6 +1360,56 @@ function registerIpcHandlers() {
     broadcastPluginDirectory(pluginDirectory.getState());
     return { success: true };
   });
+  // The first-start plugin picker in the main window (setup-picker.js).
+  electron.ipcMain.handle("plugin-setup-status", async (event) => {
+    if (!fromMainWindow(event) || !pluginDirectory) return { show: false };
+    await pluginSetup.ready;
+    return {
+      show: pluginSetup.active,
+      existingInstall: settingsExistedAtStart,
+      preselect: pluginSetup.movedOffer.filter((m) => m.used).map((m) => m.id),
+    };
+  });
+  electron.ipcMain.handle("plugin-setup-refresh", async (event) => {
+    if (!fromMainWindow(event) || !pluginDirectory || !pluginSetup.active) return null;
+    return pluginDirectory.refresh();
+  });
+  electron.ipcMain.handle("plugin-setup-install", async (event, ids) => {
+    if (!fromMainWindow(event) || !pluginDirectory || !pluginSetup.active) return { success: false, error: "Not available" };
+    const result = await pluginDirectory.install(Array.isArray(ids) ? ids.slice(0, 50) : []);
+    if (result.success) {
+      // The picker answered the moved-plugins offer too.
+      pluginDirectory.dismissMoved(pluginSetup.movedOffer.map((m) => m.id));
+      pluginSetup.active = false;
+      // Plugins load at startup, so restart into them. A moment's wait lets the
+      // picker say so first.
+      setTimeout(() => {
+        electron.app.relaunch();
+        electron.app.quit();
+      }, 1200);
+    }
+    return result;
+  });
+  // A file staged from the picker ("Install from file…") is applied by restarting.
+  electron.ipcMain.handle("plugin-setup-restart", (event) => {
+    if (!fromMainWindow(event) || !pluginSetup.active) return false;
+    pluginSetup.active = false;
+    electron.app.relaunch();
+    electron.app.quit();
+    return true;
+  });
+  electron.ipcMain.handle("plugin-setup-skip", async (event, payload) => {
+    if (!fromMainWindow(event) || !pluginDirectory || !pluginSetup.active) return { success: false };
+    if (payload && payload.dontAsk === true) {
+      PluginDirectory.writeSetupState(electron.app.getPath("userData"), { dontAsk: true });
+    }
+    pluginSetup.active = false;
+    // Skipped: plugins that were in use can still be reinstalled from the notification.
+    pluginDirectory.setMoved(pluginSetup.movedOffer);
+    broadcastPluginDirectory(pluginDirectory.getState());
+    return { success: true };
+  });
+
   // "Restart now" on the plugin restart notice.
   electron.ipcMain.handle("restart-app", (event) => {
     if (!fromSettingsWindow(event)) return false;
@@ -1517,6 +1588,7 @@ electron.app.whenReady().then(async () => {
 
   // Two-phase startup: read raw file first so plugins can see persisted values during init,
   // then run plugin migrations + merge defaults to produce the final settings object.
+  settingsExistedAtStart = fs.existsSync(SETTINGS_FILE);
   const rawParsed = await readSettingsFile();
   const preMigration = JSON.stringify(rawParsed);
   migrateCoreSettings(rawParsed);

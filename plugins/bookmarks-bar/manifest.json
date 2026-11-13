@@ -2,6 +2,7 @@
   "id": "bookmarks-bar",
   "name": "Bookmarks Bar",
   "version": "0.8.0",
+  "distribution": "directory",
   "description": "A bar of bookmarked sites under the address bar. Drag to reorder, middle-click for a new tab, right-click for more.",
   "category": "Tabs & Toolbars",
   "main": "main.js",

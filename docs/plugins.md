@@ -34,9 +34,9 @@ A plugin can include any combination of these three components.
 
 On startup the app scans the `plugins/` directories, loads each `main.js` inside the main Electron process, and injects each `renderer.js` as a `<script>` tag into the main window after settings have loaded. Renderer scripts run one after another in folder order (bundled plugins first, alphabetically), so don't rely on a plugin that sorts after yours having run yet: use events or `notes.onReady()` instead. `settings.js` files are injected into the Settings window after `window.pluginSettingsAPI` has been constructed.
 
-Notes themselves are a plugin too: the bundled **Note Backup** plugin (`plugins/note-backup`) owns the Notes tab, its files on disk and live sync with the page's note editor, and backs `pluginAPI.notes` for everyone else. It is a good reference for a larger plugin.
+Notes themselves are a plugin too: the **Note Backup** plugin (`plugins/note-backup`) owns the Notes tab, its files on disk and live sync with the page's note editor, and backs `pluginAPI.notes` for everyone else. It is a good reference for a larger plugin.
 
-Support for a ticketing site is a plugin as well. The core app knows nothing about Freshservice: the bundled **Freshservice** plugin (`plugins/freshservice`) declares its hosts in a manifest `"site"` block and registers a **site adapter** with `pluginAPI.sites` (ticket detection, note editor sync scripts, record reading, knowledge base). Note Backup, AI Features and Solutions Chat work through whichever adapter claims the page in a tab. To add another site, see **[Site Plugins](sites.md)**.
+Support for a ticketing site is a plugin as well. The core app knows nothing about Freshservice: the **Freshservice** plugin (`plugins/freshservice`) declares its hosts in a manifest `"site"` block and registers a **site adapter** with `pluginAPI.sites` (ticket detection, note editor sync scripts, record reading, knowledge base). Note Backup, AI Features and Solutions Chat work through whichever adapter claims the page in a tab. To add another site, see **[Site Plugins](sites.md)**.
 
 ---
 
@@ -741,6 +741,7 @@ These plugins ship with the app and are loaded for all users.
 - The directory is `index.json` on the `plugin-directory` release of this repo: `https://github.com/n3yne/MSP_PlusPlus/releases/download/plugin-directory/index.json`. That release is a pre-release, so the app updater (which follows the latest release) never mistakes it for an app version.
 - Each entry gives the plugin's id, name, description, category, version, `minAppVersion`, `requires` (ids of other plugins it needs; installing it installs those too), the package file name, its SHA-256 and its size in bytes. A download that doesn't match the size and SHA-256 exactly is refused before anything is unpacked. Package URLs have to stay inside the same release folder.
 - MSP++ checks the directory 30 seconds after it starts and then once a day, plus **Check Now**. Updates for installed plugins show a count on Plugins and Browse, an **Update All** button and a notification in the main window. **Install Plugin Updates Automatically** (off by default) downloads them by itself.
+- No plugin is bundled with the app any more: every plugin in `plugins/` is a directory plugin, and a new install (or an update from 0.8.0) opens the first-start plugin picker (`setup-picker.js`) whenever no site plugin is installed. In a development checkout (`npm start`) every plugin in `plugins/` still loads as bundled, so the picker doesn't open there.
 - If an installed plugin has the same `id` as a bundled one, the newer version loads and the other is skipped (a tie goes to the bundled copy). A fixed bundled plugin can go out through the directory before the next app release that way; removing the directory copy brings back the bundled one.
 
 Index entry example:

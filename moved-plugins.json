@@ -1,6 +1,82 @@
 {
-  "//": "Plugins that were bundled up to 0.7 and moved to the plugin directory in 0.8. The first start after updating offers to reinstall them (plugin-directory.js findMovedPlugins). settings, credentials, dataFiles, hosts and alsoIf are the signs that a plugin was in use, which pre-tick it.",
+  "//": "Plugins that used to come with MSP++ and install from the plugin directory now: the first ten moved in 0.8, the rest (onByDefault) after 0.8.0. The first start after updating offers to reinstall them (plugin-directory.js findMovedPlugins), through the first-start plugin picker when no site plugin is installed. settings, credentials, dataFiles, hosts and alsoIf are the signs that a plugin was in use, which pre-tick it; onByDefault means it was on for everyone, so it's pre-ticked unless it was turned off.",
   "plugins": [
+    {
+      "id": "freshservice",
+      "name": "Freshservice",
+      "onByDefault": true,
+      "settings": {
+        "fsApiEnabled": true,
+        "fsApiDomain": ""
+      },
+      "credentials": [
+        "fsApiKey"
+      ],
+      "hosts": [
+        "freshservice.com",
+        "freshworks.com",
+        "myfreshworks.com"
+      ]
+    },
+    {
+      "id": "note-backup",
+      "name": "Note Backup",
+      "onByDefault": true,
+      "settings": {
+        "backupRetentionDays": 7,
+        "signatureHtml": "",
+        "ticketSortField": "lastUpdated",
+        "ticketSortDirection": "desc",
+        "noteTemplates": [],
+        "liveSyncEnabled": true,
+        "snapshotThreshold": 5,
+        "backupStorageWarningMb": 100
+      }
+    },
+    {
+      "id": "recent-tickets",
+      "name": "Recent Tickets",
+      "onByDefault": true,
+      "settings": {
+        "recentTicketsMax": 50,
+        "recentTicketsReuseTab": true,
+        "recentTicketsHoverPreview": true
+      }
+    },
+    {
+      "id": "bookmarks-bar",
+      "name": "Bookmarks Bar",
+      "onByDefault": true,
+      "settings": {
+        "bookmarksBarVisible": true,
+        "bookmarksBarItems": []
+      }
+    },
+    {
+      "id": "metrics-bar",
+      "name": "Metrics Bar",
+      "onByDefault": true,
+      "settings": {
+        "metricsBarEnabled": false,
+        "metricsBarInterval": 15,
+        "metricsBarDashboards": [],
+        "metricsProgressEnabled": false,
+        "metricsWorkDays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "metricsWorkHoursStart": "08:00",
+        "metricsWorkHoursEnd": "17:00",
+        "metricsWorkWeekEndDay": 5,
+        "metricsLunchMinutes": 0,
+        "metricsTargetRounding": "none",
+        "metricsTimeOff": [],
+        "metricsRecurringBlocks": []
+      }
+    },
     {
       "id": "connectwise-manage",
       "name": "ConnectWise Manage",
