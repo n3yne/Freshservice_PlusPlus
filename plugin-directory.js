@@ -156,10 +156,59 @@ function rmrf(target) {
   fs.rmSync(target, { recursive: true, force: true, maxRetries: 3 });
 }
 
+// Error codes Windows gives while something else (antivirus scanning freshly
+// written files, the search indexer, Explorer) briefly has a file open.
+const TRANSIENT_FS_CODES = new Set(["EPERM", "EACCES", "EBUSY", "ENOTEMPTY"]);
+const RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400, 800, 1500];
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+// Renames a folder, waiting out short-lived locks. If it still can't be renamed
+// after the retries, copies it instead and deletes the source (a leftover source
+// is swept up by cleanupStaleTemp at the next start). Options are for tests.
+function moveDirSync(from, to, { delays = RENAME_RETRY_DELAYS_MS, sleep = sleepSync, fsImpl = fs } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      fsImpl.renameSync(from, to);
+      return;
+    } catch (err) {
+      if (!TRANSIENT_FS_CODES.has(err && err.code)) throw err;
+      lastErr = err;
+      if (attempt < delays.length) sleep(delays[attempt]);
+    }
+  }
+  try {
+    fsImpl.rmSync(to, { recursive: true, force: true, maxRetries: 3 });
+    fsImpl.cpSync(from, to, { recursive: true, errorOnExist: false, force: true });
+  } catch {
+    try { fsImpl.rmSync(to, { recursive: true, force: true, maxRetries: 3 }); } catch { /* best effort */ }
+    throw lastErr;
+  }
+  try { fsImpl.rmSync(from, { recursive: true, force: true, maxRetries: 3 }); } catch { /* swept up later */ }
+}
+
+// Deletes "<id>.tmp-xxxxxxxx" folders in .pending left by a download that was
+// interrupted or failed partway. Never throws.
+function cleanupStaleTemp(userData, logger = console) {
+  const pendingRoot = path.join(installedRoot(userData), PENDING_DIR);
+  let names;
+  try { names = fs.readdirSync(pendingRoot); } catch { return; }
+  for (const name of names) {
+    if (!/\.tmp-[0-9a-f]{8}$/.test(name)) continue;
+    try { rmrf(path.join(pendingRoot, name)); } catch (err) {
+      logger.warn(`[PluginDirectory] Couldn't delete leftover "${name}":`, err.message || err);
+    }
+  }
+}
+
 // Applies staged installs, updates and removals. Run once at startup, before
 // plugins load. Never throws: a change that fails stays pending, is logged, and
 // is retried at the next start.
 function applyPending(userData, logger = console) {
+  cleanupStaleTemp(userData, logger);
   const root = installedRoot(userData);
   const pending = readPending(userData);
   const ids = Object.keys(pending.install).concat(Object.keys(pending.remove));
@@ -197,7 +246,7 @@ function applyPending(userData, logger = console) {
     try {
       const dest = path.join(root, id);
       rmrf(dest);
-      fs.renameSync(staged, dest);
+      moveDirSync(staged, dest);
       const info = pending.install[id] || {};
       registry[id] = {
         source: info.source === "imported" ? "imported" : "directory",
@@ -233,7 +282,7 @@ function stagePackage(userData, files, manifest, source) {
   try {
     PluginPackage.writeFiles(files, tmp);
     rmrf(dest);
-    fs.renameSync(tmp, dest);
+    moveDirSync(tmp, dest);
   } catch (err) {
     rmrf(tmp);
     throw err;
@@ -275,11 +324,13 @@ function cancelPending(userData, id) {
 
 // ===================== Plugins that moved out of the app =====================
 
-// Plugins bundled up to 0.7 moved to the directory in 0.8 (moved-plugins.json).
-// The first start without them offers to reinstall them. A plugin is pre-ticked
-// when there are signs it was in use: a setting changed from its default, a
-// saved API key, a data file, one of its site's hosts in the open tabs or the
-// settings, or (alsoIf) another moved plugin that was in use.
+// Plugins bundled up to 0.7 moved to the directory in 0.8, and the rest after
+// 0.8.0 (moved-plugins.json). The first start without them offers to reinstall
+// them. A plugin is pre-ticked when there are signs it was in use: a setting
+// changed from its default, a saved API key, a data file, one of its site's
+// hosts in the open tabs or the settings, (alsoIf) another moved plugin that
+// was in use, or (onByDefault) it was on for everyone and wasn't turned off.
+// A new install has nothing to reinstall, so it gets nothing back.
 //
 //   moved          moved-plugins.json "plugins"
 //   settings       the raw settings.json object
@@ -287,8 +338,10 @@ function cancelPending(userData, id) {
 //   installedIds   ids loaded now (bundled or installed)
 //   handled        ids already offered (moved-handled.json)
 //   tabsText       open-tabs.json as text, for hosts
+//   existingInstall  false on the very first start (no settings.json yet)
 // Returns [{ id, name, used }] for the plugins still to offer.
-function findMovedPlugins({ userData, moved, settings = {}, pluginsConfig = {}, installedIds = [], handled = [], tabsText = "" }) {
+function findMovedPlugins({ userData, moved, settings = {}, pluginsConfig = {}, installedIds = [], handled = [], tabsText = "", existingInstall = true }) {
+  if (!existingInstall) return [];
   const list = Array.isArray(moved) ? moved : [];
   const settingsText = JSON.stringify(settings || {});
   const usedById = new Map();
@@ -312,7 +365,7 @@ function findMovedPlugins({ userData, moved, settings = {}, pluginsConfig = {}, 
   for (const entry of list) {
     if (!entry || !ID_PATTERN.test(entry.id)) continue;
     usedById.set(entry.id, pluginsConfig[entry.id] !== false &&
-      (changedSetting(entry) || savedCredential(entry) || hasDataFile(entry) || visitedHost(entry)));
+      (entry.onByDefault === true || changedSetting(entry) || savedCredential(entry) || hasDataFile(entry) || visitedHost(entry)));
   }
   for (const entry of list) {
     if (entry && entry.alsoIf && usedById.get(entry.alsoIf) && pluginsConfig[entry.id] !== false) usedById.set(entry.id, true);
@@ -329,6 +382,29 @@ function readMovedHandled(userData) {
 
 function writeMovedHandled(userData, ids) {
   writeJson(path.join(installedRoot(userData), "moved-handled.json"), { ids: Array.from(new Set(ids)) });
+}
+
+// ===================== First-start plugin picker =====================
+
+// With no site plugin installed (a new install, or an update from a version
+// that bundled Freshservice), the main window asks which plugins to install.
+// "Don't ask again" is kept in installed-plugins/setup.json.
+
+function readSetupState(userData) {
+  const s = readJson(path.join(installedRoot(userData), "setup.json"), {});
+  return { dontAsk: s.dontAsk === true };
+}
+
+function writeSetupState(userData, state) {
+  writeJson(path.join(installedRoot(userData), "setup.json"), { dontAsk: state && state.dontAsk === true });
+}
+
+// True when the picker should open: no site plugin is installed (on or off)
+// and the user hasn't said not to ask.
+//   installed  pluginManager.getPluginInfo()
+function needsPluginSetup({ installed = [], dontAsk = false }) {
+  if (dontAsk) return false;
+  return !installed.some(p => p && (p.site || p.category === "Sites"));
 }
 
 // ===================== The service =====================
@@ -351,6 +427,7 @@ function createPluginDirectory(opts) {
     indexUrl = DEFAULT_INDEX_URL,
     fetchImpl = (...args) => fetch(...args),
     logger = console,
+    indexTimeoutMs = 20000,
   } = opts;
   const userAgent = "MSP-PP/" + appVersion;
 
@@ -364,7 +441,18 @@ function createPluginDirectory(opts) {
   async function fetchIndex() {
     const headers = { "User-Agent": userAgent, Accept: "application/json" };
     if (etag && index.plugins.length) headers["If-None-Match"] = etag;
-    const resp = await fetchImpl(indexUrl, { headers });
+    // Offline or behind a proxy that never answers, a fetch can hang for
+    // minutes; the first-start picker waits on this, so give up sooner.
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("The plugin directory didn't answer. Check the internet connection and try again.")), indexTimeoutMs);
+    });
+    let resp;
+    try {
+      resp = await Promise.race([fetchImpl(indexUrl, { headers }), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
     if (resp.status === 304) return;
     if (resp.status === 404) throw new Error("The plugin directory hasn't been published yet");
     if (!resp.ok) throw new Error(`The plugin directory answered with error ${resp.status}`);
@@ -517,11 +605,24 @@ function createPluginDirectory(opts) {
     if (missing.length) {
       return { success: false, staged: [], error: `Not in the plugin directory: ${missing.join(", ")}` };
     }
+    // One failure doesn't stop the rest: each plugin is staged on its own, and
+    // the ones that failed are named so they can be tried again.
     const staged = [];
-    try {
-      for (const entry of order) staged.push(await stageEntry(entry));
-    } catch (err) {
-      return { success: false, staged, error: err.message || String(err) };
+    const errors = [];
+    for (const entry of order) {
+      const needs = entry.requires.filter(r => errors.some(e => e.id === r));
+      if (needs.length) {
+        errors.push({ id: entry.id, message: `${entry.name} wasn't installed because a plugin it needs failed` });
+        continue;
+      }
+      try {
+        staged.push(await stageEntry(entry));
+      } catch (err) {
+        errors.push({ id: entry.id, message: err.message || String(err) });
+      }
+    }
+    if (errors.length) {
+      return { success: false, staged, error: errors.map(e => e.message).join("; ") };
     }
     return { success: true, staged, error: "" };
   }
@@ -591,10 +692,15 @@ module.exports = {
   readRegistry,
   readPending,
   applyPending,
+  moveDirSync,
+  cleanupStaleTemp,
   stagePackage,
   stageRemove,
   cancelPending,
   findMovedPlugins,
   readMovedHandled,
+  readSetupState,
+  writeSetupState,
+  needsPluginSetup,
   createPluginDirectory,
 };

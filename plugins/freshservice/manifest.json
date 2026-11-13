@@ -2,6 +2,7 @@
   "id": "freshservice",
   "name": "Freshservice",
   "version": "0.8.0",
+  "distribution": "directory",
   "description": "Freshservice site support: ticket detection, note editor sync, page reading for AI features, ticket details and Solutions articles through the Freshservice REST API (v2), and time entries for the Time Tracker.",
   "category": "Sites",
   "main": "main.js",

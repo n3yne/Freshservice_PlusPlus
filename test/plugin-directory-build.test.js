@@ -35,8 +35,18 @@ describe("plugin manifests in this repo", () => {
       .filter((f) => /^!plugins\/[^/]+\/\*\*$/.test(f))
       .map((f) => f.slice("!plugins/".length, -"/**".length)));
     const directory = plugins.filter((p) => p.distribution === "directory").map((p) => p.folder).sort();
-    expect([...excluded].sort()).toEqual(directory);
-    expect(pkg.build.files).toContain("plugins/**/*");
+    const bundled = plugins.filter((p) => p.distribution !== "directory");
+    if (bundled.length === 0) {
+      // Nothing bundled: the app build leaves the plugins folder out entirely.
+      expect(pkg.build.files.filter((f) => f.replace(/^!/, "").startsWith("plugins/"))).toEqual([]);
+    } else {
+      expect([...excluded].sort()).toEqual(directory);
+      expect(pkg.build.files).toContain("plugins/**/*");
+    }
+  });
+
+  test("no plugin is bundled with the app; the first-start picker installs them", () => {
+    expect(plugins.filter((p) => p.distribution !== "directory").map((p) => p.folder)).toEqual([]);
   });
 });
 

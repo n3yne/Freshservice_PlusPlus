@@ -120,6 +120,9 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // ==================== Form Population ====================
+  // Last pluginCategoriesCollapsed value the plugin lists were drawn with.
+  let lastCollapsedKey = null;
+
   function applySettingsForm(settings) {
     appSettings = settings;
     settingSidePanel.checked = settings.sidePanelEnabled !== false;
@@ -134,6 +137,12 @@ document.addEventListener("DOMContentLoaded", function () {
     settingUnreadBadges.checked = settings.unreadTabBadges !== false;
     settingSiteColors.checked = settings.siteTabColors !== false;
     renderSiteColorList();
+    const collapsedKey = JSON.stringify(settings.pluginCategoriesCollapsed || null);
+    if (collapsedKey !== lastCollapsedKey) {
+      lastCollapsedKey = collapsedKey;
+      renderPluginList();
+      renderBrowseList();
+    }
 
     if (document.activeElement !== settingDefaultUrl) {
       settingDefaultUrl.value = settings.defaultUrl && settings.defaultUrl !== "about:blank" ? settings.defaultUrl : "";
@@ -557,7 +566,6 @@ document.addEventListener("DOMContentLoaded", function () {
       const desc = document.createElement("div");
       desc.className = "plugin-item-desc";
       desc.textContent = plugin.description;
-      desc.title = plugin.description;
       info.appendChild(desc);
     }
 
@@ -645,6 +653,69 @@ document.addEventListener("DOMContentLoaded", function () {
     item.appendChild(row);
   }
 
+  // ---- Collapsible categories ----
+  //
+  // Each category in the Installed and Browse lists can be collapsed by clicking
+  // its header. Saved as pluginCategoriesCollapsed: { installed: [names], browse: [names] }.
+  const MAX_COLLAPSED = 100;
+
+  function collapsedCategories(view) {
+    const all = appSettings && appSettings.pluginCategoriesCollapsed;
+    const list = all && typeof all === "object" && Array.isArray(all[view]) ? all[view] : [];
+    return new Set(list.filter(function (n) { return typeof n === "string"; }));
+  }
+
+  function setCategoryCollapsed(view, name, collapsed) {
+    const set = collapsedCategories(view);
+    if (collapsed) set.add(name); else set.delete(name);
+    const prev = appSettings && appSettings.pluginCategoriesCollapsed;
+    const next = Object.assign({}, prev && typeof prev === "object" && !Array.isArray(prev) ? prev : {});
+    next[view] = Array.from(set).slice(0, MAX_COLLAPSED);
+    appSettings = Object.assign({}, appSettings, { pluginCategoriesCollapsed: next });
+    lastCollapsedKey = JSON.stringify(next);
+    saveSettings({ pluginCategoriesCollapsed: next });
+  }
+
+  // A category section with a header button that collapses and expands it.
+  function buildCategorySection(view, name, countText, countClass) {
+    const section = document.createElement("section");
+    section.className = "plugin-category";
+    section.dataset.category = name;
+    const collapsed = collapsedCategories(view).has(name);
+    if (collapsed) section.classList.add("collapsed");
+
+    const head = document.createElement("button");
+    head.type = "button";
+    head.className = "plugin-category-header";
+    head.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    head.title = collapsed ? "Show " + name : "Hide " + name;
+
+    const chevron = document.createElement("span");
+    chevron.className = "plugin-category-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    head.appendChild(chevron);
+
+    const title = document.createElement("h4");
+    title.className = "plugin-category-title";
+    title.textContent = name;
+    head.appendChild(title);
+
+    const count = document.createElement("span");
+    count.className = "plugin-category-count" + (countClass ? " " + countClass : "");
+    count.textContent = countText;
+    head.appendChild(count);
+
+    head.addEventListener("click", function () {
+      const nowCollapsed = !section.classList.contains("collapsed");
+      section.classList.toggle("collapsed", nowCollapsed);
+      head.setAttribute("aria-expanded", nowCollapsed ? "false" : "true");
+      head.title = nowCollapsed ? "Show " + name : "Hide " + name;
+      setCategoryCollapsed(view, name, nowCollapsed);
+    });
+    section.appendChild(head);
+    return section;
+  }
+
   // The Plugins list, one section per category (see plugin-categories.js), each
   // with a count of how many of its plugins are on.
   function renderPluginList() {
@@ -681,22 +752,9 @@ document.addEventListener("DOMContentLoaded", function () {
       if (visible.length === 0) return;
       shown += visible.length;
 
-      const section = document.createElement("section");
-      section.className = "plugin-category";
-      section.dataset.category = group.name;
-
-      const head = document.createElement("div");
-      head.className = "plugin-category-header";
-      const title = document.createElement("h4");
-      title.className = "plugin-category-title";
-      title.textContent = group.name;
-      head.appendChild(title);
-      const count = document.createElement("span");
-      count.className = "plugin-category-count" +
-        (group.enabledCount === group.plugins.length ? " all-on" : group.enabledCount === 0 ? " all-off" : "");
-      count.textContent = group.enabledCount + " of " + group.plugins.length + " on";
-      head.appendChild(count);
-      section.appendChild(head);
+      const section = buildCategorySection("installed", group.name,
+        group.enabledCount + " of " + group.plugins.length + " on",
+        group.enabledCount === group.plugins.length ? "all-on" : group.enabledCount === 0 ? "all-off" : "");
 
       if (group.description) {
         const desc = document.createElement("div");
@@ -1232,20 +1290,9 @@ document.addEventListener("DOMContentLoaded", function () {
       });
       if (visible.length === 0) return;
       shown += visible.length;
-      const section = document.createElement("section");
-      section.className = "plugin-category";
-      section.dataset.category = group.name;
-      const head = document.createElement("div");
-      head.className = "plugin-category-header";
-      const title = document.createElement("h4");
-      title.className = "plugin-category-title";
-      title.textContent = group.name;
-      head.appendChild(title);
-      const count = document.createElement("span");
-      count.className = "plugin-category-count" + (group.enabledCount === 0 ? " all-off" : "");
-      count.textContent = group.enabledCount + " of " + group.plugins.length + " installed";
-      head.appendChild(count);
-      section.appendChild(head);
+      const section = buildCategorySection("browse", group.name,
+        group.enabledCount + " of " + group.plugins.length + " installed",
+        group.enabledCount === 0 ? "all-off" : "");
       const items = document.createElement("div");
       items.className = "plugin-category-items";
       visible.forEach(function (e) { items.appendChild(buildBrowseItem(e)); });

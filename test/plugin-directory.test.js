@@ -284,3 +284,77 @@ describe("createPluginDirectory", () => {
     expect(state.plugins).toHaveLength(1);
   });
 });
+
+describe("Windows file locks while staging", () => {
+  function lockErr(code = "EPERM") {
+    return Object.assign(new Error(`${code}: operation not permitted, rename`), { code });
+  }
+
+  test("moveDirSync retries a rename that's briefly locked", () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), "mspp-move-"));
+    const from = path.join(base, "a.tmp-0000abcd");
+    const to = path.join(base, "a");
+    fs.mkdirSync(from);
+    fs.writeFileSync(path.join(from, "manifest.json"), "{}");
+    let fails = 2;
+    const sleeps = [];
+    const fsImpl = Object.assign({}, fs, {
+      renameSync: (a, b) => { if (fails-- > 0) throw lockErr(); return fs.renameSync(a, b); },
+    });
+    PluginDirectory.moveDirSync(from, to, { delays: [1, 2, 3], sleep: (ms) => sleeps.push(ms), fsImpl });
+    expect(sleeps).toEqual([1, 2]);
+    expect(fs.existsSync(path.join(to, "manifest.json"))).toBe(true);
+    expect(fs.existsSync(from)).toBe(false);
+  });
+
+  test("moveDirSync copies instead when the rename stays locked", () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), "mspp-move-"));
+    const from = path.join(base, "a.tmp-0000abcd");
+    const to = path.join(base, "a");
+    fs.mkdirSync(path.join(from, "sub"), { recursive: true });
+    fs.writeFileSync(path.join(from, "sub", "x.js"), "1");
+    const fsImpl = Object.assign({}, fs, { renameSync: () => { throw lockErr("EBUSY"); } });
+    PluginDirectory.moveDirSync(from, to, { delays: [1], sleep: () => {}, fsImpl });
+    expect(fs.readFileSync(path.join(to, "sub", "x.js"), "utf8")).toBe("1");
+    expect(fs.existsSync(from)).toBe(false);
+  });
+
+  test("moveDirSync doesn't retry other errors", () => {
+    const fsImpl = Object.assign({}, fs, { renameSync: () => { throw lockErr("ENOENT"); } });
+    const sleeps = [];
+    expect(() => PluginDirectory.moveDirSync("/nope/a", "/nope/b", { delays: [1], sleep: (ms) => sleeps.push(ms), fsImpl }))
+      .toThrow(/ENOENT/);
+    expect(sleeps).toEqual([]);
+  });
+
+  test("applyPending deletes leftover .tmp folders", () => {
+    const userData = fs.mkdtempSync(path.join(os.tmpdir(), "mspp-dir-"));
+    const pendingRoot = path.join(userData, "installed-plugins", ".pending");
+    fs.mkdirSync(path.join(pendingRoot, "quick-actions.tmp-fad3c16f"), { recursive: true });
+    fs.mkdirSync(path.join(pendingRoot, "keep-me"), { recursive: true });
+    PluginDirectory.applyPending(userData, quiet);
+    expect(fs.existsSync(path.join(pendingRoot, "quick-actions.tmp-fad3c16f"))).toBe(false);
+    expect(fs.existsSync(path.join(pendingRoot, "keep-me"))).toBe(true);
+  });
+
+  test("install keeps going after one plugin fails", async () => {
+    const aMan = { id: "alpha", name: "Alpha", version: "1.0.0" };
+    const bMan = { id: "bravo", name: "Bravo", version: "1.0.0" };
+    const cMan = { id: "charlie", name: "Charlie", version: "1.0.0" };
+    const aPkg = makePackage(aMan);
+    const bPkg = makePackage(bMan);
+    const cPkg = makePackage(cMan);
+    const { dir, userData } = setup({
+      entries: [entryFor(aMan, aPkg), entryFor(bMan, bPkg), entryFor(cMan, cPkg, { requires: ["bravo"] })],
+      // Bravo's download is missing, so it fails, and Charlie (which needs it) is skipped.
+      packages: { "alpha-1.0.0.mspplugin": aPkg, "charlie-1.0.0.mspplugin": cPkg },
+    });
+    await dir.refresh();
+    const result = await dir.install(["alpha", "bravo", "charlie"]);
+    expect(result.success).toBe(false);
+    expect(result.staged.map((s) => s.id)).toEqual(["alpha"]);
+    expect(result.error).toMatch(/Bravo/);
+    expect(result.error).toMatch(/Charlie wasn't installed/);
+    expect(fs.existsSync(path.join(userData, "installed-plugins", ".pending", "alpha", "manifest.json"))).toBe(true);
+  });
+});

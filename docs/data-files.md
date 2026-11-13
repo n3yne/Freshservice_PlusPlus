@@ -73,6 +73,8 @@ Plugins installed from **Settings → Plugins → Browse** (the plugin directory
 | `registry.json` | R W | Where each installed plugin came from (`directory` or `imported`), its version and when it was installed. |
 | `pending.json` | R W | Installs, updates and removals waiting for the next start. |
 | `.pending\<plugin-id>\` | R W D | A downloaded install or update, checked against the directory's SHA-256, waiting for the next start. Moved to `<plugin-id>\` then. |
+| `moved-handled.json` | R W | Plugins that used to come with MSP++ and were already offered for reinstalling, so they aren't offered again. |
+| `setup.json` | R W | `{ "dontAsk": true }` when **Don't ask again** was ticked on the first-start plugin picker. |
 
 ## Browser profile: `DATA\`
 
