@@ -44,10 +44,10 @@ An Electron-based wrapper for MSP and ticketing web apps (Freshservice and Conne
 - **Templates** – Create reusable note templates accessible from the toolbar
 - **HTML source view** – Toggle button in the toolbar swaps the rich-text editor for a raw HTML textarea; formatting toolbar is disabled while in HTML mode and re-enabled on exit. Notes, templates and signatures are cleaned down to plain formatting before they're shown, so scripts, frames and similar content are dropped
 - **No silent loss** – If a note can't be saved (for example it's over 10 MB, or the folder can't be written), you're told instead of it being treated as saved, and clearing, switching tickets, pulling from the site or applying an AI rewrite asks first rather than replacing a note whose backup failed. Typing that hasn't hit the auto-save timer yet is saved when the window closes
-- **Delivered as a bundled plugin** — Note Backup, including live sync below, is implemented via the plugin system. Its settings (live sync, backup retention, templates, signature) are under **Settings → Plugins → Note Backup**. Turning it off removes the Notes tab; your saved notes stay on disk
+- **Delivered as a plugin** — Note Backup, including live sync below, is implemented via the plugin system and installs from the plugin directory. Its settings (live sync, backup retention, templates, signature) are under **Settings → Plugins → Note Backup**. Turning it off removes the Notes tab; your saved notes stay on disk
 
 ### Freshservice Sync (Freshservice plugin)
-- **Site support is a plugin** – Everything Freshservice-specific (ticket detection, note editor sync, page reading, the API) lives in the bundled **Freshservice** plugin. The core app and the other plugins are site-agnostic, so support for other ticketing systems can be added as further site plugins (see [`docs/sites.md`](docs/sites.md))
+- **Site support is a plugin** – Everything Freshservice-specific (ticket detection, note editor sync, page reading, the API) lives in the **Freshservice** plugin. The core app and the other plugins are site-agnostic, so support for other ticketing systems can be added as further site plugins (see [`docs/sites.md`](docs/sites.md))
 - **Live two-way sync** – With "Live Sync" enabled, the panel and the open Freshservice note editor (the rich-text **Add note** / **Reply** editor, or a note textarea such as the one on the time-entry form) stay in sync as you type — no manual copy-paste needed. When several editors are open, the one you last clicked into is used
 - **Pull from FS / Push to FS** – Manual sync buttons for when live sync is off or you want an explicit transfer
 - **Auto ticket detection** – The ticket number is read from the page URL (`/a/tickets/1234`), so switching tabs or navigating between tickets automatically loads the correct content into the panel. Changes, problems and releases are tracked too, saved as `CHN-45`, `PRB-12` and `RL-3` so they never collide with ticket numbers
@@ -74,7 +74,7 @@ A configurable stats bar displayed above the tab strip that periodically scrapes
 - **Freshservice API counts** – A field can carry a Freshservice ticket filter query (e.g. `agent_id:123 AND status:2`). The bar then shows how many tickets match it, straight from the Freshservice API, and reads the dashboard for that field only if the API call fails. Queries can use `{today}`, `{weekStart}` and `{monthStart}`
 - **Progress tracking** – Each field can have a configurable weekly target. Values turn green when the goal is reached, yellow when slightly behind pace, and red when significantly behind. Hover any card to see the exact on-track value for the current point in the week.
 - **Cached values** – The last successfully scraped value for each field is persisted across launches; if a refresh fails the bar continues showing the cached value with a `⚠` indicator and a tooltip showing when it was last updated
-- **Delivered as a bundled plugin** — the Metrics Bar is implemented via the plugin system; it can be disabled independently from Settings → Plugins
+- **Delivered as a plugin** — the Metrics Bar is implemented via the plugin system; it can be disabled independently from Settings → Plugins
 
 ### Bookmarks Bar
 A row of bookmarked sites under the address bar.
@@ -148,7 +148,7 @@ A **🕘 Recent** tab in the side panel listing the tickets you've viewed lately
 - **In the command palette** – `Ctrl+K` lists your pinned and latest few tickets straight away, and every remembered ticket once you type part of its number, subject or site
 - **Pin** (☆) keeps a ticket at the top of the list, and **Copy link** and **✕** are on each row. **Clear** empties the list but keeps pinned tickets
 - **Settings → Plugins → Recent Tickets** sets how many tickets to remember (10 to 200; pinned ones don't count)
-- **Delivered as a bundled plugin** — it can be disabled independently from Settings → Plugins
+- **Delivered as a plugin** — it can be disabled independently from Settings → Plugins
 
 ### Follow-up Reminders
 A **⏰ Follow-ups** tab in the side panel for coming back to a ticket later.
@@ -171,7 +171,7 @@ A **⏰ Follow-ups** tab in the side panel for coming back to a ticket later.
 - **Ticket search** – The Ticket Search tab searches tickets and requesters through the API. The key's agent needs permission to view tickets and requesters
 - **Quick actions** – The Actions tab changes a ticket's status, priority, group and agent through the API. The key's agent needs permission to edit tickets and list agents and groups
 - **Safe key storage** – The API key is encrypted with the operating system's credential storage, never sent to the main window, and only sent to the configured domain over https. The key is tied to the domain it was entered for: if you change the domain, enter the key again. **Test connection** checks it and **Remove key** deletes it
-- **Delivered as a bundled plugin** — part of the Freshservice plugin. To stop using the API but keep Freshservice support, untick **Read ticket details through the API**; turning the whole plugin off also turns off ticket detection and note sync on Freshservice pages
+- **Delivered as a plugin** — part of the Freshservice plugin. To stop using the API but keep Freshservice support, untick **Read ticket details through the API**; turning the whole plugin off also turns off ticket detection and note sync on Freshservice pages
 
 ### Solutions Chat
 - **Ask your knowledge base** – Open the **📚 Solutions** tab in the side panel for a chat that answers from your Freshservice Solutions articles. Ask how to handle something ("how do we reset MFA for a user?") and it searches Solutions, reads the best matches and answers from them only, citing each article with a link that opens it in a new tab
@@ -352,7 +352,7 @@ Output is placed in the `dist/` folder.
 
 ## AI Assistant Setup
 
-The AI Assistant is a bundled plugin. Make sure it is enabled in **Settings → Plugins** (it is on by default).
+The AI Assistant is a plugin. Make sure **AI Features** is installed (Settings → Plugins → Browse) and turned on in **Settings → Plugins**.
 
 1. Open **Settings** (`Ctrl+,`) and go to **Plugins → AI Features**
 2. Choose a **Provider**:
@@ -408,7 +408,11 @@ Your sign-in is stored encrypted with the operating system's credential store in
 
 ## Plugins
 
-The **Freshservice** and **ConnectWise Manage** site plugins, **Note Backup**, **Metrics Bar**, **AI Features** and **Solutions Chat** are delivered as bundled plugins and are always available. To install additional plugins, drop a plugin directory into the app's user data folder:
+MSP++ doesn't come with any plugins built in. Everything, including the **Freshservice** and **ConnectWise Manage** site plugins, installs from the plugin directory (**Settings → Plugins → Browse**).
+
+**First start:** when no site plugin is installed, MSP++ opens **Choose your plugins**: tick the site(s) you work in and any optional plugins, click **Install**, and MSP++ restarts with them. Plugins another one needs are ticked with it. After an update from 0.8.0 or earlier, the plugins you were using are already ticked, and your settings, notes and plugin data are kept. With no internet connection you can **Try again**, **Install from file…** (a `.mspplugin` package), or **Skip for now** (it asks again at the next start unless you tick **Don't ask again**).
+
+To install a plugin by hand, drop a plugin directory into the app's user data folder:
 
 ```
 %APPDATA%\MSP++\plugins\        (or %APPDATA%\Freshservice++\plugins\ if you upgraded)

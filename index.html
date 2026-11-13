@@ -104,6 +104,29 @@
       </div>
     </div>
 
+    <!-- First-start plugin picker (setup-picker.js): shown while no site plugin is installed -->
+    <div id="plugin-setup" class="plugin-setup-overlay">
+      <div class="plugin-setup" role="dialog" aria-modal="true" aria-labelledby="plugin-setup-title">
+        <div class="plugin-setup-header">
+          <img src="icon.png" alt="" class="plugin-setup-icon" />
+          <div>
+            <h1 id="plugin-setup-title">Choose your plugins</h1>
+            <p id="plugin-setup-intro" class="plugin-setup-intro"></p>
+          </div>
+        </div>
+        <div id="plugin-setup-list" class="plugin-setup-list"></div>
+        <div class="plugin-setup-footer">
+          <p id="plugin-setup-message" class="plugin-setup-message" role="status"></p>
+          <div class="plugin-setup-buttons">
+            <label class="plugin-setup-dont-ask"><input type="checkbox" id="plugin-setup-dont-ask" /> Don't ask again</label>
+            <button type="button" id="plugin-setup-file" class="btn btn-secondary">Install from file…</button>
+            <button type="button" id="plugin-setup-skip" class="btn btn-secondary">Skip for now</button>
+            <button type="button" id="plugin-setup-install" class="btn btn-primary" disabled>Install</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="confirm-overlay" class="confirm-overlay">
       <div class="confirm-dialog">
         <p id="confirm-message" class="confirm-message"></p>
@@ -164,5 +187,7 @@
     <script src="ticket-preview.js"></script>
     <script src="safe-html.js"></script>
     <script src="renderer.js"></script>
+    <script src="plugin-categories.js"></script>
+    <script src="setup-picker.js"></script>
   </body>
 </html>

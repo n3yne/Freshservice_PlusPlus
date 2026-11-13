@@ -52,8 +52,8 @@ describe("findMovedPlugins", () => {
         quickActionsReloadTab: true, // the default
         aiApiKeyEncrypted: "abc",
       },
-      pluginsConfig: { "ticket-search": false },
-      installedIds: ["follow-ups"],
+      pluginsConfig: { "ticket-search": false, "metrics-bar": false },
+      installedIds: ["follow-ups", "recent-tickets"],
       handled: ["quick-actions"],
       tabsText: JSON.stringify([{ url: "https://na.myconnectwise.net/v4_6_release/" }]),
     });
@@ -67,7 +67,17 @@ describe("findMovedPlugins", () => {
       "ticket-notifications": false,
       "ticket-search": false, // turned off
       "tree-tabs": false,
+      // Bundled until 0.8.0: on unless turned off.
+      "freshservice": true,
+      "note-backup": true,
+      "bookmarks-bar": true,
+      "metrics-bar": false,
     });
+  });
+
+  test("a new install (no settings yet) has nothing to reinstall", () => {
+    const result = PluginDirectory.findMovedPlugins({ userData: userDataWith(), moved, existingInstall: false });
+    expect(result).toEqual([]);
   });
 
   test("a plugin that was turned off isn't ticked even with data", () => {
@@ -89,5 +99,24 @@ describe("findMovedPlugins", () => {
     dir.dismissMoved(["time-tracker"]);
     expect(dir.getState().moved).toEqual([]);
     expect(PluginDirectory.readMovedHandled(userData)).toEqual(["time-tracker"]);
+  });
+});
+
+describe("first-start plugin picker", () => {
+  test("opens only when no site plugin is installed and the user hasn't said not to ask", () => {
+    const { needsPluginSetup } = PluginDirectory;
+    expect(needsPluginSetup({ installed: [] })).toBe(true);
+    expect(needsPluginSetup({ installed: [{ id: "note-backup", category: "Notes & Replies" }] })).toBe(true);
+    expect(needsPluginSetup({ installed: [{ id: "freshservice", category: "Sites", site: { name: "FS" } }] })).toBe(false);
+    // Installed but turned off still counts: the user chose that.
+    expect(needsPluginSetup({ installed: [{ id: "connectwise-manage", category: "Sites", site: null, enabled: false }] })).toBe(false);
+    expect(needsPluginSetup({ installed: [], dontAsk: true })).toBe(false);
+  });
+
+  test("remembers Don't ask again", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mspp-setup-"));
+    expect(PluginDirectory.readSetupState(dir)).toEqual({ dontAsk: false });
+    PluginDirectory.writeSetupState(dir, { dontAsk: true });
+    expect(PluginDirectory.readSetupState(dir)).toEqual({ dontAsk: true });
   });
 });
